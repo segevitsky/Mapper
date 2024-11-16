@@ -1,0 +1,27 @@
+{
+    "manifest_version": 3,
+    "name": "API Element Mapper",
+    "version": "1.0",
+    "description": "Map UI elements to API calls",
+    "permissions": [
+      "storage",
+      "webRequest",
+      "webRequestBlocking",
+      "debugger",
+      "tabs"
+    ],
+    "host_permissions": [
+      "<all_urls>"
+    ],
+    "devtools_page": "devtools/index.html",
+    "background": {
+      "service_worker": "background.js"
+    },
+    "content_scripts": [
+      {
+        "matches": ["<all_urls>"],
+        "js": ["content.js"]
+      }
+    ]
+  }
+  
