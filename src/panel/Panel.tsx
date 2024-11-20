@@ -10,6 +10,7 @@ import { ElementMapping, NetworkCall } from "../types";
 import { StatusIndicator } from "./components/StatusIndicator";
 import ApiDetailsModal from "./components/ApiDetailsModal";
 import { GrClear } from "react-icons/gr";
+import { LuToggleLeft, LuToggleRight } from "react-icons/lu";
 
 export const Panel: React.FC = () => {
   const { networkCalls } = useNetworkCalls();
@@ -19,6 +20,7 @@ export const Panel: React.FC = () => {
   const [selectedMapping, setSelectedMapping] = useState<ElementMapping | null>(
     null
   );
+  const [showIndicators, setShowIndicators] = useState(true);
 
   useEffect(() => {
     const handleElementSelected = (message: any) => {
@@ -78,6 +80,23 @@ export const Panel: React.FC = () => {
     // כאן אפשר לפתוח מודל חדש שמציג את פרטי הקריאה
   };
 
+  const toggleIndiators = () => {
+    setShowIndicators(!showIndicators);
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: "TOGGLE_INDICATORS" });
+      }
+    });
+  };
+
+  const clearIndicator = () => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: "CLEAR_INDICATORS" });
+      }
+    });
+  };
+
   console.log(
     networkCalls,
     mappings,
@@ -118,6 +137,22 @@ export const Panel: React.FC = () => {
         </div>
         <div className="w-1/2 p-4 overflow-auto border-l border-gray-200">
           <h2 className="color-white text-lg font-thin mb-4">Mappings</h2>
+          <div className="flex justify-start">
+            {showIndicators ? (
+              <span className="mr-1">Hide Indicators</span>
+            ) : (
+              <span className="mr-1">Show Indicators</span>
+            )}
+            {!showIndicators ? (
+              <LuToggleLeft onClick={toggleIndiators} />
+            ) : (
+              <LuToggleRight onClick={toggleIndiators} />
+            )}
+          </div>
+          <div>
+            {" "}
+            <GrClear onClick={clearIndicator} /> Clear Indicators
+          </div>
           <MappingsList mappings={mappings} onRemoveMapping={removeMapping} />
         </div>
       </div>

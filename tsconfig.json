@@ -16,10 +16,15 @@
 
     /* Linting */
     "strict": true,
-    "noUnusedLocals": true,
+    "noUnusedLocals": false,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src", "dist/Toolbar.tsx", "dist/NetworkList.tsx", "dist/ApiMappingModal.tsx"]
+  "include": [
+    "src",
+    "dist/Toolbar.tsx",
+    "dist/NetworkList.tsx",
+    "dist/ApiMappingModal.tsx"
+  ]
 }

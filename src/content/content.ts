@@ -1,4 +1,4 @@
-import { NetworkCall } from "../types";
+import { IndicatorData, NetworkCall } from "../types";
 
 // content.ts
 let isInspectMode = false;
@@ -11,6 +11,7 @@ let indicatorsContainer: HTMLElement | null = null;
 // אתחול בטעינת הדף
 createContainers();
 injectStyles();
+loadIndicators();
 
 // יצירת מיכל למודל ולאינדיקטורים
 function createContainers() {
@@ -23,6 +24,12 @@ function createContainers() {
   indicatorsContainer = document.createElement("div");
   indicatorsContainer.id = "api-mapper-indicators-container";
   indicatorsContainer.style.zIndex = "999999";
+  indicatorsContainer.style.pointerEvents = "none";
+  indicatorsContainer.style.top = "0";
+  indicatorsContainer.style.bottom = "0";
+  indicatorsContainer.style.left = "0";
+  indicatorsContainer.style.right = "0";
+
   document.body.appendChild(indicatorsContainer);
 }
 
@@ -101,23 +108,40 @@ function showModal(
 `;
 
   // הוספת מאזינים לקליקים על הקריאות
-  // בתוך showModal, נעדכן את מאזיני הקליקים
   modalContainer.querySelectorAll(".api-call-item").forEach((item) => {
     item.addEventListener("click", () => {
       const callId = item.getAttribute("data-call-id");
       const selectedCall = data.networkCalls.find((call) => call.id === callId);
 
       if (selectedCall) {
-        console.log("Call selected:", selectedCall); // דיבאג
         const rect = element.rect;
+        const indicatorData: IndicatorData = {
+          id: Date.now().toString(),
+          pageUrl: window.location.href,
+          position: {
+            top: rect.top + 13,
+            left: rect.left + 8,
+          },
+          element: {
+            path: element.path,
+            rect: rect,
+          },
+          apiCall: {
+            id: selectedCall.id,
+            method: selectedCall.method,
+            url: selectedCall.url,
+            status: Number(selectedCall.status),
+            timing: selectedCall.timing,
+          },
+        };
 
-        // הוספת אינדיקטור עם מיקום מעודכן
         const indicator = document.createElement("div");
         indicator.className = "indicator";
+        indicator.dataset.indicatorId = indicatorData.id;
         indicator.style.cssText = `
           position: fixed;
-          top: ${rect.top + 13}px;
-          left: ${rect.left + 8}px;
+          top: ${indicatorData.position.top}px;
+          left: ${indicatorData.position.left}px;
           width: 12px;
           height: 12px;
           border-radius: 50%;
@@ -130,44 +154,95 @@ function showModal(
           box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         `;
 
+        indicator.addEventListener("click", () => {
+          const tooltip = document.createElement("div");
+          tooltip.style.cssText = `
+            position: absolute;
+            top: ${indicatorData.position.top + 16}px;
+            left: ${indicatorData.position.left + 16}px;
+            background: white;
+            padding: 12px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            font-size: 12px;
+            z-index: 999999;
+          `;
+
+          const durationColor =
+            selectedCall.timing.duration < 300
+              ? "#4CAF50"
+              : selectedCall.timing.duration < 1000
+              ? "#FFC107"
+              : "#f44336";
+
+          tooltip.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <strong>${selectedCall.method}</strong>
+              <span style="color: ${durationColor}; font-weight: bold;">
+                ${Math.floor(selectedCall.timing.duration)}ms
+              </span>
+            </div>
+            <div style="color: #666; word-break: break-all; margin: 8px 0;">
+              ${selectedCall.url}
+            </div>
+            <div style="color: ${
+              selectedCall.status === 200 ? "#4CAF50" : "#f44336"
+            }">
+              Status: ${selectedCall.status}
+            </div>
+            <div style="margin-top: 8px; font-size: 11px; color: #666;">
+              Page: ${new URL(window.location.href).pathname}
+            </div>
+            <button class="remove-indicator" style="
+              margin-top: 8px;
+              padding: 4px 8px;
+              background: #f44336;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+            ">Remove</button>
+            <button class="close-indicator-tooltip"> Close </button>
+          `;
+
+          tooltip
+            .querySelector(".remove-indicator")
+            ?.addEventListener("click", () => {
+              indicator.remove();
+              tooltip.remove();
+              chrome.storage.local.get(["indicators"], (result) => {
+                const indicators = result.indicators || {};
+                if (indicators[window.location.href]) {
+                  indicators[window.location.href] = indicators[
+                    window.location.href
+                  ].filter((ind: IndicatorData) => ind.id !== indicatorData.id);
+                  chrome.storage.local.set({ indicators });
+                }
+              });
+            });
+
+          tooltip
+            .querySelector(".close-indicator-tooltip")
+            ?.addEventListener("click", () => tooltip.remove());
+
+          document.body.appendChild(tooltip);
+        });
+
         if (indicatorsContainer) {
           indicatorsContainer.appendChild(indicator);
         }
 
-        // סגירת המודל
+        chrome.storage.local.get(["indicators"], (result) => {
+          const indicators = result.indicators || {};
+          indicators[window.location.href] =
+            indicators[window.location.href] || [];
+          indicators[window.location.href].push(indicatorData);
+          chrome.storage.local.set({ indicators });
+        });
+
         if (modalContainer) {
           modalContainer.innerHTML = "";
         }
-
-        // הוספת אירוע hover להצגת פרטי הקריאה
-        indicator.addEventListener("mouseenter", () => {
-          const tooltip = document.createElement("div");
-          tooltip.style.cssText = `
-          position: absolute;
-          top: ${rect.top + window.scrollY - 4}px;
-          left: ${rect.right + window.scrollX + 24}px;
-          background: white;
-          padding: 8px;
-          border-radius: 4px;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-          font-size: 12px;
-          z-index: 999999;
-        `;
-          tooltip.innerHTML = `
-          <div><strong>${selectedCall.method}</strong></div>
-          <div style="color: #666;">${selectedCall.url}</div>
-          <div style="color: ${
-            selectedCall.status === 200 ? "#4CAF50" : "#f44336"
-          }">
-            Status: ${selectedCall.status}
-          </div>
-        `;
-          document.body.appendChild(tooltip);
-
-          indicator.addEventListener("mouseleave", () => {
-            tooltip.remove();
-          });
-        });
       }
     });
   });
@@ -215,7 +290,7 @@ function addIndicator(rect: DOMRect, status: number) {
     top: 0;
     left: 0;
     width: 100vw;
-    height: 100vh;
+    height: 100vh;י
     pointer-events: none;
     z-index: 999999;
   `;
@@ -236,6 +311,116 @@ function addIndicator(rect: DOMRect, status: number) {
   `;
 
   indicatorsContainer.appendChild(indicator);
+}
+
+function loadIndicators() {
+  chrome.storage.local.get(["indicators"], (result) => {
+    console.log({ result });
+    const indicators = result.indicators || {};
+    const currentPageIndicators = indicators[window.location.href] || [];
+    currentPageIndicators.forEach(createIndicatorFromData);
+  });
+}
+
+function createIndicatorFromData(indicatorData: IndicatorData) {
+  const indicator = document.createElement("div");
+  indicator.className = "indicator";
+  indicator.dataset.indicatorId = indicatorData.id;
+  indicator.style.cssText = `
+    position: fixed;
+    top: ${indicatorData.position.top}px;
+    left: ${indicatorData.position.left}px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: ${
+      indicatorData.apiCall.status === 200 ? "rgba(25,200, 50, .75)" : "#f44336"
+    };
+    cursor: pointer;
+    pointer-events: auto;
+    z-index: 999999;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  `;
+
+  addIndicatorEvents(indicator, indicatorData);
+  indicatorsContainer?.appendChild(indicator);
+}
+
+function addIndicatorEvents(indicator: HTMLElement, data: IndicatorData) {
+  indicator.addEventListener("click", () => {
+    const tooltipElement = document.getElementById("indicator-tooltip");
+    if (tooltipElement) {
+      console.log({ tooltipElement });
+      tooltipElement.remove();
+    }
+    const tooltip = document.createElement("div");
+    tooltip.id = "indicator-tooltip";
+    tooltip.style.cssText = `
+      position: absolute;
+      top: ${data.element.rect.top + window.scrollY - 4}px;
+      left: ${data.element.rect.right + window.scrollX + 24}px;
+      background: white;
+      padding: 12px;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      font-size: 12px;
+      z-index: 999999;
+    `;
+
+    const durationColor =
+      data.apiCall.timing.duration < 300
+        ? "#4CAF50"
+        : data.apiCall.timing.duration < 1000
+        ? "#FFC107"
+        : "#f44336";
+
+    tooltip.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <strong>${data.apiCall.method}</strong>
+        <span style="color: ${durationColor}; font-weight: bold;">
+          ${Math.floor(data.apiCall.timing.duration)}ms
+        </span>
+      </div>
+      <div style="color: #666; word-break: break-all; margin: 8px 0;">
+        ${data.apiCall.url}
+      </div>
+      <div style="color: ${
+        data.apiCall.status === 200 ? "#4CAF50" : "#f44336"
+      }">
+        Status: ${data.apiCall.status}
+      </div>
+      <button class="remove-indicator">Remove</button>
+      <button class="close-indicator-tooltip"> Close </button>
+    `;
+
+    tooltip
+      .querySelector(".remove-indicator")
+      ?.addEventListener("click", () => {
+        indicator.remove();
+        tooltip.remove();
+        removeIndicatorFromStorage(data.id);
+      });
+
+    tooltip
+      .querySelector(".close-indicator-tooltip")
+      ?.addEventListener("click", () => {
+        tooltip.remove();
+      });
+
+    document.body.appendChild(tooltip);
+  });
+}
+
+function removeIndicatorFromStorage(indicatorId: string) {
+  chrome.storage.local.get(["indicators"], (result) => {
+    const indicators = result.indicators || {};
+    if (indicators[window.location.href]) {
+      indicators[window.location.href] = indicators[
+        window.location.href
+      ].filter((ind: IndicatorData) => ind.id !== indicatorId);
+      chrome.storage.local.set({ indicators });
+    }
+  });
 }
 
 // האזנה להודעות מהפאנל
@@ -260,6 +445,13 @@ chrome.runtime.onMessage.addListener((message) => {
     case "CLEAR_INDICATORS":
       if (indicatorsContainer) {
         indicatorsContainer.innerHTML = "";
+      }
+      break;
+
+    case "TOGGLE_INDICATORS":
+      if (indicatorsContainer) {
+        indicatorsContainer.style.display =
+          indicatorsContainer.style.display === "none" ? "block" : "none";
       }
       break;
   }
@@ -349,7 +541,7 @@ function disableInspectMode() {
 
 // פונקציה עזר לקבלת נתיב ייחודי לאלמנט
 function getElementPath(element: Element): string {
-  let path = [];
+  const path = [];
   let currentElement = element;
 
   while (currentElement.parentElement) {
