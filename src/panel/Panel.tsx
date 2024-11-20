@@ -21,6 +21,7 @@ export const Panel: React.FC = () => {
     null
   );
   const [showIndicators, setShowIndicators] = useState(true);
+  const [currentUrl, setCurrentUrl] = useState(window.location.href);
 
   useEffect(() => {
     const handleElementSelected = (message: any) => {
@@ -49,6 +50,20 @@ export const Panel: React.FC = () => {
 
     chrome.runtime.onMessage.addListener(handleElementSelected);
     return () => chrome.runtime.onMessage.removeListener(handleElementSelected);
+  }, []);
+
+  useEffect(() => {
+    const handleMessage = (message: any) => {
+      if (message.type === "REFRESH_PANEL") {
+        setCurrentUrl(message.url);
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleMessage);
+
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleMessage);
+    };
   }, []);
 
   const handleApiCallSelect = (call: NetworkCall, element: any) => {
@@ -167,7 +182,7 @@ export const Panel: React.FC = () => {
         </div>
       </div>
 
-      <ApiMappingModal
+      {/* <ApiMappingModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         selectedElement={selectedElement}
@@ -178,15 +193,15 @@ export const Panel: React.FC = () => {
       <ApiDetailsModal
         mapping={selectedMapping}
         onClose={() => setSelectedMapping(null)}
-      />
+      /> */}
 
-      {mappings.map((mapping: any) => (
+      {/* {mappings.map((mapping: any) => (
         <StatusIndicator
           key={mapping.id}
           mapping={mapping}
           onClick={() => handleIndicatorClick(mapping)}
         />
-      ))}
+      ))} */}
     </div>
   );
 };

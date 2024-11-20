@@ -3,6 +3,29 @@ console.log("Background script loaded");
 
 const pendingRequests = new Map();
 
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === "URL_CHANGED") {
+    // שליחת הודעה לפאנל (אם הוא פתוח)
+    chrome.runtime.sendMessage({
+      type: "REFRESH_PANEL",
+      url: message.url,
+    });
+  }
+});
+
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === "RELAY_TO_CONTENT") {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: "UPDATE_INDICATORS",
+          data: message.data,
+        });
+      }
+    });
+  }
+});
+
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
     if (details.type === "xmlhttprequest") {

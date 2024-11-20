@@ -22,11 +22,12 @@ export const NetworkList: React.FC<{
   console.log({ filteredCalls });
   return (
     <div className="grid grid-cols-1 gap-4">
-      {filteredCalls?.reverse()?.map((call) => (
+      {filteredCalls?.map((call) => (
         <div
           key={call.id}
           onClick={() => onSelectCall(call)}
           className={`
+            flex flex-col-reverse
             p-4 rounded-lg border cursor-pointer 
             transition-all duration-200
             hover:shadow-md hover:border-blue-500

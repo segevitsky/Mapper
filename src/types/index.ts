@@ -23,28 +23,6 @@ export interface ElementMapping {
   apiCall: NetworkCall;
 }
 
-// export interface IndicatorData {
-//   id: string;
-//   pageUrl: string;
-//   position: {
-//     top: number;
-//     left: number;
-//   };
-//   element: {
-//     path: string;
-//     rect: DOMRect;
-//   };
-//   apiCall: {
-//     id: string;
-//     method: string;
-//     url: string;
-//     status: number;
-//     timing: {
-//       duration: number;
-//     };
-//   };
-// }
-
 export interface IndicatorData {
   id: string;
   baseUrl: string; // URL מנורמל
@@ -57,11 +35,17 @@ export interface IndicatorData {
     top: number;
     left: number;
   };
+  apiCall?: {
+    url: string;
+    method: string;
+    timing?: {
+      duration?: number;
+    };
+  };
   lastCall: {
     status: number;
-    timing: {
-      duration: number;
-    };
+    timing: number;
     timestamp: number;
+    url?: string;
   };
 }
