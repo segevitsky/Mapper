@@ -14,6 +14,11 @@ export const useNetworkCalls = () => {
       if (message.type === "NEW_NETWORK_CALL") {
         setNetworkCalls((prev) => [...prev, message.data]);
         setNetworkCallsAll((prev) => [...prev, message.data]);
+
+        chrome.runtime.sendMessage({
+          type: "RELAY_TO_CONTENT",
+          data: message.data,
+        });
       }
     };
 
@@ -32,7 +37,6 @@ export const useNetworkCalls = () => {
 
   const handleSearch = (search: string) => {
     console.log("Searching for:", search);
-    // נסנן את הרשימה לפי החיפוש
     const filteredCalls = networkCalls.filter((call) => {
       const url = call.url.toLowerCase();
       const method = call.method.toLowerCase();

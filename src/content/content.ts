@@ -1,4 +1,5 @@
 import { IndicatorData, NetworkCall } from "../types";
+import { matchUrlPattern } from "../utils/urlUrils";
 
 // content.ts
 let isInspectMode = false;
@@ -12,6 +13,17 @@ let innerModalContainer: HTMLElement;
 createContainers();
 injectStyles();
 loadIndicators();
+
+window.addEventListener("popstate", () => {
+  console.log("URL changed, reloading indicators");
+  loadIndicators();
+});
+
+// ונוסיף גם האזנה לשינויי hash אם יש כאלה
+window.addEventListener("hashchange", () => {
+  console.log("Hash changed, reloading indicators");
+  loadIndicators();
+});
 
 // יצירת מיכל למודל ולאינדיקטורים
 function createContainers() {
@@ -131,7 +143,7 @@ function showModal(
     item.addEventListener("click", () => {
       const callId = item.getAttribute("data-call-id");
       const selectedCall = data.networkCalls.find((call) => call.id === callId);
-
+      console.log({ selectedCall });
       if (selectedCall) {
         const elementByPath = document.querySelector(element.path);
         if (!elementByPath) return;
@@ -147,8 +159,9 @@ function showModal(
           },
           lastCall: {
             status: selectedCall.status,
-            timing: selectedCall.timing.duration,
+            timing: selectedCall.timing,
             timestamp: Date.now(),
+            url: selectedCall.url,
           },
           position: {
             top: rect.top + window.scrollY,
@@ -306,6 +319,16 @@ function injectStyles() {
     .indicator {
       transition: all 0.2s ease;
     }
+
+    .remove-indicator {
+      margin-top: 8px;
+      padding: 4px 8px;
+      background: #f44336;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -388,7 +411,7 @@ function createIndicatorFromData(indicatorData: IndicatorData) {
   elementByPath.after(indicator); // הנה השינוי המרכזי!
 }
 
-function addIndicatorEvents(indicator: HTMLElement, data: IndicatorData) {
+function addIndicatorEvents(indicator: HTMLElement, data: any) {
   indicator.addEventListener("click", () => {
     const tooltipElement = document.getElementById("indicator-tooltip");
     if (tooltipElement) {
@@ -409,10 +432,12 @@ function addIndicatorEvents(indicator: HTMLElement, data: IndicatorData) {
       z-index: 999999;
     `;
 
+    console.log({ data });
+
     const durationColor =
-      data.lastCall.timing.duration < 300
+      data.lastCall.timing < 300
         ? "#4CAF50"
-        : data.lastCall.timing.duration < 1000
+        : data.lastCall.timing < 1000
         ? "#FFC107"
         : "#f44336";
 
@@ -420,11 +445,11 @@ function addIndicatorEvents(indicator: HTMLElement, data: IndicatorData) {
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <strong>${data.method}</strong>
         <span style="color: ${durationColor}; font-weight: bold;">
-          ${Math.floor(data.lastCall.timing.duration)}ms
+          ${Math.floor(data.lastCall.timing?.duration)}ms
         </span>
       </div>
       <div style="color: #666; word-break: break-all; margin: 8px 0;">
-        ${data.baseUrl}
+        ${data?.lastCall.url}
       </div>
       <div style="color: ${
         data.lastCall.status === 200 ? "#4CAF50" : "#f44336"
@@ -479,16 +504,10 @@ chrome.runtime.onMessage.addListener((message) => {
       showModal(element, { networkCalls });
       break;
 
-    // case "ADD_INDICATOR":
-    //   const { rect, status } = message.data;
-    //   addIndicator(rect, status);
-    //   break;
-
     case "CLEAR_INDICATORS":
       document.querySelectorAll(".indicator").forEach((indicator) => {
         indicator.remove();
       });
-      // ניקוי מהstorage
       chrome.storage.local.get(["indicators"], (result) => {
         const indicators = result.indicators || {};
         delete indicators[window.location.href];
@@ -496,21 +515,88 @@ chrome.runtime.onMessage.addListener((message) => {
       });
       break;
 
-    case "TOGGLE_INDICATORS":
-      {
-        const indicators = document.querySelectorAll(".indicator");
-        indicators.forEach((indicator) => {
-          const currentDisplay = window.getComputedStyle(indicator).display;
-          (indicator as HTMLElement).style.display =
-            currentDisplay === "none" ? "inline-block" : "none";
-        });
-        break;
-      }
+    case "TOGGLE_INDICATORS": {
+      const indicators = document.querySelectorAll(".indicator");
+      indicators.forEach((indicator) => {
+        const currentDisplay = window.getComputedStyle(indicator).display;
+        (indicator as HTMLElement).style.display =
+          currentDisplay === "none" ? "inline-block" : "none";
+      });
+      break;
+    }
+    case "UPDATE_INDICATORS":
+      console.log("lets update the indicators");
+      updateRelevantIndicators(message.data);
       break;
   }
 
   return true;
 });
+
+function updateRelevantIndicators(newCall: NetworkCall) {
+  console.log("Updating indicators for new call:", newCall);
+
+  chrome.storage.local.get(["indicators"], (result) => {
+    const indicators = result.indicators || {};
+    const currentPageIndicators = indicators[window.location.href] || [];
+
+    console.log("Current indicators:", currentPageIndicators); // נוסיף לוג זה
+    console.log("Current URL:", window.location.href); // ונוסיף גם את זה
+
+    let hasUpdates = false;
+
+    currentPageIndicators.forEach((indicator: IndicatorData) => {
+      console.log({ indicator, newCall, matchUrlPattern });
+      if (
+        indicator?.method === newCall.method &&
+        indicator?.lastCall?.url === newCall.url
+      ) {
+        console.log("Found matching indicator:", indicator.apiCall);
+        console.log("Found matching indicator:", newCall);
+        console.log(
+          newCall,
+          "this is the new call just arrived from our network listener"
+        );
+        // עדכון המידע
+        indicator.lastCall = {
+          ...indicator.lastCall,
+          status: newCall.status,
+          timing: newCall.timing,
+          timestamp: Date.now(),
+        };
+
+        console.log("this is the id of the indicator", indicator.id);
+
+        // עדכון הויזואלי של האינדיקטור
+        const indicatorElement = document.querySelector(
+          `[data-indicator-id="${indicator.id}"]`
+        );
+
+        console.log({ indicatorElement });
+        console.log({ indicator });
+
+        if (indicatorElement) {
+          (indicatorElement as HTMLElement).style.backgroundColor =
+            newCall.status === 200 ? "rgba(25,200, 50, .75)" : "#f44336";
+
+          // אנימציה קטנה שתראה שהיה עדכון
+          (indicatorElement as HTMLElement).style.transform = "scale(1.2)";
+          setTimeout(() => {
+            (indicatorElement as HTMLElement).style.transform = "scale(1)";
+          }, 200);
+        }
+
+        hasUpdates = true;
+      }
+    });
+
+    // שומרים רק אם היו שינויים
+    if (hasUpdates) {
+      indicators[window.location.href] = currentPageIndicators;
+      chrome.storage.local.set({ indicators });
+    }
+  });
+}
 
 function createHighlighter() {
   highlighter = document.createElement("div");
@@ -617,5 +703,75 @@ function getElementPath(element: Element): string {
 
   return path.join(" > ");
 }
+
+// content.ts
+
+class URLChangeDetector {
+  private lastUrl: string;
+  private observers: (() => void)[] = [];
+
+  constructor() {
+    this.lastUrl = window.location.href;
+    this.setupListeners();
+  }
+
+  private setupListeners() {
+    // האזנה לשינויים ב-History API
+    const originalPushState = history.pushState;
+    const originalReplaceState = history.replaceState;
+
+    history.pushState = (...args) => {
+      originalPushState.apply(window.history, args);
+      this.handleUrlChange();
+    };
+
+    history.replaceState = (...args) => {
+      originalReplaceState.apply(window.history, args);
+      this.handleUrlChange();
+    };
+
+    // האזנה לניווט רגיל (back/forward)
+    window.addEventListener("popstate", () => this.handleUrlChange());
+
+    // גיבוי: בדיקה תקופתית של ה-URL
+    setInterval(() => {
+      if (window.location.href !== this.lastUrl) {
+        this.handleUrlChange();
+      }
+    }, 100);
+  }
+
+  private handleUrlChange() {
+    const currentUrl = window.location.href;
+    if (this.lastUrl !== currentUrl) {
+      this.lastUrl = currentUrl;
+
+      // שליחת הודעה ל-background script
+      chrome.runtime.sendMessage({
+        type: "URL_CHANGED",
+        url: currentUrl,
+      });
+
+      // הפעלת כל ה-observers המקומיים
+      this.observers.forEach((callback) => callback());
+    }
+  }
+
+  // מאפשר להירשם לשינויי URL
+  public subscribe(callback: () => void) {
+    this.observers.push(callback);
+    return () => {
+      this.observers = this.observers.filter((cb) => cb !== callback);
+    };
+  }
+}
+
+// יצירת instance יחיד
+const urlDetector = new URLChangeDetector();
+
+// ייצוא הפונקציה להרשמה לשינויים
+export const subscribeToUrlChanges = (callback: () => void) => {
+  return urlDetector.subscribe(callback);
+};
 
 console.log("Content script loaded");

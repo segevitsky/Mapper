@@ -25,3 +25,9 @@ export function matchUrlToIndicator(
   const normalizedCallUrl = normalizeUrl(callUrl);
   return normalizedCallUrl.startsWith(indicatorUrl);
 }
+
+export function matchUrlPattern(newUrl: string, patternUrl: string): boolean {
+  const normalizedNew = normalizeUrl(newUrl);
+  const normalizedPattern = normalizeUrl(patternUrl);
+  return normalizedNew === normalizedPattern;
+}
