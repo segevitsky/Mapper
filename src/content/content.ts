@@ -5,8 +5,8 @@ let isInspectMode = false;
 let hoveredElement: Element | null = null;
 let highlighter: HTMLElement | null = null;
 // content.ts - נוסיף את הלוגיקה למודל ולאינדיקטורים
-let modalContainer: HTMLElement | null = null;
-let indicatorsContainer: HTMLElement | null = null;
+let modalContainer: HTMLElement;
+let innerModalContainer: HTMLElement;
 
 // אתחול בטעינת הדף
 createContainers();
@@ -18,19 +18,22 @@ function createContainers() {
   modalContainer = document.createElement("div");
   modalContainer.id = "api-mapper-modal-container";
   modalContainer.style.zIndex = "999999"; // ערך גבוה יותר
+  modalContainer.style.position = "fixed";
+  modalContainer.style.top = "0";
+  modalContainer.style.bottom = "0";
+  modalContainer.style.left = "0";
+  modalContainer.style.right = "0";
+
+  innerModalContainer = document.createElement("div");
+  innerModalContainer.id = "inner-modal-container";
+  innerModalContainer.style.cssText = `
+  position: relative;
+  width: 100%;
+  height: 100%;
+`;
+
+  modalContainer.appendChild(innerModalContainer);
   document.body.appendChild(modalContainer);
-
-  // אותו דבר לאינדיקטורים
-  indicatorsContainer = document.createElement("div");
-  indicatorsContainer.id = "api-mapper-indicators-container";
-  indicatorsContainer.style.zIndex = "999999";
-  indicatorsContainer.style.pointerEvents = "none";
-  indicatorsContainer.style.top = "0";
-  indicatorsContainer.style.bottom = "0";
-  indicatorsContainer.style.left = "0";
-  indicatorsContainer.style.right = "0";
-
-  document.body.appendChild(indicatorsContainer);
 }
 
 // הצגת המודל
@@ -44,8 +47,29 @@ function showModal(
   },
   data: { networkCalls: NetworkCall[] }
 ) {
-  if (!modalContainer) return;
+  if (!modalContainer) createContainers();
   console.log({ element, data });
+
+  // ניקוי התוכן הקודם של innerModalContainer
+  innerModalContainer.innerHTML = "";
+
+  const modalContent = document.createElement("div");
+  modalContent.className = "modal-content";
+  modalContent.style.cssText = `
+    position: fixed;
+    z-index: 999999;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    padding: 16px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    border: 1px solid #e0e0e0;
+    max-width: 500px;
+    pointer-events: auto;
+  `;
+
   const callsList = data.networkCalls
     .map(
       (call) => `
@@ -77,82 +101,88 @@ function showModal(
   `
     )
     .join("");
-  const rect = element?.rect;
-  console.log({ rect });
 
-  modalContainer.innerHTML = `
-  <div class="modal-content" style="
-    position: fixed;
-    z-index: 999999;
-    top: ${rect.bottom + window.scrollY + 10}px;
-    left: ${rect.left + window.scrollX}px;
-    background: white;
-    padding: 16px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    border: 1px solid #e0e0e0;
-    max-width: 500px;
-    pointer-events: auto;
-  ">
+  modalContent.innerHTML = `
+    <div style="float: right; cursor: pointer" id='close-modal'> X </div>
     <h3 style="font-size: 18px; font-weight: bold; margin-bottom: 12px;">
       Select API Call for Element
     </h3>
     <div style="margin-bottom: 12px;">
+      // add search 
       <strong>Selected Element:</strong><br/>
       ${element.tagName.toLowerCase()} - ${element.id || "no id"}
     </div>
     <div style="max-height: 300px; overflow-y: auto;">
       ${callsList}
     </div>
-  </div>
-`;
+  `;
+
+  // הוספת המודל ל-innerModalContainer
+  innerModalContainer.appendChild(modalContent);
+
+  // טיפול בסגירת המודל
+  const closeModal = modalContent.querySelector("#close-modal");
+  closeModal?.addEventListener("click", () => {
+    modalContent.remove(); // במקום לרוקן את כל ה-container
+  });
 
   // הוספת מאזינים לקליקים על הקריאות
-  modalContainer.querySelectorAll(".api-call-item").forEach((item) => {
+  modalContent.querySelectorAll(".api-call-item").forEach((item) => {
     item.addEventListener("click", () => {
       const callId = item.getAttribute("data-call-id");
       const selectedCall = data.networkCalls.find((call) => call.id === callId);
 
       if (selectedCall) {
+        const elementByPath = document.querySelector(element.path);
+        if (!elementByPath) return;
+
         const rect = element.rect;
         const indicatorData: IndicatorData = {
           id: Date.now().toString(),
-          pageUrl: window.location.href,
-          position: {
-            top: rect.top + 13,
-            left: rect.left + 8,
-          },
-          element: {
+          baseUrl: window.location.href,
+          method: selectedCall.method,
+          elementInfo: {
             path: element.path,
-            rect: rect,
+            rect: element.rect,
           },
-          apiCall: {
-            id: selectedCall.id,
-            method: selectedCall.method,
-            url: selectedCall.url,
-            status: Number(selectedCall.status),
-            timing: selectedCall.timing,
+          lastCall: {
+            status: selectedCall.status,
+            timing: selectedCall.timing.duration,
+            timestamp: Date.now(),
           },
+          position: {
+            top: rect.top + window.scrollY,
+            left: rect.right + window.scrollX,
+          },
+          // apiCall: {
+          //   id: selectedCall.id,
+          //   method: selectedCall.method,
+          //   url: selectedCall.url,
+          //   status: Number(selectedCall.status),
+          //   timing: selectedCall.timing,
+          // },
         };
 
         const indicator = document.createElement("div");
         indicator.className = "indicator";
         indicator.dataset.indicatorId = indicatorData.id;
         indicator.style.cssText = `
-          position: fixed;
-          top: ${indicatorData.position.top}px;
-          left: ${indicatorData.position.left}px;
+          display: inline-block;
           width: 12px;
           height: 12px;
+          margin-left: 8px;
           border-radius: 50%;
           background-color: ${
             selectedCall.status === 200 ? "rgba(25,200, 50, .75)" : "#f44336"
           };
           cursor: pointer;
-          pointer-events: auto;
           z-index: 999999;
           box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          vertical-align: middle;
         `;
+
+        // הוספת האינדיקטור מייד אחרי האלמנט
+        elementByPath.after(indicator);
 
         indicator.addEventListener("click", () => {
           const tooltip = document.createElement("div");
@@ -228,21 +258,17 @@ function showModal(
           document.body.appendChild(tooltip);
         });
 
-        if (indicatorsContainer) {
-          indicatorsContainer.appendChild(indicator);
-        }
-
         chrome.storage.local.get(["indicators"], (result) => {
           const indicators = result.indicators || {};
           indicators[window.location.href] =
             indicators[window.location.href] || [];
           indicators[window.location.href].push(indicatorData);
-          chrome.storage.local.set({ indicators });
+          chrome.storage.local.set({ indicators }, () => {
+            elementByPath.after(indicator);
+          });
         });
 
-        if (modalContainer) {
-          modalContainer.innerHTML = "";
-        }
+        modalContent.remove(); // סגירת המודל אחרי בחירת קריאה
       }
     });
   });
@@ -276,74 +302,90 @@ function injectStyles() {
     #api-mapper-indicators-container .indicator {
       pointer-events: auto;
     }
+
+    .indicator {
+      transition: all 0.2s ease;
+    }
   `;
   document.head.appendChild(style);
 }
 
 // הוספת אינדיקטור
-function addIndicator(rect: DOMRect, status: number) {
-  if (!indicatorsContainer) return;
+// function addIndicator(rect: DOMRect, status: number) {
+//   if (!indicatorsContainer) return;
 
-  // עדכון הסטייל של הקונטיינר
-  indicatorsContainer.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100vw;
-    height: 100vh;י
-    pointer-events: none;
-    z-index: 999999;
-  `;
+//   // עדכון הסטייל של הקונטיינר
+//   indicatorsContainer.style.cssText = `
+//     position: fixed;
+//     top: 0;
+//     left: 0;
+//     width: 100vw;
+//     height: 100vh;י
+//     pointer-events: none;
+//     z-index: 999999;
+//   `;
 
-  const indicator = document.createElement("div");
-  indicator.style.cssText = `
-    position: fixed;
-    top: ${rect.top + window.scrollY}px;
-    left: ${rect.right + window.scrollX + 8}px;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background-color: ${status === 200 ? "#4CAF50" : "#f44336"};
-    cursor: pointer;
-    pointer-events: auto;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-    z-index: 999999;
-  `;
+//   const indicator = document.createElement("div");
+//   indicator.style.cssText = `
+//     position: fixed;
+//     top: ${rect.top + window.scrollY}px;
+//     left: ${rect.right + window.scrollX + 8}px;
+//     width: 12px;
+//     height: 12px;
+//     border-radius: 50%;
+//     background-color: ${status === 200 ? "#4CAF50" : "#f44336"};
+//     cursor: pointer;
+//     pointer-events: auto;
+//     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+//     z-index: 999999;
+//   `;
 
-  indicatorsContainer.appendChild(indicator);
-}
+//   indicatorsContainer.appendChild(indicator);
+// }
 
 function loadIndicators() {
   chrome.storage.local.get(["indicators"], (result) => {
     console.log({ result });
     const indicators = result.indicators || {};
-    const currentPageIndicators = indicators[window.location.href] || [];
+    let currentPageIndicators = indicators[window.location.href] || [];
+    currentPageIndicators = currentPageIndicators.filter(
+      (el: IndicatorData) => el.baseUrl
+    );
+    console.log({ currentPageIndicators });
     currentPageIndicators.forEach(createIndicatorFromData);
   });
 }
 
 function createIndicatorFromData(indicatorData: IndicatorData) {
+  const elementByPath = document.querySelector(indicatorData.elementInfo.path);
+  console.log({ elementByPath });
+  if (!elementByPath) return;
+
   const indicator = document.createElement("div");
   indicator.className = "indicator";
+  indicator.id = `indi-${indicatorData.id}`;
   indicator.dataset.indicatorId = indicatorData.id;
   indicator.style.cssText = `
-    position: fixed;
-    top: ${indicatorData.position.top}px;
-    left: ${indicatorData.position.left}px;
+    display: inline-block;
     width: 12px;
     height: 12px;
+    margin-left: 8px;
     border-radius: 50%;
     background-color: ${
-      indicatorData.apiCall.status === 200 ? "rgba(25,200, 50, .75)" : "#f44336"
+      indicatorData.lastCall.status === 200
+        ? "rgba(25,200, 50, .75)"
+        : "#f44336"
     };
     cursor: pointer;
-    pointer-events: auto;
     z-index: 999999;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+    vertical-align: middle;
+    position: absolute;
+    top: 1rem;
   `;
 
   addIndicatorEvents(indicator, indicatorData);
-  indicatorsContainer?.appendChild(indicator);
+  elementByPath.after(indicator); // הנה השינוי המרכזי!
 }
 
 function addIndicatorEvents(indicator: HTMLElement, data: IndicatorData) {
@@ -357,8 +399,8 @@ function addIndicatorEvents(indicator: HTMLElement, data: IndicatorData) {
     tooltip.id = "indicator-tooltip";
     tooltip.style.cssText = `
       position: absolute;
-      top: ${data.element.rect.top + window.scrollY - 4}px;
-      left: ${data.element.rect.right + window.scrollX + 24}px;
+      top: ${data.elementInfo.rect.top + window.scrollY - 4}px;
+      left: ${data.elementInfo.rect.right + window.scrollX + 24}px;
       background: white;
       padding: 12px;
       border-radius: 4px;
@@ -368,26 +410,26 @@ function addIndicatorEvents(indicator: HTMLElement, data: IndicatorData) {
     `;
 
     const durationColor =
-      data.apiCall.timing.duration < 300
+      data.lastCall.timing.duration < 300
         ? "#4CAF50"
-        : data.apiCall.timing.duration < 1000
+        : data.lastCall.timing.duration < 1000
         ? "#FFC107"
         : "#f44336";
 
     tooltip.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center;">
-        <strong>${data.apiCall.method}</strong>
+        <strong>${data.method}</strong>
         <span style="color: ${durationColor}; font-weight: bold;">
-          ${Math.floor(data.apiCall.timing.duration)}ms
+          ${Math.floor(data.lastCall.timing.duration)}ms
         </span>
       </div>
       <div style="color: #666; word-break: break-all; margin: 8px 0;">
-        ${data.apiCall.url}
+        ${data.baseUrl}
       </div>
       <div style="color: ${
-        data.apiCall.status === 200 ? "#4CAF50" : "#f44336"
+        data.lastCall.status === 200 ? "#4CAF50" : "#f44336"
       }">
-        Status: ${data.apiCall.status}
+        Status: ${data.lastCall.status}
       </div>
       <button class="remove-indicator">Remove</button>
       <button class="close-indicator-tooltip"> Close </button>
@@ -437,21 +479,32 @@ chrome.runtime.onMessage.addListener((message) => {
       showModal(element, { networkCalls });
       break;
 
-    case "ADD_INDICATOR":
-      const { rect, status } = message.data;
-      addIndicator(rect, status);
-      break;
+    // case "ADD_INDICATOR":
+    //   const { rect, status } = message.data;
+    //   addIndicator(rect, status);
+    //   break;
 
     case "CLEAR_INDICATORS":
-      if (indicatorsContainer) {
-        indicatorsContainer.innerHTML = "";
-      }
+      document.querySelectorAll(".indicator").forEach((indicator) => {
+        indicator.remove();
+      });
+      // ניקוי מהstorage
+      chrome.storage.local.get(["indicators"], (result) => {
+        const indicators = result.indicators || {};
+        delete indicators[window.location.href];
+        chrome.storage.local.set({ indicators });
+      });
       break;
 
     case "TOGGLE_INDICATORS":
-      if (indicatorsContainer) {
-        indicatorsContainer.style.display =
-          indicatorsContainer.style.display === "none" ? "block" : "none";
+      {
+        const indicators = document.querySelectorAll(".indicator");
+        indicators.forEach((indicator) => {
+          const currentDisplay = window.getComputedStyle(indicator).display;
+          (indicator as HTMLElement).style.display =
+            currentDisplay === "none" ? "inline-block" : "none";
+        });
+        break;
       }
       break;
   }

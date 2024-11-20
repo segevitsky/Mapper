@@ -19,9 +19,10 @@ export const NetworkList: React.FC<{
   onSelectCall: (call: NetworkCall) => void;
 }> = ({ calls, onSelectCall }) => {
   const filteredCalls = calls.filter((call) => call.method !== "OPTIONS");
+  console.log({ filteredCalls });
   return (
     <div className="grid grid-cols-1 gap-4">
-      {filteredCalls.map((call) => (
+      {filteredCalls?.reverse()?.map((call) => (
         <div
           key={call.id}
           onClick={() => onSelectCall(call)}

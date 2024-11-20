@@ -3,6 +3,7 @@ import { NetworkCall } from "../../types";
 
 // useNetworkCalls.ts
 export const useNetworkCalls = () => {
+  const [networkCallsAll, setNetworkCallsAll] = useState<NetworkCall[]>([]);
   const [networkCalls, setNetworkCalls] = useState<NetworkCall[]>([]);
 
   useEffect(() => {
@@ -12,6 +13,7 @@ export const useNetworkCalls = () => {
       console.log("Network call received:", message);
       if (message.type === "NEW_NETWORK_CALL") {
         setNetworkCalls((prev) => [...prev, message.data]);
+        setNetworkCallsAll((prev) => [...prev, message.data]);
       }
     };
 
@@ -20,12 +22,29 @@ export const useNetworkCalls = () => {
       if (result.networkCalls) {
         console.log("Loading saved network calls:", result.networkCalls);
         setNetworkCalls(result.networkCalls);
+        setNetworkCallsAll(result.networkCalls);
       }
     });
 
     chrome.runtime.onMessage.addListener(handleNetworkCall);
     return () => chrome.runtime.onMessage.removeListener(handleNetworkCall);
   }, []);
+
+  const handleSearch = (search: string) => {
+    console.log("Searching for:", search);
+    // נסנן את הרשימה לפי החיפוש
+    const filteredCalls = networkCalls.filter((call) => {
+      const url = call.url.toLowerCase();
+      const method = call.method.toLowerCase();
+      const searchLower = search.toLowerCase();
+      return url.includes(searchLower) || method.includes(searchLower);
+    });
+    if (search === "") {
+      setNetworkCalls(networkCallsAll);
+    } else {
+      setNetworkCalls(filteredCalls);
+    }
+  };
 
   // נעדכן את הפאנל
   const handleElementSelected = useCallback(
@@ -58,5 +77,5 @@ export const useNetworkCalls = () => {
     chrome.storage.local.set({ networkCalls: [] });
   };
 
-  return { networkCalls, clearAllNewtworkCalls };
+  return { networkCalls, clearAllNewtworkCalls, handleSearch };
 };

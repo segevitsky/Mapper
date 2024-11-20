@@ -11,7 +11,7 @@ export interface NetworkCall {
   url: string;
   method: string;
   timestamp: number;
-  status?: number;
+  status: number;
   response?: any;
   timing: any;
 }
@@ -23,24 +23,45 @@ export interface ElementMapping {
   apiCall: NetworkCall;
 }
 
+// export interface IndicatorData {
+//   id: string;
+//   pageUrl: string;
+//   position: {
+//     top: number;
+//     left: number;
+//   };
+//   element: {
+//     path: string;
+//     rect: DOMRect;
+//   };
+//   apiCall: {
+//     id: string;
+//     method: string;
+//     url: string;
+//     status: number;
+//     timing: {
+//       duration: number;
+//     };
+//   };
+// }
+
 export interface IndicatorData {
   id: string;
-  pageUrl: string;
+  baseUrl: string; // URL מנורמל
+  method: string;
+  elementInfo: {
+    path: string;
+    rect: DOMRect;
+  };
   position: {
     top: number;
     left: number;
   };
-  element: {
-    path: string;
-    rect: DOMRect;
-  };
-  apiCall: {
-    id: string;
-    method: string;
-    url: string;
+  lastCall: {
     status: number;
     timing: {
       duration: number;
     };
+    timestamp: number;
   };
 }

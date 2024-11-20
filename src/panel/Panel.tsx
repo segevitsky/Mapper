@@ -13,7 +13,7 @@ import { GrClear } from "react-icons/gr";
 import { LuToggleLeft, LuToggleRight } from "react-icons/lu";
 
 export const Panel: React.FC = () => {
-  const { networkCalls } = useNetworkCalls();
+  const { networkCalls, handleSearch } = useNetworkCalls();
   const { mappings, addMapping, removeMapping } = useMappings();
   const [selectedElement, setSelectedElement] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -130,6 +130,16 @@ export const Panel: React.FC = () => {
               Clear
             </div>
           </div>
+          <input
+            onChange={(e) => {
+              console.log({ e });
+              handleSearch(e.target.value);
+            }}
+            type="text"
+            placeholder="Search..."
+            className=" mb-2 w-full pl-10 pr-4 py-2 bg-white rounded-full shadow-sm border border-gray-300 focus:ring focus:ring-blue-300 focus:border-blue-500 transition duration-300 focus:outline-none text-sm text-gray-700"
+          />
+
           <NetworkList
             calls={networkCalls}
             onSelectCall={(call) => console.log("Selected:", call)}
