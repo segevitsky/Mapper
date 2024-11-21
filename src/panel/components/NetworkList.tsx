@@ -21,7 +21,7 @@ export const NetworkList: React.FC<{
   const filteredCalls = calls.filter((call) => call.method !== "OPTIONS");
   console.log({ filteredCalls });
   return (
-    <div className="grid grid-cols-1 gap-4">
+    <div className="flex flex-col-reverse gap-4">
       {filteredCalls?.map((call) => (
         <div
           key={call.id}

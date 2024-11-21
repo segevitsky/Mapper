@@ -1,4 +1,5 @@
 import { IndicatorData, NetworkCall } from "../types";
+import { URLChangeDetector } from "../utils/urlChangeDetector";
 import { matchUrlPattern } from "../utils/urlUrils";
 
 // content.ts
@@ -13,6 +14,20 @@ let innerModalContainer: HTMLElement;
 createContainers();
 injectStyles();
 loadIndicators();
+
+// יצירת instance יחיד
+const urlDetector = new URLChangeDetector();
+
+// נרשם לשינויי URL
+urlDetector.subscribe(() => {
+  console.log("URL changed (from URLChangeDetector), reloading indicators");
+  // מחיקת האינדיקטורים הקיימים
+  document.querySelectorAll(".indicator").forEach((indicator) => {
+    indicator.remove();
+  });
+  // טעינה מחדש
+  loadIndicators();
+});
 
 window.addEventListener("popstate", () => {
   console.log("URL changed, reloading indicators");
@@ -380,6 +395,7 @@ function loadIndicators() {
 }
 
 function createIndicatorFromData(indicatorData: IndicatorData) {
+  console.log({ indicatorData });
   const elementByPath = document.querySelector(indicatorData.elementInfo.path);
   console.log({ elementByPath });
   if (!elementByPath) return;
@@ -705,73 +721,5 @@ function getElementPath(element: Element): string {
 }
 
 // content.ts
-
-class URLChangeDetector {
-  private lastUrl: string;
-  private observers: (() => void)[] = [];
-
-  constructor() {
-    this.lastUrl = window.location.href;
-    this.setupListeners();
-  }
-
-  private setupListeners() {
-    // האזנה לשינויים ב-History API
-    const originalPushState = history.pushState;
-    const originalReplaceState = history.replaceState;
-
-    history.pushState = (...args) => {
-      originalPushState.apply(window.history, args);
-      this.handleUrlChange();
-    };
-
-    history.replaceState = (...args) => {
-      originalReplaceState.apply(window.history, args);
-      this.handleUrlChange();
-    };
-
-    // האזנה לניווט רגיל (back/forward)
-    window.addEventListener("popstate", () => this.handleUrlChange());
-
-    // גיבוי: בדיקה תקופתית של ה-URL
-    setInterval(() => {
-      if (window.location.href !== this.lastUrl) {
-        this.handleUrlChange();
-      }
-    }, 100);
-  }
-
-  private handleUrlChange() {
-    const currentUrl = window.location.href;
-    if (this.lastUrl !== currentUrl) {
-      this.lastUrl = currentUrl;
-
-      // שליחת הודעה ל-background script
-      chrome.runtime.sendMessage({
-        type: "URL_CHANGED",
-        url: currentUrl,
-      });
-
-      // הפעלת כל ה-observers המקומיים
-      this.observers.forEach((callback) => callback());
-    }
-  }
-
-  // מאפשר להירשם לשינויי URL
-  public subscribe(callback: () => void) {
-    this.observers.push(callback);
-    return () => {
-      this.observers = this.observers.filter((cb) => cb !== callback);
-    };
-  }
-}
-
-// יצירת instance יחיד
-const urlDetector = new URLChangeDetector();
-
-// ייצוא הפונקציה להרשמה לשינויים
-export const subscribeToUrlChanges = (callback: () => void) => {
-  return urlDetector.subscribe(callback);
-};
 
 console.log("Content script loaded");
