@@ -16,12 +16,14 @@ export const Panel: React.FC = () => {
   const { networkCalls, handleSearch } = useNetworkCalls();
   const { mappings, addMapping, removeMapping } = useMappings();
   const [selectedElement, setSelectedElement] = useState<any>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedMapping, setSelectedMapping] = useState<ElementMapping | null>(
     null
   );
   const [showIndicators, setShowIndicators] = useState(true);
   const [currentUrl, setCurrentUrl] = useState(window.location.href);
+  const [selectedNetworkCall, setSelectedNetworkCall] = useState<
+    NetworkCall | undefined
+  >();
 
   useEffect(() => {
     const handleElementSelected = (message: any) => {
@@ -64,6 +66,27 @@ export const Panel: React.FC = () => {
     return () => {
       chrome.runtime.onMessage.removeListener(handleMessage);
     };
+  }, []);
+
+  useEffect(() => {
+    console.log("Panel mounted"); // נוודא שהקומפוננטה נטענת
+
+    // וודא שיש גישה ל-chrome.devtools
+    if (chrome.devtools) {
+      const tabId = chrome.devtools.inspectedWindow.tabId;
+      console.log("Current tab ID:", tabId);
+
+      chrome.runtime.sendMessage(
+        {
+          type: "DEVTOOLS_OPENED",
+          tabId,
+        },
+        (response) => {
+          // בדיקה אם ההודעה נשלחה בהצלחה
+          console.log("Message sent, got response:", response);
+        }
+      );
+    }
   }, []);
 
   const handleApiCallSelect = (call: NetworkCall, element: any) => {
@@ -127,7 +150,7 @@ export const Panel: React.FC = () => {
           "linear-gradient(to right, #ff8177 0%, #ff867a 0%, #ff8c7f 21%, #f99185 52%, #cf556c 78%, #b12a5b 100%)",
         minWidth: "100vw",
       }}
-      className="w-full min-h-screen bg-gray-100"
+      className="w-full min-h-[100dvh]  max-h-[100dvh] overflow-y-auto bg-gray-100"
     >
       <h1 className="font-thin drop-shadow-lg text-center pt-6  text-white">
         API Mapper Panel
@@ -157,30 +180,47 @@ export const Panel: React.FC = () => {
 
           <NetworkList
             calls={networkCalls}
-            onSelectCall={(call) => console.log("Selected:", call)}
+            onSelectCall={setSelectedNetworkCall}
           />
         </div>
         <div className="w-1/2 p-4 overflow-auto border-l border-gray-200">
-          <h2 className="color-white text-lg font-thin mb-4">Mappings</h2>
-          <div className="flex justify-start">
-            {showIndicators ? (
-              <span className="mr-1">Hide Indicators</span>
-            ) : (
-              <span className="mr-1">Show Indicators</span>
-            )}
+          <h2 className="color-white text-lg font-thin mb-4 text-white">
+            Mappings
+          </h2>
+          <div className="flex justify-start align-middle">
             {!showIndicators ? (
-              <LuToggleLeft onClick={toggleIndiators} />
+              <LuToggleLeft
+                className="mt-1 text-1xl text-white"
+                onClick={toggleIndiators}
+              />
             ) : (
-              <LuToggleRight onClick={toggleIndiators} />
+              <LuToggleRight
+                className="mt-1 text-1xl text-white"
+                onClick={toggleIndiators}
+              />
+            )}
+            {showIndicators ? (
+              <span className="ml-1 text-1xl">Hide Indicators</span>
+            ) : (
+              <span className="ml-1 text-1xl">Show Indicators</span>
             )}
           </div>
-          <div>
+          <br />
+          <div className="flex justify-start align-middle">
             {" "}
-            <GrClear onClick={clearIndicator} /> Clear Indicators
+            <GrClear
+              onClick={clearIndicator}
+              className="text-1xl mt-[.25rem] text-white"
+            />
+            <span className="ml-1 text-1xl">Clear Indicators</span>
           </div>
           <MappingsList mappings={mappings} onRemoveMapping={removeMapping} />
         </div>
       </div>
+      <ApiDetailsModal
+        call={selectedNetworkCall}
+        onClose={() => setSelectedNetworkCall(undefined)}
+      />
 
       {/* <ApiMappingModal
         isOpen={isModalOpen}

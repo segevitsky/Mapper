@@ -1,6 +1,7 @@
+import { JiraTicketData } from "../services/jiraService";
 import { IndicatorData, NetworkCall } from "../types";
+import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
 import { URLChangeDetector } from "../utils/urlChangeDetector";
-import { matchUrlPattern } from "../utils/urlUrils";
 
 // content.ts
 let isInspectMode = false;
@@ -20,7 +21,6 @@ const urlDetector = new URLChangeDetector();
 
 // נרשם לשינויי URL
 urlDetector.subscribe(() => {
-  console.log("URL changed (from URLChangeDetector), reloading indicators");
   // מחיקת האינדיקטורים הקיימים
   document.querySelectorAll(".indicator").forEach((indicator) => {
     indicator.remove();
@@ -30,15 +30,36 @@ urlDetector.subscribe(() => {
 });
 
 window.addEventListener("popstate", () => {
-  console.log("URL changed, reloading indicators");
   loadIndicators();
 });
 
 // ונוסיף גם האזנה לשינויי hash אם יש כאלה
 window.addEventListener("hashchange", () => {
-  console.log("Hash changed, reloading indicators");
   loadIndicators();
 });
+
+window.addEventListener("load", () => {
+  loadIndicators();
+});
+
+// בדיקה נוספת אחרי שהדום מוכן
+document.addEventListener("DOMContentLoaded", () => {
+  loadIndicators();
+});
+
+// פונקציה חדשה לקבלת המידע העדכני
+async function getCurrentIndicatorData(indicatorId: string): Promise<any> {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["indicators"], (result) => {
+      const indicators = result.indicators || {};
+      const currentPageIndicators = indicators[window.location.href] || [];
+      const currentIndicator = currentPageIndicators.find(
+        (ind: IndicatorData) => ind.id === indicatorId
+      );
+      resolve(currentIndicator || null);
+    });
+  });
+}
 
 // יצירת מיכל למודל ולאינדיקטורים
 function createContainers() {
@@ -75,7 +96,6 @@ function showModal(
   data: { networkCalls: NetworkCall[] }
 ) {
   if (!modalContainer) createContainers();
-  console.log({ element, data });
 
   // ניקוי התוכן הקודם של innerModalContainer
   innerModalContainer.innerHTML = "";
@@ -135,14 +155,79 @@ function showModal(
       Select API Call for Element
     </h3>
     <div style="margin-bottom: 12px;">
-      // add search 
-      <strong>Selected Element:</strong><br/>
-      ${element.tagName.toLowerCase()} - ${element.id || "no id"}
+      <div style="margin-bottom: 16px;">
+      <input 
+        type="text" 
+        id="search-calls" 
+        placeholder="Search API calls..." 
+        style="
+          width: 100%;
+          padding: 8px;
+          border: 1px solid #e0e0e0;
+          border-radius: 4px;
+          font-size: 14px;
+          outline: none;
+        "
+      />
+    </div>
     </div>
     <div style="max-height: 300px; overflow-y: auto;">
       ${callsList}
     </div>
   `;
+
+  // הוספת לוגיקת החיפוש
+  const searchInput = modalContent.querySelector("#search-calls");
+
+  searchInput?.addEventListener("input", (e) => {
+    const searchTerm = (e.target as HTMLInputElement).value.toLowerCase();
+
+    // יצירת רשימה מסוננת
+    const filteredCallsList = data.networkCalls
+      .filter(
+        (call) =>
+          call.url.toLowerCase().includes(searchTerm) ||
+          call.method.toLowerCase().includes(searchTerm)
+      )
+      .map(
+        (call) => `
+      <div 
+        class="api-call-item" 
+        style="
+          padding: 8px;
+          margin: 4px 0;
+          border: 1px solid #e0e0e0;
+          border-radius: 4px;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+        "
+        data-call-id="${call.id}"
+      >
+        <div style="
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+          margin-right: 8px;
+          background-color: ${call.status === 200 ? "#4CAF50" : "#f44336"};
+        "></div>
+        <div>
+          <div style="font-weight: bold;">${call.method}</div>
+          <div style="font-size: 12px; color: #666;">${call.url}</div>
+        </div>
+      </div>
+    `
+      )
+      .join("");
+
+    // עדכון התצוגה
+    const listContainer = modalContent.querySelector(
+      'div[style*="overflow-y: auto"]'
+    );
+    if (listContainer) {
+      listContainer.innerHTML = filteredCallsList || "No matching calls found";
+    }
+  });
 
   // הוספת המודל ל-innerModalContainer
   innerModalContainer.appendChild(modalContent);
@@ -158,7 +243,6 @@ function showModal(
     item.addEventListener("click", () => {
       const callId = item.getAttribute("data-call-id");
       const selectedCall = data.networkCalls.find((call) => call.id === callId);
-      console.log({ selectedCall });
       if (selectedCall) {
         const elementByPath = document.querySelector(element.path);
         if (!elementByPath) return;
@@ -182,13 +266,6 @@ function showModal(
             top: rect.top + window.scrollY,
             left: rect.right + window.scrollX,
           },
-          // apiCall: {
-          //   id: selectedCall.id,
-          //   method: selectedCall.method,
-          //   url: selectedCall.url,
-          //   status: Number(selectedCall.status),
-          //   timing: selectedCall.timing,
-          // },
         };
 
         const indicator = document.createElement("div");
@@ -215,15 +292,19 @@ function showModal(
         indicator.addEventListener("click", () => {
           const tooltip = document.createElement("div");
           tooltip.style.cssText = `
-            position: absolute;
-            top: ${indicatorData.position.top + 16}px;
-            left: ${indicatorData.position.left + 16}px;
-            background: white;
-            padding: 12px;
-            border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            font-size: 12px;
-            z-index: 999999;
+              position: fixed;
+              top: 16rem;
+              left: 40%;
+              background: #fff;
+              padding: 12px 16px;
+              border-radius: 8px;
+              font-size: 13px;
+              line-height: 1.4;
+              color: #333;
+              z-index: 999999;
+              box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+              border-left: 3px solid #cf556c;
+              transform-origin: center;
           `;
 
           const durationColor =
@@ -348,42 +429,68 @@ function injectStyles() {
   document.head.appendChild(style);
 }
 
-// הוספת אינדיקטור
-// function addIndicator(rect: DOMRect, status: number) {
-//   if (!indicatorsContainer) return;
+async function createJiraTicketFromIndicator(data: any) {
+  const securityAnalysis = analyzeSecurityIssues(data); // נוסיף בהמשך
 
-//   // עדכון הסטייל של הקונטיינר
-//   indicatorsContainer.style.cssText = `
-//     position: fixed;
-//     top: 0;
-//     left: 0;
-//     width: 100vw;
-//     height: 100vh;י
-//     pointer-events: none;
-//     z-index: 999999;
-//   `;
+  const ticketData: JiraTicketData = {
+    summary: `API Issue: ${data.method} ${new URL(data.lastCall.url).pathname}`,
+    description: `
+  API Call Details:
+  ----------------
+  Method: ${data.method}
+  URL: ${data.lastCall.url}
+  Status: ${data.lastCall.status}
+  Response Time: ${data.lastCall.timing?.duration}ms
 
-//   const indicator = document.createElement("div");
-//   indicator.style.cssText = `
-//     position: fixed;
-//     top: ${rect.top + window.scrollY}px;
-//     left: ${rect.right + window.scrollX + 8}px;
-//     width: 12px;
-//     height: 12px;
-//     border-radius: 50%;
-//     background-color: ${status === 200 ? "#4CAF50" : "#f44336"};
-//     cursor: pointer;
-//     pointer-events: auto;
-//     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-//     z-index: 999999;
-//   `;
+  Element Path: ${data.elementInfo.path}
+  Page URL: ${window.location.href}
 
-//   indicatorsContainer.appendChild(indicator);
-// }
+  ${
+    securityAnalysis
+      ? `
+  Security Analysis:
+  ----------------
+  Risk Level: ${securityAnalysis.riskLevel}
+  Potential Issues:
+  ${securityAnalysis.potentialIssues.join("\n")}
+
+  Recommendations:
+  ${securityAnalysis.recommendations.join("\n")}`
+      : ""
+  }
+      `,
+    issueType: "Bug",
+    priority: data.lastCall.status !== 200 ? "High" : "Medium",
+    labels: ["api-issue", "auto-generated", "element-mapper"],
+    securityInfo: securityAnalysis,
+  };
+
+  console.log("Sending ticket data to background:", ticketData);
+
+  chrome.runtime.sendMessage(
+    {
+      type: "CREATE_JIRA_TICKET",
+      data: ticketData,
+    },
+    (response) => {
+      if (chrome.runtime.lastError) {
+        console.error("Runtime error:", chrome.runtime.lastError);
+        return;
+      }
+      if (response?.success) {
+        console.log("Ticket created:", response.data);
+        // REPLACE THIS ALERT WITH A NICE MODAL
+        alert(`Ticket created successfully! ID: ${response.data.key}`);
+      } else {
+        console.error("Error creating ticket:", response?.error);
+        alert(`Failed to create ticket: ${response?.error}`);
+      }
+    }
+  );
+}
 
 function loadIndicators() {
   chrome.storage.local.get(["indicators"], (result) => {
-    console.log({ result });
     const indicators = result.indicators || {};
     let currentPageIndicators = indicators[window.location.href] || [];
     currentPageIndicators = currentPageIndicators.filter(
@@ -395,9 +502,7 @@ function loadIndicators() {
 }
 
 function createIndicatorFromData(indicatorData: IndicatorData) {
-  console.log({ indicatorData });
   const elementByPath = document.querySelector(indicatorData.elementInfo.path);
-  console.log({ elementByPath });
   if (!elementByPath) return;
 
   const indicator = document.createElement("div");
@@ -424,31 +529,34 @@ function createIndicatorFromData(indicatorData: IndicatorData) {
   `;
 
   addIndicatorEvents(indicator, indicatorData);
-  elementByPath.after(indicator); // הנה השינוי המרכזי!
+  elementByPath.after(indicator);
 }
 
 function addIndicatorEvents(indicator: HTMLElement, data: any) {
-  indicator.addEventListener("click", () => {
+  indicator.addEventListener("click", async () => {
     const tooltipElement = document.getElementById("indicator-tooltip");
     if (tooltipElement) {
-      console.log({ tooltipElement });
       tooltipElement.remove();
     }
+
+    const currentData = await getCurrentIndicatorData(data.id);
     const tooltip = document.createElement("div");
     tooltip.id = "indicator-tooltip";
     tooltip.style.cssText = `
-      position: absolute;
-      top: ${data.elementInfo.rect.top + window.scrollY - 4}px;
-      left: ${data.elementInfo.rect.right + window.scrollX + 24}px;
-      background: white;
-      padding: 12px;
-      border-radius: 4px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      font-size: 12px;
-      z-index: 999999;
+        position: fixed;
+        top: 16rem;
+        left: 40%;
+        background: #fff;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 13px;
+        line-height: 1.4;
+        color: #333;
+        z-index: 999999;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+        border-left: 3px solid #cf556c;
+        transform-origin: center;
     `;
-
-    console.log({ data });
 
     const durationColor =
       data.lastCall.timing < 300
@@ -459,19 +567,31 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
 
     tooltip.innerHTML = `
       <div style="display: flex; justify-content: space-between; align-items: center;">
-        <strong>${data.method}</strong>
+        <strong>${currentData.method}</strong>
         <span style="color: ${durationColor}; font-weight: bold;">
-          ${Math.floor(data.lastCall.timing?.duration)}ms
+          ${Math.floor(currentData.lastCall.timing?.duration)}ms
         </span>
       </div>
       <div style="color: #666; word-break: break-all; margin: 8px 0;">
-        ${data?.lastCall.url}
+        ${currentData?.lastCall.url}
       </div>
       <div style="color: ${
-        data.lastCall.status === 200 ? "#4CAF50" : "#f44336"
+        currentData.lastCall.status === 200 ? "#4CAF50" : "#f44336"
       }">
-        Status: ${data.lastCall.status}
+        Status: ${currentData.lastCall.status}
       </div>
+      <button class="create-jira-ticket" style="
+        margin-top: 8px;
+        padding: 4px 8px;
+        background: #0052CC;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-right: 8px;
+      ">
+        Create Jira Ticket
+      </button>
       <button class="remove-indicator">Remove</button>
       <button class="close-indicator-tooltip"> Close </button>
     `;
@@ -481,7 +601,14 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
       ?.addEventListener("click", () => {
         indicator.remove();
         tooltip.remove();
-        removeIndicatorFromStorage(data.id);
+        removeIndicatorFromStorage(currentData.id);
+      });
+
+    // הוספת האזנה לכפתור החדש
+    tooltip
+      .querySelector(".create-jira-ticket")
+      ?.addEventListener("click", () => {
+        createJiraTicketFromIndicator(currentData);
       });
 
     tooltip
@@ -508,8 +635,6 @@ function removeIndicatorFromStorage(indicatorId: string) {
 
 // האזנה להודעות מהפאנל
 chrome.runtime.onMessage.addListener((message) => {
-  console.log("Message received in content:", message);
-
   switch (message.type) {
     case "START_INSPECT_MODE":
       enableInspectMode();
@@ -541,7 +666,6 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
     }
     case "UPDATE_INDICATORS":
-      console.log("lets update the indicators");
       updateRelevantIndicators(message.data);
       break;
   }
@@ -550,68 +674,117 @@ chrome.runtime.onMessage.addListener((message) => {
 });
 
 function updateRelevantIndicators(newCall: NetworkCall) {
-  console.log("Updating indicators for new call:", newCall);
-
   chrome.storage.local.get(["indicators"], (result) => {
     const indicators = result.indicators || {};
     const currentPageIndicators = indicators[window.location.href] || [];
-
-    console.log("Current indicators:", currentPageIndicators); // נוסיף לוג זה
-    console.log("Current URL:", window.location.href); // ונוסיף גם את זה
-
     let hasUpdates = false;
 
     currentPageIndicators.forEach((indicator: IndicatorData) => {
-      console.log({ indicator, newCall, matchUrlPattern });
-      if (
-        indicator?.method === newCall.method &&
-        indicator?.lastCall?.url === newCall.url
-      ) {
-        console.log("Found matching indicator:", indicator.apiCall);
-        console.log("Found matching indicator:", newCall);
-        console.log(
-          newCall,
-          "this is the new call just arrived from our network listener"
-        );
-        // עדכון המידע
-        indicator.lastCall = {
-          ...indicator.lastCall,
-          status: newCall.status,
-          timing: newCall.timing,
-          timestamp: Date.now(),
-        };
+      try {
+        const indicatorUrl = new URL(indicator?.lastCall?.url);
+        const newCallUrl = new URL(newCall.url);
 
-        console.log("this is the id of the indicator", indicator.id);
+        console.log("Comparing URLs:", {
+          indicator: indicatorUrl.pathname,
+          newCall: newCallUrl.pathname,
+        });
 
-        // עדכון הויזואלי של האינדיקטור
-        const indicatorElement = document.querySelector(
-          `[data-indicator-id="${indicator.id}"]`
-        );
+        if (
+          indicator?.method === newCall.method &&
+          indicatorUrl.pathname === newCallUrl.pathname
+        ) {
+          console.log("Found matching indicator:", indicator.id);
 
-        console.log({ indicatorElement });
-        console.log({ indicator });
+          // עדכון המידע
+          indicator.lastCall = {
+            ...indicator.lastCall,
+            status: newCall.status,
+            timing: newCall.timing,
+            timestamp: Date.now(),
+            url: newCall.url, // שומרים את ה-URL המלא החדש
+          };
 
-        if (indicatorElement) {
-          (indicatorElement as HTMLElement).style.backgroundColor =
-            newCall.status === 200 ? "rgba(25,200, 50, .75)" : "#f44336";
+          const indicatorElement = document.querySelector(
+            `[data-indicator-id="${indicator.id}"]`
+          );
 
-          // אנימציה קטנה שתראה שהיה עדכון
-          (indicatorElement as HTMLElement).style.transform = "scale(1.2)";
-          setTimeout(() => {
-            (indicatorElement as HTMLElement).style.transform = "scale(1)";
-          }, 200);
+          console.log("Found indicator element:", !!indicatorElement);
+
+          if (indicatorElement) {
+            indicatorElement.classList.add("indicator-updating");
+            setTimeout(() => {
+              indicatorElement.classList.remove("indicator-updating");
+            }, 500);
+
+            (indicatorElement as HTMLElement).style.backgroundColor =
+              newCall.status === 200 ? "rgba(25,200, 50, .75)" : "#f44336";
+
+            // שמירת המידע המעודכן על האלמנט
+            const updatedData = {
+              ...indicator,
+              lastUpdated: Date.now(),
+            };
+
+            indicatorElement.setAttribute(
+              "data-indicator-info",
+              JSON.stringify(updatedData)
+            );
+
+            // עדכון הטולטיפ אם הוא פתוח
+            const openTooltip = document.getElementById("indicator-tooltip");
+            if (openTooltip) {
+              updateTooltipContent(openTooltip, updatedData);
+            }
+
+            // אנימציה
+            (indicatorElement as HTMLElement).style.transform = "scale(1.2)";
+            setTimeout(() => {
+              (indicatorElement as HTMLElement).style.transform = "scale(1)";
+            }, 200);
+
+            hasUpdates = true;
+          }
         }
-
-        hasUpdates = true;
+      } catch (error) {
+        console.error("Error processing indicator:", error);
       }
     });
 
-    // שומרים רק אם היו שינויים
+    console.log("Has updates:", hasUpdates);
+    console.log("Indicators after update:", currentPageIndicators);
+
     if (hasUpdates) {
       indicators[window.location.href] = currentPageIndicators;
-      chrome.storage.local.set({ indicators });
+      chrome.storage.local.set({ indicators }, () => {
+        console.log("Storage updated successfully");
+      });
     }
   });
+}
+
+// פונקציה חדשה לעדכון תוכן הטולטיפ
+function updateTooltipContent(tooltip: HTMLElement, data: IndicatorData) {
+  const durationColor =
+    data.lastCall.timing.duration < 300
+      ? "#4CAF50"
+      : data.lastCall.timing.duration < 1000
+      ? "#FFC107"
+      : "#f44336";
+
+  // עדכון זמן תגובה
+  const durationSpan = tooltip.querySelector("span");
+  if (durationSpan) {
+    durationSpan.textContent = `${Math.floor(data.lastCall.timing.duration)}ms`;
+    durationSpan.style.color = durationColor;
+  }
+
+  // עדכון סטטוס
+  const statusDiv = tooltip.querySelector("div:nth-child(3)");
+  if (statusDiv) {
+    statusDiv.textContent = `Status: ${data.lastCall.status}`;
+    (statusDiv as HTMLElement).style.color =
+      data.lastCall.status === 200 ? "#4CAF50" : "#f44336";
+  }
 }
 
 function createHighlighter() {

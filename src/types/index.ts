@@ -35,17 +35,14 @@ export interface IndicatorData {
     top: number;
     left: number;
   };
-  apiCall?: {
-    url: string;
-    method: string;
-    timing?: {
-      duration?: number;
-    };
-  };
   lastCall: {
     status: number;
-    timing: number;
+    timing: {
+      startTime: number;
+      endTime: number;
+      duration: number;
+    };
     timestamp: number;
-    url?: string;
+    url: string;
   };
 }
