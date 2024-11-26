@@ -1,3 +1,5 @@
+import { BLOCKED_BY_CLIENT } from "../../commonConts";
+
 // components/NetworkList.tsx
 interface NetworkCall {
   id: string;
@@ -16,9 +18,11 @@ interface NetworkCall {
 
 export const NetworkList: React.FC<{
   calls: NetworkCall[];
-  onSelectCall: (call: NetworkCall) => void;
+  onSelectCall: any;
 }> = ({ calls, onSelectCall }) => {
-  const filteredCalls = calls.filter((call) => call.method !== "OPTIONS");
+  const filteredCalls = calls
+    .filter((call) => call.method !== "OPTIONS")
+    .filter((call) => call.error !== BLOCKED_BY_CLIENT);
   console.log({ filteredCalls });
   return (
     <div className="flex flex-col-reverse gap-4">

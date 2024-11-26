@@ -11,7 +11,14 @@
     "tabs",
     "<all_urls>"
   ],
-  "host_permissions": ["<all_urls>"],
+  "host_permissions": [
+    "<all_urls>",
+    "https://*.atlassian.net/*",
+    "https://indiemapper.atlassian.net/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.atlassian.net"
+  },
   "devtools_page": "devtools/index.html",
   "background": {
     "service_worker": "background.js"

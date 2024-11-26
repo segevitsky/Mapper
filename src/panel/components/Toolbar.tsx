@@ -1,4 +1,5 @@
 import { LuInspect } from "react-icons/lu";
+import { SlRefresh } from "react-icons/sl";
 
 export const Toolbar: React.FC = () => {
   const startInspecting = () => {
@@ -11,15 +12,6 @@ export const Toolbar: React.FC = () => {
 
   return (
     <div className="p-4 border-b">
-      {/* <button
-        style={{
-          backgroundImage:
-            "linear-gradient(to right, #ff8177 0%, #ff867a 0%, #ff8c7f 21%, #f99185 52%, #cf556c 78%, #b12a5b 100%)",
-        }}
-        className="fixed bottom-4 right-6 p-4 px-3 bg-pink-500 border-0 rounded-xl text-white shadow-md py-2"
-      >
-        Start Mapping
-      </button> */}
       <button
         onClick={startInspecting}
         style={{ display: "flex" }}
