@@ -20,13 +20,14 @@ export const NetworkList: React.FC<{
   calls: NetworkCall[];
   onSelectCall: any;
 }> = ({ calls, onSelectCall }) => {
+  console.log({ calls });
   const filteredCalls = calls
     .filter((call) => call.method !== "OPTIONS")
     .filter((call) => call.error !== BLOCKED_BY_CLIENT);
   console.log({ filteredCalls });
   return (
     <div className="flex flex-col-reverse gap-4">
-      {filteredCalls?.map((call) => (
+      {calls?.map((call) => (
         <div
           key={call.id}
           onClick={() => onSelectCall(call)}

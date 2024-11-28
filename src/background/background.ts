@@ -17,8 +17,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function createJiraTicket(data: any) {
-  const host = "indiemapper.atlassian.net";
-  const email = "segevitsky@gmail.com";
+  const host = "";
+  const email = "";
 
   // add the api token back when you are ready to test
   const apiToken = null;
@@ -136,12 +136,11 @@ chrome.webRequest.onBeforeRequest.addListener(
 // This is for the payload of the body of the request
 chrome.webRequest.onCompleted.addListener(
   (details) => {
+    console.log("Request completed:", details);
     if (details.type === "xmlhttprequest") {
-      console.log("Request completed:", details);
-
       const request = pendingRequests.get(details.requestId);
       if (request) {
-        let parsedBody = null;
+        // let parsedBody = null;
 
         const fullRequest = {
           ...request,
@@ -155,23 +154,21 @@ chrome.webRequest.onCompleted.addListener(
           },
         };
 
-        if (request.requestBody.raw) {
-          // המרה מ-ArrayBuffer לטקסט
-          const decoder = new TextDecoder("utf-8");
-          const rawData = request.requestBody.raw[0].bytes;
-          const textData = decoder.decode(rawData);
+        // if (request.requestBody.raw) {
+        //   // המרה מ-ArrayBuffer לטקסט
+        //   const decoder = new TextDecoder("utf-8");
+        //   const rawData = request.requestBody.raw[0].bytes;
+        //   const textData = decoder.decode(rawData);
 
-          try {
-            // ניסיון לפרסר כ-JSON
-            parsedBody = JSON.parse(textData);
-            console.log("Parsed request body:", parsedBody);
-            fullRequest.requestBody = parsedBody;
-          } catch (e) {
-            console.log("Raw text data:", e, textData);
-          }
-        }
-
-        console.log("Sending complete request:", fullRequest);
+        //   try {
+        //     // ניסיון לפרסר כ-JSON
+        //     parsedBody = JSON.parse(textData);
+        //     console.log("Parsed request body:", parsedBody);
+        //     fullRequest.requestBody = parsedBody;
+        //   } catch (e) {
+        //     console.log("Raw text data:", e, textData);
+        //   }
+        // }
 
         chrome.runtime.sendMessage({
           type: "NEW_NETWORK_CALL",

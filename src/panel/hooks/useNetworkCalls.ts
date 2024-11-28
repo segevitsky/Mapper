@@ -22,6 +22,8 @@ export const useNetworkCalls = () => {
       }
     };
 
+    console.log({ networkCallsAll });
+
     // נוסיף שמירה וטעינה מהסטור
     chrome.storage.local.get(["networkCalls"], (result) => {
       if (result.networkCalls) {
