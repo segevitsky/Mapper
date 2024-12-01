@@ -23,7 +23,7 @@
   },
   "include": [
     "src",
-    "dist/Toolbar.tsx",
+    "src/panel/components/Toolbar.tsx",
     "dist/NetworkList.tsx",
     "dist/ApiMappingModal.tsx"
   ]

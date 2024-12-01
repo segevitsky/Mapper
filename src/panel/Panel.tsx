@@ -4,13 +4,15 @@ import { MappingsList } from "./components/MappingsList";
 import { Toolbar } from "./components/Toolbar";
 import { useNetworkCalls } from "./hooks/useNetworkCalls";
 import { useMappings } from "./hooks/useMappings";
-import ApiMappingModal from "./components/ApiMappingModal";
+// import ApiMappingModal from "./components/ApiMappingModal";
 import "../index.css";
 import { ElementMapping, NetworkCall } from "../types";
-import { StatusIndicator } from "./components/StatusIndicator";
+// import { StatusIndicator } from "./components/StatusIndicator";
 import ApiDetailsModal from "./components/ApiDetailsModal";
 import { GrClear } from "react-icons/gr";
 import { LuToggleLeft, LuToggleRight } from "react-icons/lu";
+import { ImSpinner } from "react-icons/im";
+import { flexContStart } from "./styles";
 
 export const Panel: React.FC = () => {
   const { networkCalls, handleSearch } = useNetworkCalls();
@@ -135,13 +137,13 @@ export const Panel: React.FC = () => {
     });
   };
 
-  console.log(
-    networkCalls,
-    mappings,
-    addMapping,
-    removeMapping,
-    "initial values"
-  );
+  const handleIndicatorsLoad = () => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: "RELOAD_INDICATORS" });
+      }
+    });
+  };
 
   return (
     <div
@@ -213,6 +215,14 @@ export const Panel: React.FC = () => {
               className="text-1xl mt-[.25rem] text-white"
             />
             <span className="ml-1 text-1xl">Clear Indicators</span>
+          </div>
+          <br />
+          <div className={flexContStart}>
+            <ImSpinner
+              className="text-1xl mt-[.25rem] text-white"
+              onClick={handleIndicatorsLoad}
+            />
+            <span className="ml-1 text-1xl">Load Indicators</span>
           </div>
           <MappingsList mappings={mappings} onRemoveMapping={removeMapping} />
         </div>

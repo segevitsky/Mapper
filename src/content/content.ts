@@ -2,6 +2,12 @@ import { JiraTicketData } from "../services/jiraService";
 import { IndicatorData, NetworkCall } from "../types";
 import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
 import { URLChangeDetector } from "../utils/urlChangeDetector";
+import {
+  extractUUIDFromUrl,
+  identifyDynamicParams,
+  updateUrlWithNewUUID,
+  urlsMatchPattern,
+} from "../utils/urlUrils";
 
 // content.ts
 let isInspectMode = false;
@@ -48,18 +54,59 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // פונקציה חדשה לקבלת המידע העדכני
-async function getCurrentIndicatorData(indicatorId: string): Promise<any> {
-  return new Promise((resolve) => {
+async function getCurrentIndicatorData(
+  indicatorId: string
+): Promise<IndicatorData> {
+  return new Promise((resolve, reject) => {
     chrome.storage.local.get(["indicators"], (result) => {
       const indicators = result.indicators || {};
-      const currentPageIndicators = indicators[window.location.href] || [];
-      const currentIndicator = currentPageIndicators.find(
-        (ind: IndicatorData) => ind.id === indicatorId
-      );
-      resolve(currentIndicator || null);
+
+      const matchingIndicator = Object.entries(indicators)
+        .flatMap(([savedUrl, savedIndicators]) => {
+          if (
+            savedUrl === window.location.href ||
+            urlsMatchPattern(savedUrl, window.location.href)
+          ) {
+            return savedIndicators;
+          }
+          return [];
+        })
+        .find(
+          (ind): ind is IndicatorData =>
+            (ind as IndicatorData).id === indicatorId
+        );
+
+      if (!matchingIndicator) {
+        reject(new Error(`Indicator with id ${indicatorId} not found`));
+        return;
+      }
+
+      if (matchingIndicator.pattern) {
+        const currentPageUUID = extractUUIDFromUrl(window.location.href);
+        matchingIndicator.baseUrl = window.location.href;
+        matchingIndicator.lastCall.url = updateUrlWithNewUUID(
+          matchingIndicator.lastCall.url,
+          currentPageUUID
+        );
+      }
+
+      resolve(matchingIndicator);
     });
   });
 }
+
+// async function getCurrentIndicatorData(indicatorId: string): Promise<any> {
+//   return new Promise((resolve) => {
+//     chrome.storage.local.get(["indicators"], (result) => {
+//       const indicators = result.indicators || {};
+//       const currentPageIndicators = indicators[window.location.href] || [];
+//       const currentIndicator = currentPageIndicators.find(
+//         (ind: IndicatorData) => ind.id === indicatorId
+//       );
+//       resolve(currentIndicator || null);
+//     });
+//   });
+// }
 
 // יצירת מיכל למודל ולאינדיקטורים
 function createContainers() {
@@ -82,6 +129,154 @@ function createContainers() {
 
   modalContainer.appendChild(innerModalContainer);
   document.body.appendChild(modalContainer);
+}
+
+function createIndicator(data: any, item: any, element: any) {
+  const callId = item.getAttribute("data-call-id");
+  const selectedCall = data.networkCalls.find(
+    (call: any) => call.id === callId
+  );
+  const elementByPath = document.querySelector(element.path);
+  if (!elementByPath) return;
+  const pattern =
+    identifyDynamicParams(selectedCall.url) ||
+    identifyDynamicParams(window.location.href);
+
+  const rect = element.rect;
+  const indicatorData: IndicatorData = {
+    id: Date.now().toString(),
+    baseUrl: window.location.href,
+    method: selectedCall.method,
+    elementInfo: {
+      path: element.path,
+      rect: element.rect,
+    },
+    lastCall: {
+      status: selectedCall.status,
+      timing: selectedCall.timing,
+      timestamp: Date.now(),
+      url: selectedCall.url,
+    },
+    position: {
+      top: rect.top + window.scrollY,
+      left: rect.right + window.scrollX,
+    },
+  };
+  console.log("Creating new indicator before pattern:", indicatorData); // לוג לבדיקה
+
+  if (pattern !== null && pattern !== undefined) {
+    indicatorData.pattern = pattern;
+  }
+
+  console.log("Creating new indicator after pattern:", indicatorData); // לוג לבדיקה
+
+  const indicator = document.createElement("div");
+  indicator.className = "indicator";
+  indicator.dataset.indicatorId = indicatorData.id;
+  indicator.style.cssText = `
+          display: inline-block;
+          width: 12px;
+          height: 12px;
+          margin-left: 8px;
+          border-radius: 50%;
+          background-color: ${
+            selectedCall.status === 200 ? "rgba(25,200, 50, .75)" : "#f44336"
+          };
+          cursor: pointer;
+          z-index: 999999;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          vertical-align: middle;
+        `;
+
+  // הוספת האינדיקטור מייד אחרי האלמנט
+  elementByPath.after(indicator);
+
+  indicator.addEventListener("click", () => {
+    const tooltip = document.createElement("div");
+    tooltip.style.cssText = `
+              position: fixed;
+              top: 16rem;
+              left: 40%;
+              background: #fff;
+              padding: 12px 16px;
+              border-radius: 8px;
+              font-size: 13px;
+              line-height: 1.4;
+              color: #333;
+              z-index: 999999;
+              box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+              border-left: 3px solid #cf556c;
+              transform-origin: center;
+          `;
+
+    const durationColor =
+      selectedCall.timing.duration < 300
+        ? "#4CAF50"
+        : selectedCall.timing.duration < 1000
+        ? "#FFC107"
+        : "#f44336";
+
+    tooltip.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <strong>${selectedCall.method}</strong>
+              <span style="color: ${durationColor}; font-weight: bold;">
+                ${Math.floor(selectedCall.timing.duration)}ms
+              </span>
+            </div>
+            <div style="color: #666; word-break: break-all; margin: 8px 0;">
+              ${selectedCall.url}
+            </div>
+            <div style="color: ${
+              selectedCall.status === 200 ? "#4CAF50" : "#f44336"
+            }">
+              Status: ${selectedCall.status}
+            </div>
+            <div style="margin-top: 8px; font-size: 11px; color: #666;">
+              Page: ${new URL(window.location.href).pathname}
+            </div>
+            <button class="remove-indicator" style="
+              margin-top: 8px;
+              padding: 4px 8px;
+              background: #f44336;
+              color: white;
+              border: none;
+              border-radius: 4px;
+              cursor: pointer;
+            ">Remove</button>
+            <button class="close-indicator-tooltip"> Close </button>
+          `;
+
+    tooltip
+      .querySelector(".remove-indicator")
+      ?.addEventListener("click", () => {
+        indicator.remove();
+        tooltip.remove();
+        chrome.storage.local.get(["indicators"], (result) => {
+          const indicators = result.indicators || {};
+          if (indicators[window.location.href]) {
+            indicators[window.location.href] = indicators[
+              window.location.href
+            ].filter((ind: IndicatorData) => ind.id !== indicatorData.id);
+            chrome.storage.local.set({ indicators });
+          }
+        });
+      });
+
+    tooltip
+      .querySelector(".close-indicator-tooltip")
+      ?.addEventListener("click", () => tooltip.remove());
+
+    document.body.appendChild(tooltip);
+  });
+
+  chrome.storage.local.get(["indicators"], (result) => {
+    const indicators = result.indicators || {};
+    indicators[window.location.href] = indicators[window.location.href] || [];
+    indicators[window.location.href].push(indicatorData);
+    chrome.storage.local.set({ indicators }, () => {
+      elementByPath.after(indicator);
+    });
+  });
 }
 
 // הצגת המודל
@@ -226,6 +421,20 @@ function showModal(
     );
     if (listContainer) {
       listContainer.innerHTML = filteredCallsList || "No matching calls found";
+
+      modalContent.querySelectorAll(".api-call-item").forEach((item) => {
+        item.addEventListener("click", () => {
+          // כל הלוגיקה של הקליק שכבר יש לנו
+          const callId = item.getAttribute("data-call-id");
+          const selectedCall = data.networkCalls.find(
+            (call) => call.id === callId
+          );
+          if (selectedCall) {
+            createIndicator(data, item, element);
+            modalContent.remove(); // סגירת המודל אחרי בחירת קריאה
+          }
+        });
+      });
     }
   });
 
@@ -244,139 +453,7 @@ function showModal(
       const callId = item.getAttribute("data-call-id");
       const selectedCall = data.networkCalls.find((call) => call.id === callId);
       if (selectedCall) {
-        const elementByPath = document.querySelector(element.path);
-        if (!elementByPath) return;
-
-        const rect = element.rect;
-        const indicatorData: IndicatorData = {
-          id: Date.now().toString(),
-          baseUrl: window.location.href,
-          method: selectedCall.method,
-          elementInfo: {
-            path: element.path,
-            rect: element.rect,
-          },
-          lastCall: {
-            status: selectedCall.status,
-            timing: selectedCall.timing,
-            timestamp: Date.now(),
-            url: selectedCall.url,
-          },
-          position: {
-            top: rect.top + window.scrollY,
-            left: rect.right + window.scrollX,
-          },
-        };
-
-        const indicator = document.createElement("div");
-        indicator.className = "indicator";
-        indicator.dataset.indicatorId = indicatorData.id;
-        indicator.style.cssText = `
-          display: inline-block;
-          width: 12px;
-          height: 12px;
-          margin-left: 8px;
-          border-radius: 50%;
-          background-color: ${
-            selectedCall.status === 200 ? "rgba(25,200, 50, .75)" : "#f44336"
-          };
-          cursor: pointer;
-          z-index: 999999;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-          vertical-align: middle;
-        `;
-
-        // הוספת האינדיקטור מייד אחרי האלמנט
-        elementByPath.after(indicator);
-
-        indicator.addEventListener("click", () => {
-          const tooltip = document.createElement("div");
-          tooltip.style.cssText = `
-              position: fixed;
-              top: 16rem;
-              left: 40%;
-              background: #fff;
-              padding: 12px 16px;
-              border-radius: 8px;
-              font-size: 13px;
-              line-height: 1.4;
-              color: #333;
-              z-index: 999999;
-              box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-              border-left: 3px solid #cf556c;
-              transform-origin: center;
-          `;
-
-          const durationColor =
-            selectedCall.timing.duration < 300
-              ? "#4CAF50"
-              : selectedCall.timing.duration < 1000
-              ? "#FFC107"
-              : "#f44336";
-
-          tooltip.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <strong>${selectedCall.method}</strong>
-              <span style="color: ${durationColor}; font-weight: bold;">
-                ${Math.floor(selectedCall.timing.duration)}ms
-              </span>
-            </div>
-            <div style="color: #666; word-break: break-all; margin: 8px 0;">
-              ${selectedCall.url}
-            </div>
-            <div style="color: ${
-              selectedCall.status === 200 ? "#4CAF50" : "#f44336"
-            }">
-              Status: ${selectedCall.status}
-            </div>
-            <div style="margin-top: 8px; font-size: 11px; color: #666;">
-              Page: ${new URL(window.location.href).pathname}
-            </div>
-            <button class="remove-indicator" style="
-              margin-top: 8px;
-              padding: 4px 8px;
-              background: #f44336;
-              color: white;
-              border: none;
-              border-radius: 4px;
-              cursor: pointer;
-            ">Remove</button>
-            <button class="close-indicator-tooltip"> Close </button>
-          `;
-
-          tooltip
-            .querySelector(".remove-indicator")
-            ?.addEventListener("click", () => {
-              indicator.remove();
-              tooltip.remove();
-              chrome.storage.local.get(["indicators"], (result) => {
-                const indicators = result.indicators || {};
-                if (indicators[window.location.href]) {
-                  indicators[window.location.href] = indicators[
-                    window.location.href
-                  ].filter((ind: IndicatorData) => ind.id !== indicatorData.id);
-                  chrome.storage.local.set({ indicators });
-                }
-              });
-            });
-
-          tooltip
-            .querySelector(".close-indicator-tooltip")
-            ?.addEventListener("click", () => tooltip.remove());
-
-          document.body.appendChild(tooltip);
-        });
-
-        chrome.storage.local.get(["indicators"], (result) => {
-          const indicators = result.indicators || {};
-          indicators[window.location.href] =
-            indicators[window.location.href] || [];
-          indicators[window.location.href].push(indicatorData);
-          chrome.storage.local.set({ indicators }, () => {
-            elementByPath.after(indicator);
-          });
-        });
-
+        createIndicator(data, item, element);
         modalContent.remove(); // סגירת המודל אחרי בחירת קריאה
       }
     });
@@ -491,17 +568,48 @@ async function createJiraTicketFromIndicator(data: any) {
 
 function loadIndicators() {
   chrome.storage.local.get(["indicators"], (result) => {
+    console.log("Loading indicators, current URL:", window.location.href);
+    console.log("All saved indicators:", result.indicators);
+
     const indicators = result.indicators || {};
-    let currentPageIndicators = indicators[window.location.href] || [];
-    currentPageIndicators = currentPageIndicators.filter(
-      (el: IndicatorData) => el.baseUrl
-    );
-    console.log({ currentPageIndicators });
+
+    // נוסיף בדיקות תקינות
+    const currentPageIndicators = Object.entries(indicators)
+      .flatMap(([savedUrl, savedIndicators]) => {
+        console.log("Checking URL:", savedUrl);
+        console.log("With indicators:", savedIndicators);
+
+        if (
+          savedUrl === window.location.href ||
+          urlsMatchPattern(savedUrl, window.location.href)
+        ) {
+          // נוודא שיש לנו מערך תקין של אינדיקטורים
+          return Array.isArray(savedIndicators) ? savedIndicators : [];
+        }
+        return [];
+      })
+      // נוסיף בדיקת תקינות לכל אינדיקטור
+      .filter((indicator) => {
+        console.log("Checking indicator:", indicator);
+        return indicator && indicator.elementInfo && indicator.elementInfo.path;
+      });
+
+    console.log("Found indicators for current page:", currentPageIndicators);
+
+    // נעביר רק אינדיקטורים תקינים
     currentPageIndicators.forEach(createIndicatorFromData);
   });
 }
 
 function createIndicatorFromData(indicatorData: IndicatorData) {
+  if (indicatorData.pattern) {
+    const currentPageUUID = extractUUIDFromUrl(window.location.href);
+    indicatorData.baseUrl = window.location.href;
+    indicatorData.lastCall.url = updateUrlWithNewUUID(
+      indicatorData.lastCall.url,
+      currentPageUUID
+    );
+  }
   const elementByPath = document.querySelector(indicatorData.elementInfo.path);
   if (!elementByPath) return;
 
@@ -540,6 +648,7 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
     }
 
     const currentData = await getCurrentIndicatorData(data.id);
+    console.log({ currentData }, "this is the current data for the indicator");
     const tooltip = document.createElement("div");
     tooltip.id = "indicator-tooltip";
     tooltip.style.cssText = `
@@ -640,6 +749,10 @@ chrome.runtime.onMessage.addListener((message) => {
       enableInspectMode();
       break;
 
+    case "STOP_INSPECT_MODE":
+      disableInspectMode();
+      break;
+
     case "SHOW_API_MODAL":
       const { element, networkCalls } = message.data;
       showModal(element, { networkCalls });
@@ -665,6 +778,12 @@ chrome.runtime.onMessage.addListener((message) => {
       });
       break;
     }
+
+    case "RELOAD_INDICATORS": {
+      loadIndicators();
+      break;
+    }
+
     case "UPDATE_INDICATORS":
       updateRelevantIndicators(message.data);
       break;
@@ -854,7 +973,6 @@ function handleClick(e: MouseEvent) {
 }
 
 function disableInspectMode() {
-  console.log("Inspect mode disabled");
   isInspectMode = false;
   document.body.style.cursor = "default";
   document.removeEventListener("mouseover", handleMouseOver);

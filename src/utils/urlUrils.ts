@@ -1,3 +1,5 @@
+import { DynamicPattern } from "../types";
+
 // src/utils/urlUtils.ts
 export function normalizeUrl(url: string): string {
   try {
@@ -30,4 +32,79 @@ export function matchUrlPattern(newUrl: string, patternUrl: string): boolean {
   const normalizedNew = normalizeUrl(newUrl);
   const normalizedPattern = normalizeUrl(patternUrl);
   return normalizedNew === normalizedPattern;
+}
+
+export function urlsMatchPattern(
+  savedUrl: string,
+  currentUrl: string
+): boolean {
+  try {
+    const saved = new URL(savedUrl);
+    const current = new URL(currentUrl);
+
+    const savedParts = saved.pathname.split("/").filter(Boolean);
+    const currentParts = current.pathname.split("/").filter(Boolean);
+
+    // אם האורך שונה, זה לא אותו פטרן
+    if (savedParts.length !== currentParts.length) return false;
+
+    // השוואה של כל חלק בנתיב
+    return savedParts.every((part, index) => {
+      // אם אחד מהם UUID, זה בסדר
+      if (isUUID(part) || isUUID(currentParts[index])) return true;
+      // אחרת, החלקים צריכים להיות זהים
+      return part === currentParts[index];
+    });
+  } catch {
+    return false;
+  }
+}
+
+export function isUUID(str: string): boolean {
+  const uuidPattern =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidPattern.test(str);
+}
+
+export function extractUUIDFromUrl(url: string): string {
+  const matches = url.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
+  );
+  return matches ? matches[0] : "";
+}
+
+export function updateUrlWithNewUUID(
+  originalUrl: string,
+  newUUID: string
+): string {
+  return originalUrl.replace(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
+    newUUID
+  );
+}
+
+export function identifyDynamicParams(url: string): DynamicPattern | undefined {
+  try {
+    const urlParts = new URL(url).pathname.split("/").filter(Boolean);
+    const uuidPositions: number[] = [];
+
+    urlParts.forEach((part, index) => {
+      if (isUUID(part)) {
+        uuidPositions.push(index);
+      }
+    });
+
+    if (uuidPositions.length === 0) return undefined;
+
+    return {
+      dynamicParams: [
+        {
+          type: "uuid",
+          positions: uuidPositions,
+        },
+      ],
+    };
+  } catch {
+    return undefined;
+  }
 }

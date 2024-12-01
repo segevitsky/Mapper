@@ -23,9 +23,15 @@ export interface ElementMapping {
   apiCall: NetworkCall;
 }
 
+export type DynamicPattern = {
+  dynamicParams: {
+    type: "uuid" | "id";
+    positions: number[];
+  }[];
+};
 export interface IndicatorData {
   id: string;
-  baseUrl: string; // URL מנורמל
+  baseUrl: string;
   method: string;
   elementInfo: {
     path: string;
@@ -45,4 +51,5 @@ export interface IndicatorData {
     timestamp: number;
     url: string;
   };
+  pattern?: DynamicPattern;
 }
