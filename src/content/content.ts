@@ -1,5 +1,6 @@
 import { JiraTicketData } from "../services/jiraService";
 import { IndicatorData, NetworkCall } from "../types";
+import { waitForElement } from "../utils/general";
 import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
 import { URLChangeDetector } from "../utils/urlChangeDetector";
 import {
@@ -601,7 +602,9 @@ function loadIndicators() {
   });
 }
 
-function createIndicatorFromData(indicatorData: IndicatorData) {
+async function createIndicatorFromData(indicatorData: IndicatorData) {
+  const indicatorElement = document.getElementById(`indi-${indicatorData.id}`);
+  if (indicatorElement) { return; }
   if (indicatorData.pattern) {
     const currentPageUUID = extractUUIDFromUrl(window.location.href);
     indicatorData.baseUrl = window.location.href;
@@ -610,8 +613,13 @@ function createIndicatorFromData(indicatorData: IndicatorData) {
       currentPageUUID
     );
   }
-  const elementByPath = document.querySelector(indicatorData.elementInfo.path);
-  if (!elementByPath) return;
+  const elementByPath = await waitForElement(indicatorData.elementInfo.path);
+  console.log("found element", elementByPath);
+  if (!elementByPath || !elementByPath.isConnected) {
+    console.log('Failed to create indicator - retrying load');
+    loadIndicators();  // ננסה לטעון הכל שוב
+    return;
+  }
 
   const indicator = document.createElement("div");
   indicator.className = "indicator";
@@ -795,9 +803,28 @@ chrome.runtime.onMessage.addListener((message) => {
 function updateRelevantIndicators(newCall: NetworkCall) {
   chrome.storage.local.get(["indicators"], (result) => {
     const indicators = result.indicators || {};
-    const currentPageIndicators = indicators[window.location.href] || [];
-    let hasUpdates = false;
 
+    const currentPageIndicators = Object.entries(indicators)
+      .flatMap(([savedUrl, savedIndicators]) => {
+        console.log("Checking URL:", savedUrl);
+        console.log("With indicators:", savedIndicators);
+
+        if (
+          savedUrl === window.location.href ||
+          urlsMatchPattern(savedUrl, window.location.href)
+        ) {
+          // נוודא שיש לנו מערך תקין של אינדיקטורים
+          return Array.isArray(savedIndicators) ? savedIndicators : [];
+        }
+        return [];
+      })
+      // נוסיף בדיקת תקינות לכל אינדיקטור
+      .filter((indicator) => {
+        console.log("Checking indicator:", indicator);
+        return indicator && indicator.elementInfo && indicator.elementInfo.path;
+      });
+
+    let hasUpdates = false;
     currentPageIndicators.forEach((indicator: IndicatorData) => {
       try {
         const indicatorUrl = new URL(indicator?.lastCall?.url);
@@ -807,10 +834,9 @@ function updateRelevantIndicators(newCall: NetworkCall) {
           indicator: indicatorUrl.pathname,
           newCall: newCallUrl.pathname,
         });
-
         if (
-          indicator?.method === newCall.method &&
-          indicatorUrl.pathname === newCallUrl.pathname
+          (indicator?.method === newCall.method &&
+          indicatorUrl.pathname === newCallUrl.pathname) ||  urlsMatchPattern(location.origin + indicatorUrl.pathname, location.origin + newCallUrl.pathname)
         ) {
           console.log("Found matching indicator:", indicator.id);
 
