@@ -137,6 +137,7 @@ chrome.webRequest.onBeforeRequest.addListener(
 chrome.webRequest.onCompleted.addListener(
   (details) => {
     console.log("Request completed:", details);
+    console.log("initiator", details.initiator);
     if (details.type === "xmlhttprequest") {
       const request = pendingRequests.get(details.requestId);
       if (request) {

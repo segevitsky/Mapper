@@ -1,12 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { NetworkList } from "./components/NetworkList";
-import { MappingsList } from "./components/MappingsList";
+import IndicatorsList from "./components/IndicatorsList";
 import { Toolbar } from "./components/Toolbar";
 import { useNetworkCalls } from "./hooks/useNetworkCalls";
-import { useMappings } from "./hooks/useMappings";
+// import { useMappings } from "./hooks/useMappings";
 // import ApiMappingModal from "./components/ApiMappingModal";
 import "../index.css";
-import { ElementMapping, NetworkCall } from "../types";
+import { NetworkCall } from "../types";
 // import { StatusIndicator } from "./components/StatusIndicator";
 import ApiDetailsModal from "./components/ApiDetailsModal";
 import { GrClear } from "react-icons/gr";
@@ -16,11 +16,11 @@ import { flexContStart } from "./styles";
 
 export const Panel: React.FC = () => {
   const { networkCalls, handleSearch } = useNetworkCalls();
-  const { mappings, addMapping, removeMapping } = useMappings();
+  // const { mappings, addMapping, removeMapping } = useMappings();
   const [selectedElement, setSelectedElement] = useState<any>(null);
-  const [selectedMapping, setSelectedMapping] = useState<ElementMapping | null>(
-    null
-  );
+  // const [selectedMapping, setSelectedMapping] = useState<ElementMapping | null>(
+  //   null
+  // );
   const [showIndicators, setShowIndicators] = useState(true);
   const [currentUrl, setCurrentUrl] = useState(window.location.href);
   const [selectedNetworkCall, setSelectedNetworkCall] = useState<
@@ -91,35 +91,6 @@ export const Panel: React.FC = () => {
     }
   }, []);
 
-  const handleApiCallSelect = (call: NetworkCall, element: any) => {
-    // שליחת הודעה לcontent script להוספת אינדיקטור
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          type: "ADD_INDICATOR",
-          data: {
-            rect: element.rect,
-            status: call.status,
-          },
-        });
-      }
-    });
-
-    // שמירת המיפוי
-    const newMapping: ElementMapping = {
-      id: Date.now().toString(),
-      elementPath: element.path,
-      elementRect: element.rect,
-      apiCall: call,
-    };
-    addMapping(newMapping as any);
-  };
-
-  const handleIndicatorClick = (mapping: ElementMapping) => {
-    setSelectedMapping(mapping);
-    // כאן אפשר לפתוח מודל חדש שמציג את פרטי הקריאה
-  };
-
   const toggleIndiators = () => {
     setShowIndicators(!showIndicators);
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -155,7 +126,7 @@ export const Panel: React.FC = () => {
       className="w-full min-h-[100dvh]  max-h-[100dvh] overflow-y-auto bg-gray-100"
     >
       <h1 className="font-thin drop-shadow-lg text-center pt-6  text-white">
-        API Mapper Panel
+        INDIE API
       </h1>
       <Toolbar />
       <div className="flex flex-1 overflow-hidden">
@@ -224,34 +195,14 @@ export const Panel: React.FC = () => {
             />
             <span className="ml-1 text-1xl">Load Indicators</span>
           </div>
-          <MappingsList mappings={mappings} onRemoveMapping={removeMapping} />
+          <br />
+          <IndicatorsList currentUrl={currentUrl} />
         </div>
       </div>
       <ApiDetailsModal
         call={selectedNetworkCall}
         onClose={() => setSelectedNetworkCall(undefined)}
       />
-
-      {/* <ApiMappingModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        selectedElement={selectedElement}
-        networkCalls={networkCalls}
-        onSelectCall={handleApiCallSelect}
-      />
-
-      <ApiDetailsModal
-        mapping={selectedMapping}
-        onClose={() => setSelectedMapping(null)}
-      /> */}
-
-      {/* {mappings.map((mapping: any) => (
-        <StatusIndicator
-          key={mapping.id}
-          mapping={mapping}
-          onClick={() => handleIndicatorClick(mapping)}
-        />
-      ))} */}
     </div>
   );
 };
