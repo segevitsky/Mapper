@@ -595,7 +595,6 @@ function loadIndicators() {
         return indicator && indicator.elementInfo && indicator.elementInfo.path;
       });
 
-    console.log("Found indicators for current page:", currentPageIndicators);
 
     // נעביר רק אינדיקטורים תקינים
     currentPageIndicators.forEach(createIndicatorFromData);
@@ -613,6 +612,7 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
       currentPageUUID
     );
   }
+
   const elementByPath = await waitForElement(indicatorData.elementInfo.path);
   console.log("found element", elementByPath);
   if (!elementByPath || !elementByPath.isConnected) {
@@ -772,6 +772,8 @@ chrome.runtime.onMessage.addListener((message) => {
       });
       chrome.storage.local.get(["indicators"], (result) => {
         const indicators = result.indicators || {};
+        // NEED TO FIX THIS FUNCTION TO DELETE ALL INDICATORS FOR GENERAL URL => NOT ONLY IN 
+        //SPECIFIC URL SINCE THE LOAD IS DYNAMIC ALSO FOR THE GENERAL URL
         delete indicators[window.location.href];
         chrome.storage.local.set({ indicators });
       });
@@ -803,26 +805,26 @@ chrome.runtime.onMessage.addListener((message) => {
 function updateRelevantIndicators(newCall: NetworkCall) {
   chrome.storage.local.get(["indicators"], (result) => {
     const indicators = result.indicators || {};
+    const currentPageIndicators = indicators[window.location.href] || [];
+    // const currentPageIndicators = Object.entries(indicators)
+    //   .flatMap(([savedUrl, savedIndicators]) => {
+    //     console.log("Checking URL:", savedUrl);
+    //     console.log("With indicators:", savedIndicators);
 
-    const currentPageIndicators = Object.entries(indicators)
-      .flatMap(([savedUrl, savedIndicators]) => {
-        console.log("Checking URL:", savedUrl);
-        console.log("With indicators:", savedIndicators);
-
-        if (
-          savedUrl === window.location.href ||
-          urlsMatchPattern(savedUrl, window.location.href)
-        ) {
-          // נוודא שיש לנו מערך תקין של אינדיקטורים
-          return Array.isArray(savedIndicators) ? savedIndicators : [];
-        }
-        return [];
-      })
-      // נוסיף בדיקת תקינות לכל אינדיקטור
-      .filter((indicator) => {
-        console.log("Checking indicator:", indicator);
-        return indicator && indicator.elementInfo && indicator.elementInfo.path;
-      });
+    //     if (
+    //       savedUrl === window.location.href ||
+    //       urlsMatchPattern(savedUrl, window.location.href)
+    //     ) {
+    //       // נוודא שיש לנו מערך תקין של אינדיקטורים
+    //       return Array.isArray(savedIndicators) ? savedIndicators : [];
+    //     }
+    //     return [];
+    //   })
+    //   // נוסיף בדיקת תקינות לכל אינדיקטור
+    //   .filter((indicator) => {
+    //     console.log("Checking indicator:", indicator);
+    //     return indicator && indicator.elementInfo && indicator.elementInfo.path;
+    //   });
 
     let hasUpdates = false;
     currentPageIndicators.forEach((indicator: IndicatorData) => {
