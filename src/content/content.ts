@@ -138,6 +138,13 @@ function createIndicator(data: any, item: any, element: any) {
     (call: any) => call.id === callId
   );
   const elementByPath = document.querySelector(element.path);
+  const elementBefore = elementByPath.previousElementSibling;
+  let originalElementAndElementBeforeAreInline = false;
+
+  if (elementBefore) {
+    originalElementAndElementBeforeAreInline = true;
+  }
+
   if (!elementByPath) return;
   const pattern =
     identifyDynamicParams(selectedCall.url) ||
@@ -187,6 +194,13 @@ function createIndicator(data: any, item: any, element: any) {
           z-index: 999999;
           box-shadow: 0 2px 4px rgba(0,0,0,0.2);
           vertical-align: middle;
+              position: ${
+                !originalElementAndElementBeforeAreInline
+                  ? "absolute"
+                  : "relative"
+              };
+          top: 1rem;
+          
         `;
 
   // הוספת האינדיקטור מייד אחרי האלמנט
@@ -581,9 +595,8 @@ function loadIndicators() {
         console.log("With indicators:", savedIndicators);
 
         if (
-          savedUrl === window.location.href 
-          ||
-          urlsMatchPattern(savedUrl, window.location.href) 
+          savedUrl === window.location.href ||
+          urlsMatchPattern(savedUrl, window.location.href)
         ) {
           // נוודא שיש לנו מערך תקין של אינדיקטורים
           return Array.isArray(savedIndicators) ? savedIndicators : [];
@@ -596,7 +609,6 @@ function loadIndicators() {
         return indicator && indicator.elementInfo && indicator.elementInfo.path;
       });
 
-
     // נעביר רק אינדיקטורים תקינים
     currentPageIndicators.forEach(createIndicatorFromData);
 
@@ -607,15 +619,17 @@ function loadIndicators() {
         console.log({ indicator }, "Indicator not found - retrying load");
         setTimeout(() => {
           createIndicatorFromData(indicator);
-        }, 5000)
+        }, 5000);
       }
-    })
+    });
   });
 }
 
 async function createIndicatorFromData(indicatorData: IndicatorData) {
   const indicatorElement = document.getElementById(`indi-${indicatorData.id}`);
-  if (indicatorElement) { return; }
+  if (indicatorElement) {
+    return;
+  }
   if (indicatorData.pattern) {
     const currentPageUUID = extractUUIDFromUrl(window.location.href);
     indicatorData.baseUrl = window.location.href;
@@ -626,13 +640,12 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
   }
 
   const elementByPath = await waitForElement(indicatorData.elementInfo.path);
-  const clientRect = elementByPath?.getBoundingClientRect();
-  console.log("found element", elementByPath);
-  // if (!elementByPath || !elementByPath.isConnected) {
-  //   console.log('Failed to create indicator - retrying load');
-  //   loadIndicators();  // ננסה לטעון הכל שוב
-  //   return;
-  // }
+  const elementBefore = elementByPath.previousElementSibling;
+  let originalElementAndElementBeforeAreInline = false;
+
+  if (elementBefore) {
+    originalElementAndElementBeforeAreInline = true;
+  }
 
   const indicator = document.createElement("div");
   indicator.className = "indicator";
@@ -653,12 +666,15 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
     z-index: 999999;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     vertical-align: middle;
-    position: relative;
+    position: ${
+      !originalElementAndElementBeforeAreInline ? "absolute" : "relative"
+    };
     top: 1rem;
   `;
 
   addIndicatorEvents(indicator, indicatorData);
-  elementByPath.after(indicator);
+  // elementByPath.after(indicator);
+  elementByPath.insertAdjacentElement("beforebegin", indicator);
 }
 
 function addIndicatorEvents(indicator: HTMLElement, data: any) {
@@ -785,7 +801,7 @@ chrome.runtime.onMessage.addListener((message) => {
       });
       chrome.storage.local.get(["indicators"], (result) => {
         const indicators = result.indicators || {};
-        // NEED TO FIX THIS FUNCTION TO DELETE ALL INDICATORS FOR GENERAL URL => NOT ONLY IN 
+        // NEED TO FIX THIS FUNCTION TO DELETE ALL INDICATORS FOR GENERAL URL => NOT ONLY IN
         //SPECIFIC URL SINCE THE LOAD IS DYNAMIC ALSO FOR THE GENERAL URL
         delete indicators[window.location.href];
         chrome.storage.local.set({ indicators });
@@ -819,25 +835,6 @@ function updateRelevantIndicators(newCall: NetworkCall) {
   chrome.storage.local.get(["indicators"], (result) => {
     const indicators = result.indicators || {};
     const currentPageIndicators = indicators[window.location.href] || [];
-    // const currentPageIndicators = Object.entries(indicators)
-    //   .flatMap(([savedUrl, savedIndicators]) => {
-    //     console.log("Checking URL:", savedUrl);
-    //     console.log("With indicators:", savedIndicators);
-
-    //     if (
-    //       savedUrl === window.location.href ||
-    //       urlsMatchPattern(savedUrl, window.location.href)
-    //     ) {
-    //       // נוודא שיש לנו מערך תקין של אינדיקטורים
-    //       return Array.isArray(savedIndicators) ? savedIndicators : [];
-    //     }
-    //     return [];
-    //   })
-    //   // נוסיף בדיקת תקינות לכל אינדיקטור
-    //   .filter((indicator) => {
-    //     console.log("Checking indicator:", indicator);
-    //     return indicator && indicator.elementInfo && indicator.elementInfo.path;
-    //   });
 
     let hasUpdates = false;
     currentPageIndicators.forEach((indicator: IndicatorData) => {
@@ -851,7 +848,11 @@ function updateRelevantIndicators(newCall: NetworkCall) {
         });
         if (
           (indicator?.method === newCall.method &&
-          indicatorUrl.pathname === newCallUrl.pathname) ||  urlsMatchPattern(location.origin + indicatorUrl.pathname, location.origin + newCallUrl.pathname)
+            indicatorUrl.pathname === newCallUrl.pathname) ||
+          urlsMatchPattern(
+            location.origin + indicatorUrl.pathname,
+            location.origin + newCallUrl.pathname
+          )
         ) {
           console.log("Found matching indicator:", indicator.id);
 
