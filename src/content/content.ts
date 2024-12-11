@@ -835,6 +835,7 @@ function updateRelevantIndicators(newCall: NetworkCall) {
   chrome.storage.local.get(["indicators"], (result) => {
     const indicators = result.indicators || {};
     const currentPageIndicators = indicators[window.location.href] || [];
+    console.log({ currentPageIndicators }, "Current page indicators");
 
     let hasUpdates = false;
     currentPageIndicators.forEach((indicator: IndicatorData) => {
