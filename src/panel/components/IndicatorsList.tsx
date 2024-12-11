@@ -20,7 +20,7 @@ const IndicatorsList = ({ currentUrl }: IndicatorsListProps) => {
     })
     .filter((el) => (el[1] as any[])?.length > 0);
 
-  console.log({ entries });
+  console.log({ entries }, 'these are our indicators entries');
 
   return (
     <div>

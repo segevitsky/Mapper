@@ -581,8 +581,9 @@ function loadIndicators() {
         console.log("With indicators:", savedIndicators);
 
         if (
-          savedUrl === window.location.href ||
-          urlsMatchPattern(savedUrl, window.location.href)
+          savedUrl === window.location.href 
+          ||
+          urlsMatchPattern(savedUrl, window.location.href) 
         ) {
           // נוודא שיש לנו מערך תקין של אינדיקטורים
           return Array.isArray(savedIndicators) ? savedIndicators : [];
@@ -598,6 +599,17 @@ function loadIndicators() {
 
     // נעביר רק אינדיקטורים תקינים
     currentPageIndicators.forEach(createIndicatorFromData);
+
+    // Make sure we have all indicators
+    currentPageIndicators.forEach((indicator) => {
+      const indicatorElement = document.getElementById(`indi-${indicator.id}`);
+      if (!indicatorElement) {
+        console.log({ indicator }, "Indicator not found - retrying load");
+        setTimeout(() => {
+          createIndicatorFromData(indicator);
+        }, 5000)
+      }
+    })
   });
 }
 
@@ -614,12 +626,13 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
   }
 
   const elementByPath = await waitForElement(indicatorData.elementInfo.path);
+  const clientRect = elementByPath?.getBoundingClientRect();
   console.log("found element", elementByPath);
-  if (!elementByPath || !elementByPath.isConnected) {
-    console.log('Failed to create indicator - retrying load');
-    loadIndicators();  // ננסה לטעון הכל שוב
-    return;
-  }
+  // if (!elementByPath || !elementByPath.isConnected) {
+  //   console.log('Failed to create indicator - retrying load');
+  //   loadIndicators();  // ננסה לטעון הכל שוב
+  //   return;
+  // }
 
   const indicator = document.createElement("div");
   indicator.className = "indicator";
@@ -640,7 +653,7 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
     z-index: 999999;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     vertical-align: middle;
-    position: absolute;
+    position: relative;
     top: 1rem;
   `;
 

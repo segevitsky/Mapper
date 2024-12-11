@@ -26,5 +26,5 @@
     "src/panel/components/Toolbar.tsx",
     "dist/NetworkList.tsx",
     "dist/ApiMappingModal.tsx"
-  ]
+, "src/content/content.ts"  ]
 }
