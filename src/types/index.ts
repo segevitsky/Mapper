@@ -52,4 +52,16 @@ export interface IndicatorData {
     url: string;
   };
   pattern?: DynamicPattern;
+  updatedPosition?: string;
+  offset?: {
+    top: number;
+    left: number;
+  };
 }
+
+export type MovementObject = {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+};

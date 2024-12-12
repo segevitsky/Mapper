@@ -1,5 +1,5 @@
 import { JiraTicketData } from "../services/jiraService";
-import { IndicatorData, NetworkCall } from "../types";
+import { IndicatorData, MovementObject, NetworkCall } from "../types";
 import { waitForElement } from "../utils/general";
 import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
 import { URLChangeDetector } from "../utils/urlChangeDetector";
@@ -249,16 +249,13 @@ function createIndicator(data: any, item: any, element: any) {
             <div style="margin-top: 8px; font-size: 11px; color: #666;">
               Page: ${new URL(window.location.href).pathname}
             </div>
-            <button class="remove-indicator" style="
-              margin-top: 8px;
-              padding: 4px 8px;
-              background: #f44336;
-              color: white;
-              border: none;
-              border-radius: 4px;
-              cursor: pointer;
-            ">Remove</button>
+            <button class="remove-indicator"> Remove </button>
+            <button id='change-indicator-position class="change-indicator-position"> Fix Position </button>
             <button class="close-indicator-tooltip"> Close </button>
+            <div style="margin-top: 8px; font-size: 12px; color: #666;">
+              Use arrow keys to adjust indicator position
+            </div>
+            
           `;
 
     tooltip
@@ -277,9 +274,36 @@ function createIndicator(data: any, item: any, element: any) {
         });
       });
 
+    // מוסיפים האזנה למקשים כשהטולטיפ פתוח
+    const moveHandler = (e: KeyboardEvent) => {
+      const step = 5; // פיקסלים לכל הזזה
+      const currentTop = parseInt(indicator.style.top) || 0;
+      const currentLeft = parseInt(indicator.style.left) || 0;
+
+      switch (e.key) {
+        case "ArrowUp":
+          indicator.style.top = `${currentTop - step}px`;
+          break;
+        case "ArrowDown":
+          indicator.style.top = `${currentTop + step}px`;
+          break;
+        case "ArrowLeft":
+          indicator.style.left = `${currentLeft - step}px`;
+          break;
+        case "ArrowRight":
+          indicator.style.left = `${currentLeft + step}px`;
+          break;
+      }
+    };
+
+    document.addEventListener("keydown", moveHandler);
+
     tooltip
       .querySelector(".close-indicator-tooltip")
-      ?.addEventListener("click", () => tooltip.remove());
+      ?.addEventListener("click", () => {
+        document.removeEventListener("keydown", moveHandler);
+        tooltip.remove();
+      });
 
     document.body.appendChild(tooltip);
   });
@@ -517,6 +541,15 @@ function injectStyles() {
       border-radius: 4px;
       cursor: pointer;
     }
+
+    .change-indicator-position {
+        border: 0;
+        padding: 0.25rem;
+        color: white;
+        background: rgb(95, 2, 31);
+        border-radius: 3px;
+        margin: 0 0.3rem;
+      }
   `;
   document.head.appendChild(style);
 }
@@ -595,8 +628,10 @@ function loadIndicators() {
         console.log("With indicators:", savedIndicators);
 
         if (
-          savedUrl === window.location.href ||
-          urlsMatchPattern(savedUrl, window.location.href)
+          savedUrl === window.location.href
+          // We need to check this condition! so it will work on all domains but will update accroding to the pattern or will not show at all
+          //  ||
+          // urlsMatchPattern(savedUrl, window.location.href)
         ) {
           // נוודא שיש לנו מערך תקין של אינדיקטורים
           return Array.isArray(savedIndicators) ? savedIndicators : [];
@@ -667,9 +702,18 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     vertical-align: middle;
     position: ${
-      !originalElementAndElementBeforeAreInline ? "absolute" : "relative"
+      indicatorData.updatedPosition
+        ? indicatorData.updatedPosition
+        : !originalElementAndElementBeforeAreInline
+        ? "absolute"
+        : "relative"
     };
-    top: 1rem;
+    top: ${
+      indicatorData?.offset?.top ? indicatorData.offset.top + "px" : "1rem"
+    };
+    left: ${
+      indicatorData?.offset?.left ? indicatorData.offset.left + "px" : "0"
+    };
   `;
 
   addIndicatorEvents(indicator, indicatorData);
@@ -683,6 +727,52 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
     if (tooltipElement) {
       tooltipElement.remove();
     }
+
+    // מוסיפים האזנה למקשים כשהטולטיפ פתוח
+    let totalOffsetTop = parseInt(indicator.style.top) || 0;
+    let totalOffsetLeft = parseInt(indicator.style.left) || 0;
+
+    const moveHandler = (e: KeyboardEvent) => {
+      const step = 5;
+
+      switch (e.key) {
+        case "ArrowUp":
+          totalOffsetTop -= step;
+          indicator.style.top = `${totalOffsetTop}px`;
+          break;
+        case "ArrowDown":
+          totalOffsetTop += step;
+          indicator.style.top = `${totalOffsetTop}px`;
+          break;
+        case "ArrowLeft":
+          totalOffsetLeft -= step;
+          indicator.style.left = `${totalOffsetLeft}px`;
+          break;
+        case "ArrowRight":
+          totalOffsetLeft += step;
+          indicator.style.left = `${totalOffsetLeft}px`;
+          break;
+      }
+
+      // שמירה בסטורג' בכל שינוי
+      chrome.storage.local.get(["indicators"], (result) => {
+        const indicators = result.indicators || {};
+        Object.keys(indicators).forEach((url) => {
+          const ind = indicators[url].find(
+            (i: any) => i.id === indicator.dataset.indicatorId
+          );
+          if (ind) {
+            ind.offset = {
+              top: totalOffsetTop,
+              left: totalOffsetLeft,
+            };
+          }
+        });
+        chrome.storage.local.set({ indicators });
+      });
+    };
+
+    document.addEventListener("keydown", moveHandler);
 
     const currentData = await getCurrentIndicatorData(data.id);
     console.log({ currentData }, "this is the current data for the indicator");
@@ -739,7 +829,11 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
         Create Jira Ticket
       </button>
       <button class="remove-indicator">Remove</button>
+      <button class="change-position change-indicator-position"> Fix Position </button>
       <button class="close-indicator-tooltip"> Close </button>
+      <div style="margin-top: 8px; font-size: 12px; color: #666;">
+        Use arrow keys to adjust indicator position
+      </div>
     `;
 
     tooltip
@@ -760,8 +854,31 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
     tooltip
       .querySelector(".close-indicator-tooltip")
       ?.addEventListener("click", () => {
+        document.removeEventListener("keydown", moveHandler);
         tooltip.remove();
       });
+
+    tooltip.querySelector(".change-position")?.addEventListener("click", () => {
+      // toggle position from relative to absolute and vise versa
+      const currentPosition = indicator.style.position;
+      indicator.style.position =
+        currentPosition === "absolute" ? "relative" : "absolute";
+      // update the position in the storage
+      // get all indicators from storage
+      chrome.storage.local.get(["indicators"], (result) => {
+        const indicators = result.indicators || {};
+        // get the current page indicators
+        const currentPageIndicators = indicators[window.location.href] || [];
+        // find the indicator we want to update
+        const indicatorToUpdate = currentPageIndicators.find(
+          (ind: IndicatorData) => ind.id === currentData.id
+        );
+        // update the position
+        indicatorToUpdate.updatedPosition = indicator.style.position;
+        // save the updated indicators
+        chrome.storage.local.set({ indicators });
+      });
+    });
 
     document.body.appendChild(tooltip);
   });
