@@ -56,7 +56,8 @@ export interface IndicatorData {
   offset?: {
     top: number;
     left: number;
-  };
+  },
+  calls: NetworkCall[];
 }
 
 export type MovementObject = {

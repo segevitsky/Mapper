@@ -96,18 +96,6 @@ async function getCurrentIndicatorData(
   });
 }
 
-// async function getCurrentIndicatorData(indicatorId: string): Promise<any> {
-//   return new Promise((resolve) => {
-//     chrome.storage.local.get(["indicators"], (result) => {
-//       const indicators = result.indicators || {};
-//       const currentPageIndicators = indicators[window.location.href] || [];
-//       const currentIndicator = currentPageIndicators.find(
-//         (ind: IndicatorData) => ind.id === indicatorId
-//       );
-//       resolve(currentIndicator || null);
-//     });
-//   });
-// }
 
 // יצירת מיכל למודל ולאינדיקטורים
 function createContainers() {
@@ -169,6 +157,7 @@ function createIndicator(data: any, item: any, element: any) {
       top: rect.top + window.scrollY,
       left: rect.right + window.scrollX,
     },
+    calls: [selectedCall]
   };
   console.log("Creating new indicator before pattern:", indicatorData); // לוג לבדיקה
 
@@ -249,13 +238,24 @@ function createIndicator(data: any, item: any, element: any) {
             <div style="margin-top: 8px; font-size: 11px; color: #666;">
               Page: ${new URL(window.location.href).pathname}
             </div>
-            <button class="remove-indicator"> Remove </button>
-            <button id='change-indicator-position class="change-indicator-position"> Fix Position </button>
-            <button class="close-indicator-tooltip"> Close </button>
-            <div style="margin-top: 8px; font-size: 12px; color: #666;">
-              Use arrow keys to adjust indicator position
-            </div>
-            
+      <button class="create-jira-ticket" style="
+        margin-top: 8px;
+        padding: 4px 8px;
+        background: #0052CC;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-right: 8px;
+      ">
+        Create Jira Ticket
+      </button>
+      <button class="remove-indicator">Remove</button>
+      <button class="change-position change-indicator-position"> Stick </button>
+      <button class="close-indicator-tooltip"> Close </button>
+      <div style="margin-top: 8px; font-size: 12px; color: #666;">
+        Use arrow keys to fine tune your indi's position
+      </div>    
           `;
 
     tooltip
@@ -829,10 +829,10 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
         Create Jira Ticket
       </button>
       <button class="remove-indicator">Remove</button>
-      <button class="change-position change-indicator-position"> Fix Position </button>
+      <button class="change-position change-indicator-position"> Stick </button>
       <button class="close-indicator-tooltip"> Close </button>
       <div style="margin-top: 8px; font-size: 12px; color: #666;">
-        Use arrow keys to adjust indicator position
+        Use arrow keys to fine tune your indi's position
       </div>
     `;
 
@@ -948,6 +948,8 @@ chrome.runtime.onMessage.addListener((message) => {
   return true;
 });
 
+const updatableobject: { [key: string]: number } = {};
+
 function updateRelevantIndicators(newCall: NetworkCall) {
   chrome.storage.local.get(["indicators"], (result) => {
     const indicators = result.indicators || {};
@@ -973,6 +975,7 @@ function updateRelevantIndicators(newCall: NetworkCall) {
           )
         ) {
           console.log("Found matching indicator:", indicator.id);
+          updatableobject[indicator.id] += 1;
 
           // עדכון המידע
           indicator.lastCall = {
@@ -980,8 +983,9 @@ function updateRelevantIndicators(newCall: NetworkCall) {
             status: newCall.status,
             timing: newCall.timing,
             timestamp: Date.now(),
-            url: newCall.url, // שומרים את ה-URL המלא החדש
+            url: newCall.url, // שומרים את ה-URL המלא החדש,
           };
+          indicator.calls.push(newCall);
 
           const indicatorElement = document.querySelector(
             `[data-indicator-id="${indicator.id}"]`
