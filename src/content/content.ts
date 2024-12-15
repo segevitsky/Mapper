@@ -8,6 +8,8 @@ import {
   identifyDynamicParams,
   updateUrlWithNewUUID,
   urlsMatchPattern,
+  createUrlPattern,
+  urlMatchesPattern
 } from "../utils/urlUrils";
 
 // content.ts
@@ -308,14 +310,31 @@ function createIndicator(data: any, item: any, element: any) {
     document.body.appendChild(tooltip);
   });
 
-  chrome.storage.local.get(["indicators"], (result) => {
-    const indicators = result.indicators || {};
-    indicators[window.location.href] = indicators[window.location.href] || [];
-    indicators[window.location.href].push(indicatorData);
-    chrome.storage.local.set({ indicators }, () => {
-      elementByPath.after(indicator);
+  const currentUrl = window.location.href;
+  const urlObj = new URL(currentUrl);
+  
+  // אם יש query params נשמור כתבנית
+  let storageUrl = currentUrl;
+  if (urlObj.search) {
+    const pattern = createUrlPattern(currentUrl);
+    storageUrl = pattern;  // נשמור את התבנית במקום ה-URL המקורי
+    chrome.storage.local.get(["indicators"], (result) => {
+      const indicators = result.indicators || {};
+      indicators[storageUrl] = indicators[storageUrl] || [];
+      indicators[storageUrl].push(indicatorData);
+      chrome.storage.local.set({ indicators });
     });
-  });
+  } else {
+    chrome.storage.local.get(["indicators"], (result) => {
+      const indicators = result.indicators || {};
+      indicators[window.location.href] = indicators[window.location.href] || [];
+      indicators[window.location.href].push(indicatorData);
+      chrome.storage.local.set({ indicators }, () => {
+        elementByPath.after(indicator);
+      });
+    });
+  }
+
 }
 
 // הצגת המודל
@@ -620,7 +639,7 @@ function loadIndicators() {
     console.log("All saved indicators:", result.indicators);
 
     const indicators = result.indicators || {};
-
+    const pattern = createUrlPattern(window.location.href);
     // נוסיף בדיקות תקינות
     const currentPageIndicators = Object.entries(indicators)
       .flatMap(([savedUrl, savedIndicators]) => {
@@ -629,9 +648,8 @@ function loadIndicators() {
 
         if (
           savedUrl === window.location.href
-          // We need to check this condition! so it will work on all domains but will update accroding to the pattern or will not show at all
-          //  ||
-          // urlsMatchPattern(savedUrl, window.location.href)
+           ||
+          urlMatchesPattern(pattern, savedUrl)
         ) {
           // נוודא שיש לנו מערך תקין של אינדיקטורים
           return Array.isArray(savedIndicators) ? savedIndicators : [];
@@ -645,24 +663,26 @@ function loadIndicators() {
       });
 
     // נעביר רק אינדיקטורים תקינים
+    console.log({ currentPageIndicators }, "Current page indicators");
     currentPageIndicators.forEach(createIndicatorFromData);
 
     // Make sure we have all indicators
-    currentPageIndicators.forEach((indicator) => {
-      const indicatorElement = document.getElementById(`indi-${indicator.id}`);
-      if (!indicatorElement) {
-        console.log({ indicator }, "Indicator not found - retrying load");
-        setTimeout(() => {
-          createIndicatorFromData(indicator);
-        }, 5000);
-      }
-    });
+    // currentPageIndicators.forEach((indicator) => {
+    //   const indicatorElement = document.getElementById(`indi-${indicator.id}`);
+    //   if (!indicatorElement) {
+    //     console.log({ indicator }, "Indicator not found - retrying load");
+    //     setTimeout(() => {
+    //       createIndicatorFromData(indicator);
+    //     }, 5000);
+    //   }
+    // });
   });
 }
 
 async function createIndicatorFromData(indicatorData: IndicatorData) {
   const indicatorElement = document.getElementById(`indi-${indicatorData.id}`);
   if (indicatorElement) {
+    console.log("found  an element that already exists", indicatorElement);
     return;
   }
   if (indicatorData.pattern) {
@@ -718,7 +738,9 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
 
   addIndicatorEvents(indicator, indicatorData);
   // elementByPath.after(indicator);
-  elementByPath.insertAdjacentElement("beforebegin", indicator);
+    console.log({ elementByPath }, "elementByPath");
+    console.log({ indicator }, "indicator we are going to add to our element");  
+    elementByPath.insertAdjacentElement("beforebegin", indicator);
 }
 
 function addIndicatorEvents(indicator: HTMLElement, data: any) {
@@ -913,6 +935,7 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
 
     case "CLEAR_INDICATORS":
+      console.log("Clearing indicators");
       document.querySelectorAll(".indicator").forEach((indicator) => {
         indicator.remove();
       });
@@ -953,7 +976,29 @@ const updatableobject: { [key: string]: number } = {};
 function updateRelevantIndicators(newCall: NetworkCall) {
   chrome.storage.local.get(["indicators"], (result) => {
     const indicators = result.indicators || {};
-    const currentPageIndicators = indicators[window.location.href] || [];
+    // const currentPageIndicators = indicators[window.location.href] || [];
+
+    const currentPageIndicators = Object.entries(indicators)
+      .flatMap(([savedUrl, savedIndicators]) => {
+        console.log("Checking URL:", savedUrl);
+        console.log("With indicators:", savedIndicators);
+
+        if (
+          savedUrl === window.location.href
+           ||
+          urlMatchesPattern(savedUrl, window.location.href)
+        ) {
+          // נוודא שיש לנו מערך תקין של אינדיקטורים
+          return Array.isArray(savedIndicators) ? savedIndicators : [];
+        }
+        return [];
+      })
+      // נוסיף בדיקת תקינות לכל אינדיקטור
+      .filter((indicator) => {
+        console.log("Checking indicator:", indicator);
+        return indicator && indicator.elementInfo && indicator.elementInfo.path;
+      });
+
     console.log({ currentPageIndicators }, "Current page indicators");
 
     let hasUpdates = false;
@@ -968,13 +1013,9 @@ function updateRelevantIndicators(newCall: NetworkCall) {
         });
         if (
           (indicator?.method === newCall.method &&
-            indicatorUrl.pathname === newCallUrl.pathname) ||
-          urlsMatchPattern(
-            location.origin + indicatorUrl.pathname,
-            location.origin + newCallUrl.pathname
-          )
+            indicatorUrl.pathname === newCallUrl.pathname) 
         ) {
-          console.log("Found matching indicator:", indicator.id);
+          console.log("Found matching indicator:", indicator, indicator.id);
           updatableobject[indicator.id] += 1;
 
           // עדכון המידע
@@ -991,7 +1032,7 @@ function updateRelevantIndicators(newCall: NetworkCall) {
             `[data-indicator-id="${indicator.id}"]`
           );
 
-          console.log("Found indicator element:", !!indicatorElement);
+          console.log("Found indicator element:", indicatorElement, !!indicatorElement);
 
           if (indicatorElement) {
             indicatorElement.classList.add("indicator-updating");
@@ -1036,17 +1077,22 @@ function updateRelevantIndicators(newCall: NetworkCall) {
     console.log("Has updates:", hasUpdates);
     console.log("Indicators after update:", currentPageIndicators);
 
-    if (hasUpdates) {
-      indicators[window.location.href] = currentPageIndicators;
-      chrome.storage.local.set({ indicators }, () => {
-        console.log("Storage updated successfully");
-      });
-    }
+    // need to think about this 
+    // if (hasUpdates) {
+    //   const pattern = createUrlPattern(window.location.href);
+    //   indicators[pattern] = currentPageIndicators;
+    //   // indicators[window.location.href] = currentPageIndicators;
+    //   chrome.storage.local.set({ indicators }, () => {
+    //     console.log("Storage updated successfully");
+    //   });
+      
+    // }
   });
 }
 
 // פונקציה חדשה לעדכון תוכן הטולטיפ
 function updateTooltipContent(tooltip: HTMLElement, data: IndicatorData) {
+  console.log("Updating tooltip content:", data);
   const durationColor =
     data.lastCall.timing.duration < 300
       ? "#4CAF50"
