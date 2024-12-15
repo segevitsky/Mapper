@@ -108,3 +108,38 @@ export function identifyDynamicParams(url: string): DynamicPattern | undefined {
     return undefined;
   }
 }
+
+// updated function
+export function createUrlPattern(url: string): string {
+  const urlObj = new URL(url);
+  const searchParams = new URLSearchParams(urlObj.search);
+  let patternUrl = `${urlObj.origin}${urlObj.pathname}`;
+  
+  // יוצרים תבנית עם a,b,c,d במקום ערכים
+  const queryPattern: string[] = [];
+  searchParams.forEach((value, key) => {
+    console.log({ key, value });
+    queryPattern.push(`${key}=${String.fromCharCode(97 + queryPattern.length)}`);
+  });
+  
+  if (queryPattern.length) {
+    patternUrl += '?' + queryPattern.join('&');
+  }
+  
+  return patternUrl;
+}
+
+export function urlMatchesPattern(pattern: string, currentUrl: string): boolean {
+  const patternUrl = new URL(pattern);
+  const urlObj = new URL(currentUrl);
+  
+  if (patternUrl.origin + patternUrl.pathname !== urlObj.origin + urlObj.pathname) {
+    return false;
+  }
+  
+  // בודקים שיש את אותם פרמטרים
+  const patternParams = new URLSearchParams(patternUrl.search);
+  const currentParams = new URLSearchParams(urlObj.search);
+  
+  return Array.from(patternParams.keys()).every(key => currentParams.has(key));
+}
