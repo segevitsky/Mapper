@@ -17,6 +17,7 @@ let highlighter: HTMLElement | null = null;
 // content.ts - נוסיף את הלוגיקה למודל ולאינדיקטורים
 let modalContainer: HTMLElement;
 let innerModalContainer: HTMLElement;
+let pageIndicators: any[] = [];
 
 // אתחול בטעינת הדף
 createContainers();
@@ -96,7 +97,6 @@ async function getCurrentIndicatorData(
   });
 }
 
-
 // יצירת מיכל למודל ולאינדיקטורים
 function createContainers() {
   modalContainer = document.createElement("div");
@@ -157,7 +157,7 @@ function createIndicator(data: any, item: any, element: any) {
       top: rect.top + window.scrollY,
       left: rect.right + window.scrollX,
     },
-    calls: [selectedCall]
+    calls: [selectedCall],
   };
   console.log("Creating new indicator before pattern:", indicatorData); // לוג לבדיקה
 
@@ -628,10 +628,9 @@ function loadIndicators() {
         console.log("With indicators:", savedIndicators);
 
         if (
-          savedUrl === window.location.href
+          savedUrl === window.location.href ||
           // We need to check this condition! so it will work on all domains but will update accroding to the pattern or will not show at all
-          //  ||
-          // urlsMatchPattern(savedUrl, window.location.href)
+          urlsMatchPattern(savedUrl, window.location.href)
         ) {
           // נוודא שיש לנו מערך תקין של אינדיקטורים
           return Array.isArray(savedIndicators) ? savedIndicators : [];
@@ -645,6 +644,7 @@ function loadIndicators() {
       });
 
     // נעביר רק אינדיקטורים תקינים
+    pageIndicators = currentPageIndicators.slice();
     currentPageIndicators.forEach(createIndicatorFromData);
 
     // Make sure we have all indicators
@@ -953,7 +953,7 @@ const updatableobject: { [key: string]: number } = {};
 function updateRelevantIndicators(newCall: NetworkCall) {
   chrome.storage.local.get(["indicators"], (result) => {
     const indicators = result.indicators || {};
-    const currentPageIndicators = indicators[window.location.href] || [];
+    const currentPageIndicators = pageIndicators || [];
     console.log({ currentPageIndicators }, "Current page indicators");
 
     let hasUpdates = false;
@@ -985,10 +985,10 @@ function updateRelevantIndicators(newCall: NetworkCall) {
             timestamp: Date.now(),
             url: newCall.url, // שומרים את ה-URL המלא החדש,
           };
-          indicator.calls.push(newCall);
+          // indicator.calls.push(newCall);
 
-          const indicatorElement = document.querySelector(
-            `[data-indicator-id="${indicator.id}"]`
+          const indicatorElement = document.getElementById(
+            `indi-${indicator.id}`
           );
 
           console.log("Found indicator element:", !!indicatorElement);
@@ -1026,6 +1026,15 @@ function updateRelevantIndicators(newCall: NetworkCall) {
             }, 200);
 
             hasUpdates = true;
+          } else {
+            console.log("Indicator element not found:", indicator);
+            const indicatorSecondAttempt = document.getElementById(
+              `indi-${indicator.id}`
+            );
+            console.log(
+              "Indicator element second attempt:",
+              !!indicatorSecondAttempt
+            );
           }
         }
       } catch (error) {
@@ -1047,6 +1056,7 @@ function updateRelevantIndicators(newCall: NetworkCall) {
 
 // פונקציה חדשה לעדכון תוכן הטולטיפ
 function updateTooltipContent(tooltip: HTMLElement, data: IndicatorData) {
+  console.log("lets update our indicator", data);
   const durationColor =
     data.lastCall.timing.duration < 300
       ? "#4CAF50"
