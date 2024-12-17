@@ -816,11 +816,12 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
           break;
       }
 
-      // שמירה בסטורג' בכל שינוי
+      // lets save the new position in our storage according to our new rules
       chrome.storage.local.get(["indicators"], (result) => {
         const indicators = result.indicators || {};
-        Object.keys(indicators).forEach((url) => {
-          const ind = indicators[url].find(
+        if (!uuidInUrl && !window.location.href.includes("tab")) {
+          const currentPageIndicators = indicators[pathToSaveInStorage] || [];
+          const ind = currentPageIndicators.find(
             (i: any) => i.id === indicator.dataset.indicatorId
           );
           if (ind) {
@@ -829,7 +830,31 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
               left: totalOffsetLeft,
             };
           }
-        });
+        } else if (!uuidInUrl && window.location.href.includes("tab")) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const tabValue = urlParams.get("tab") || "default";
+          const currentPageIndicators =
+            indicators[pathToSaveInStorage][tabValue] || [];
+          const ind = currentPageIndicators.find(
+            (i: any) => i.id === indicator.dataset.indicatorId
+          );
+          if (ind) {
+            ind.offset = {
+              top: totalOffsetTop,
+              left: totalOffsetLeft,
+            };
+          }
+        } else {
+          const ind = indicators[window.location.href].find(
+            (i: any) => i.id === indicator.dataset.indicatorId
+          );
+          if (ind) {
+            ind.offset = {
+              top: totalOffsetTop,
+              left: totalOffsetLeft,
+            };
+          }
+        }
         chrome.storage.local.set({ indicators });
       });
     };
@@ -937,6 +962,10 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
         let currentPageIndicators = [];
         if (!uuid && !window.location.href.includes("tab")) {
           currentPageIndicators = indicators[pathToSaveInStorage] || [];
+        } else if (!uuidInUrl && window.location.href.includes("tab")) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const tabValue = urlParams.get("tab") || "default";
+          currentPageIndicators = indicators[pathToSaveInStorage][tabValue];
         } else {
           currentPageIndicators = indicators[window.location.href] || [];
         }
@@ -989,12 +1018,26 @@ chrome.runtime.onMessage.addListener((message) => {
       document.querySelectorAll(".indicator").forEach((indicator) => {
         indicator.remove();
       });
+
+      // lets check if the url has a uuid in it
+
       chrome.storage.local.get(["indicators"], (result) => {
         const indicators = result.indicators || {};
         // NEED TO FIX THIS FUNCTION TO DELETE ALL INDICATORS FOR GENERAL URL => NOT ONLY IN
         //SPECIFIC URL SINCE THE LOAD IS DYNAMIC ALSO FOR THE GENERAL URL
-        delete indicators[pathToSaveInStorage];
-        chrome.storage.local.set({ indicators });
+
+        if (!uuidInUrl && !window.location.href.includes("tab")) {
+          delete indicators[pathToSaveInStorage];
+          chrome.storage.local.set({ indicators });
+        } else if (!uuidInUrl && window.location.href.includes("tab")) {
+          const urlParams = new URLSearchParams(window.location.search);
+          const tabValue = urlParams.get("tab") || "default";
+          delete indicators[pathToSaveInStorage][tabValue];
+          chrome.storage.local.set({ indicators });
+        } else {
+          delete indicators[window.location.href];
+          chrome.storage.local.set({ indicators });
+        }
       });
       break;
 

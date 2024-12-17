@@ -1,4 +1,4 @@
-import { DynamicPattern } from "../types";
+import { DynamicPattern, IndicatorData } from "../types";
 
 // src/utils/urlUtils.ts
 export function normalizeUrl(url: string): string {
@@ -117,4 +117,49 @@ export function checkIfUrlHasUuid(url: string): boolean {
   );
 
   return matches ? true : false;
+}
+
+// we need this logic in save, update, clear and create!
+export function understandUrlPatterns(indicatorData: IndicatorData) {
+  const uuidInUrl = checkIfUrlHasUuid(window.location.href);
+  const pathToSaveInStorage = window.location.pathname.split("/")[1];
+  if (!uuidInUrl && !window.location.href.includes("tab")) {
+    // we need to save our indicators according to our pathname splitted by '/' if the url doesn't have a uuid in it except if it is ca query param
+    chrome.storage.local.get(["indicators"], (res) => {
+      const indicators = res.indicators || {};
+      console.log({ pathToSaveInStorage }, "our path to save in storage");
+      indicators[pathToSaveInStorage] = indicators[pathToSaveInStorage] || [];
+      indicators[pathToSaveInStorage].push(indicatorData);
+      // chrome.storage.local.set({ indicators }, () => {
+      //   elementByPath.after(indicator);
+      // });
+    });
+    // This is in case there is a uuid in the saved url we are at so for now we will save it in the current url
+  } else if (!uuidInUrl && window.location.href.includes("tab")) {
+    chrome.storage.local.get(["indicators"], (res) => {
+      const indicators = res.indicators || {};
+      const urlParams = new URLSearchParams(window.location.search);
+      const tabValue = urlParams.get("tab") || "default";
+      indicators[pathToSaveInStorage] = indicators[pathToSaveInStorage] || {};
+      indicators[pathToSaveInStorage][tabValue] =
+        indicators[pathToSaveInStorage][tabValue] || [];
+      // הוסף את האינדיקטור החדש
+      indicators[pathToSaveInStorage][tabValue].push(indicatorData);
+
+      console.log({ indicators }, "our indicators after adding one more");
+
+      // chrome.storage.local.set({ indicators }, () => {
+      //   elementByPath.after(indicator);
+      // });
+    });
+  } else {
+    chrome.storage.local.get(["indicators"], (result) => {
+      const indicators = result.indicators || {};
+      indicators[window.location.href] = indicators[window.location.href] || [];
+      indicators[window.location.href].push(indicatorData);
+      // chrome.storage.local.set({ indicators }, () => {
+      //   elementByPath.after(indicator);
+      // });
+    });
+  }
 }
