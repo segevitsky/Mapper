@@ -126,7 +126,7 @@ export const Panel: React.FC = () => {
       className="w-full min-h-[100dvh]  max-h-[100dvh] overflow-y-auto bg-gray-100"
     >
       <h1 className="font-thin drop-shadow-lg text-center pt-6  text-white">
-        INDIE API
+        INDI API
       </h1>
       <Toolbar />
       <div className="flex flex-1 overflow-hidden">
