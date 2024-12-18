@@ -56,8 +56,9 @@ export interface IndicatorData {
   offset?: {
     top: number;
     left: number;
-  },
+  };
   calls: NetworkCall[];
+  hisDaddyElement?: any;
 }
 
 export type MovementObject = {

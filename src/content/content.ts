@@ -161,6 +161,7 @@ function createIndicator(data: any, item: any, element: any) {
       left: rect.right + window.scrollX,
     },
     calls: [selectedCall],
+    hisDaddyElement: item,
   };
   console.log("Creating new indicator before pattern:", indicatorData); // לוג לבדיקה
 
@@ -317,7 +318,6 @@ function createIndicator(data: any, item: any, element: any) {
     // we need to save our indicators according to our pathname splitted by '/' if the url doesn't have a uuid in it except if it is ca query param
     chrome.storage.local.get(["indicators"], (res) => {
       const indicators = res.indicators || {};
-      console.log({ pathToSaveInStorage }, "our path to save in storage");
       indicators[pathToSaveInStorage] = indicators[pathToSaveInStorage] || [];
       indicators[pathToSaveInStorage].push(indicatorData);
       chrome.storage.local.set({ indicators }, () => {
@@ -343,13 +343,41 @@ function createIndicator(data: any, item: any, element: any) {
       });
     });
   } else {
+    // we are going to add a mechanism here to save the indicator in the same manner we did before so for instance if the patient card is
+    // https://pre-prod-sleep.itamar-online.com/PatientsWithTabs/wp/6a49a7bf-a351-4e68-aa12-a206c8cdc22a
+    // we will save it in the thingy that is before it it will be in storage as wp
+    // for screening it will be in storage as screening
+    // and if it has tabs it will be: wp/${tabname}
+
     chrome.storage.local.get(["indicators"], (result) => {
       const indicators = result.indicators || {};
-      indicators[window.location.href] = indicators[window.location.href] || [];
-      indicators[window.location.href].push(indicatorData);
-      chrome.storage.local.set({ indicators }, () => {
-        elementByPath.after(indicator);
-      });
+      // first last check if the url has a tab in it
+      const tabValue = window.location.search.includes("tab");
+      if (!tabValue) {
+        const lastElementBeforeUUID = window.location.pathname
+          .split("/")
+          .slice(-2)[0];
+        indicators[lastElementBeforeUUID] =
+          indicators[lastElementBeforeUUID] || [];
+        indicators[lastElementBeforeUUID].push(indicatorData);
+        chrome.storage.local.set({ indicators }, () => {
+          elementByPath.after(indicator);
+        });
+      } else {
+        const lastElementBeforeUUID = window.location.pathname
+          .split("/")
+          .slice(-3)[0];
+        const urlParams = new URLSearchParams(window.location.search);
+        const tabValue = urlParams.get("tab") || "default";
+        indicators[lastElementBeforeUUID] =
+          indicators[lastElementBeforeUUID] || {};
+        indicators[lastElementBeforeUUID][tabValue] =
+          indicators[lastElementBeforeUUID][tabValue] || [];
+        indicators[lastElementBeforeUUID][tabValue].push(indicatorData);
+        chrome.storage.local.set({ indicators }, () => {
+          elementByPath.after(indicator);
+        });
+      }
     });
   }
 }
@@ -659,15 +687,10 @@ function loadIndicators() {
     const uuid = checkIfUrlHasUuid(window.location.href);
     let currentPageIndicators = [];
     if (!uuid && !window.location.href.includes("tab")) {
-      currentPageIndicators = indicators[pathToSaveInStorage].filter(
-        (indicator: any) => {
-          console.log("Checking indicator:", indicator);
-          return (
-            indicator && indicator.elementInfo && indicator.elementInfo.path
-          );
-        }
-      );
+      const pathToSaveInStorage = window.location.pathname.split("/")[1];
+      currentPageIndicators = indicators[pathToSaveInStorage];
     } else if (!uuidInUrl && window.location.href.includes("tab")) {
+      const pathToSaveInStorage = window.location.pathname.split("/")[1];
       const urlParams = new URLSearchParams(window.location.search);
       const tabValue = urlParams.get("tab") || "default";
       currentPageIndicators = indicators[pathToSaveInStorage][tabValue];
@@ -705,7 +728,9 @@ function loadIndicators() {
       "Current page indicators in load function"
     );
     // נעביר רק אינדיקטורים תקינים
-    pageIndicators = currentPageIndicators.slice();
+    if (currentPageIndicators) {
+      pageIndicators = currentPageIndicators.slice();
+    }
     currentPageIndicators.forEach(createIndicatorFromData);
 
     // Make sure we have all indicators
@@ -1067,8 +1092,6 @@ chrome.runtime.onMessage.addListener((message) => {
 const updatableobject: { [key: string]: number } = {};
 
 function updateRelevantIndicators(newCall: NetworkCall) {
-  // chrome.storage.local.get(["indicators"], () => {
-  // const indicators = result.indicators || {};
   const currentPageIndicators = pageIndicators || [];
   console.log("indicators in update function", currentPageIndicators);
   console.log({ currentPageIndicators }, "Current page indicators");

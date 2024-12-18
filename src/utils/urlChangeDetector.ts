@@ -8,7 +8,6 @@ export class URLChangeDetector {
   }
 
   private setupListeners() {
-    // האזנה לשינויים ב-History API
     const originalPushState = history.pushState;
     const originalReplaceState = history.replaceState;
 
@@ -22,10 +21,8 @@ export class URLChangeDetector {
       this.handleUrlChange();
     };
 
-    // האזנה לניווט רגיל (back/forward)
     window.addEventListener("popstate", () => this.handleUrlChange());
 
-    // גיבוי: בדיקה תקופתית של ה-URL
     setInterval(() => {
       if (window.location.href !== this.lastUrl) {
         this.handleUrlChange();
@@ -38,18 +35,36 @@ export class URLChangeDetector {
     if (this.lastUrl !== currentUrl) {
       this.lastUrl = currentUrl;
 
-      // שליחת הודעה ל-background script
-      chrome.runtime.sendMessage({
-        type: "URL_CHANGED",
-        url: currentUrl,
-      });
+      // הוספת בדיקת תקינות לפני שליחת ההודעה
+      try {
+        if (chrome.runtime?.id) {
+          // בודק אם ה-extension עדיין פעיל
+          chrome.runtime
+            .sendMessage({
+              type: "URL_CHANGED",
+              url: currentUrl,
+            })
+            .catch((error) => {
+              console.debug("Failed to send URL change message:", error);
+              // לא מדווחים על שגיאה כי זה צפוי במקרים מסוימים
+            });
+        }
+      } catch (error) {
+        console.debug("Extension context invalid:", error);
+        // לא מדווחים על שגיאה כי זה צפוי במקרים מסוימים
+      }
 
-      // הפעלת כל ה-observers המקומיים
-      this.observers.forEach((callback) => callback());
+      // ממשיכים להפעיל את ה-observers גם אם השליחה נכשלה
+      this.observers.forEach((callback) => {
+        try {
+          callback();
+        } catch (error) {
+          console.error("Observer callback failed:", error);
+        }
+      });
     }
   }
 
-  // מאפשר להירשם לשינויי URL
   public subscribe(callback: () => void) {
     this.observers.push(callback);
     return () => {
