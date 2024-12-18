@@ -343,32 +343,30 @@ function createIndicator(data: any, item: any, element: any) {
       });
     });
   } else {
-    // we are going to add a mechanism here to save the indicator in the same manner we did before so for instance if the patient card is
-    // https://pre-prod-sleep.itamar-online.com/PatientsWithTabs/wp/6a49a7bf-a351-4e68-aa12-a206c8cdc22a
-    // we will save it in the thingy that is before it it will be in storage as wp
-    // for screening it will be in storage as screening
-    // and if it has tabs it will be: wp/${tabname}
-
-    chrome.storage.local.get(["indicators"], (result) => {
-      const indicators = result.indicators || {};
-      // first last check if the url has a tab in it
-      const tabValue = window.location.search.includes("tab");
-      if (!tabValue) {
-        const lastElementBeforeUUID = window.location.pathname
-          .split("/")
-          .slice(-2)[0];
+    if (uuidInUrl && !window.location.href.includes("tab")) {
+      // lets add the indicator to our storage
+      console.log("add function here");
+      const lastElementBeforeUUID = window.location.pathname
+        .split("/")
+        .slice(-2)[0];
+      chrome.storage.local.get(["indicators"], (result) => {
+        const indicators = result.indicators || {};
         indicators[lastElementBeforeUUID] =
           indicators[lastElementBeforeUUID] || [];
         indicators[lastElementBeforeUUID].push(indicatorData);
         chrome.storage.local.set({ indicators }, () => {
           elementByPath.after(indicator);
         });
-      } else {
-        const lastElementBeforeUUID = window.location.pathname
-          .split("/")
-          .slice(-3)[0];
-        const urlParams = new URLSearchParams(window.location.search);
-        const tabValue = urlParams.get("tab") || "default";
+      });
+    } else {
+      console.log("add function here for uuid and tab");
+      const lastElementBeforeUUID =
+        window.location.pathname.split("/").slice(-2)[0] + "_tab";
+      const urlParams = new URLSearchParams(window.location.search);
+      const tabValue = urlParams.get("tab") || "default";
+
+      chrome.storage.local.get(["indicators"], (result) => {
+        const indicators = result.indicators || {};
         indicators[lastElementBeforeUUID] =
           indicators[lastElementBeforeUUID] || {};
         indicators[lastElementBeforeUUID][tabValue] =
@@ -377,8 +375,8 @@ function createIndicator(data: any, item: any, element: any) {
         chrome.storage.local.set({ indicators }, () => {
           elementByPath.after(indicator);
         });
-      }
-    });
+      });
+    }
   }
 }
 
@@ -699,29 +697,29 @@ function loadIndicators() {
         "We have a uuid in the url this is for the patient pages and study pages and other pages that include a uuid"
       );
       // we also need to take care of the indicator itself to update the last call url so it can get the latest data for the entity!!!!
-      currentPageIndicators = Object.entries(indicators)
-        .flatMap(([savedUrl, savedIndicators]) => {
-          console.log("Checking URL:", savedUrl);
-          console.log("With indicators:", savedIndicators);
+      // currentPageIndicators = Object.entries(indicators)
+      //   .flatMap(([savedUrl, savedIndicators]) => {
+      //     console.log("Checking URL:", savedUrl);
+      //     console.log("With indicators:", savedIndicators);
 
-          if (
-            savedUrl === window.location.href
-            // ||
-            // We need to check this condition! so it will work on all domains but will update accroding to the pattern or will not show at all
-            // urlsMatchPattern(savedUrl, window.location.href)
-          ) {
-            // נוודא שיש לנו מערך תקין של אינדיקטורים
-            return Array.isArray(savedIndicators) ? savedIndicators : [];
-          }
-          return [];
-        })
-        // נוסיף בדיקת תקינות לכל אינדיקטור
-        .filter((indicator) => {
-          console.log("Checking indicator:", indicator);
-          return (
-            indicator && indicator.elementInfo && indicator.elementInfo.path
-          );
-        });
+      //     if (
+      //       savedUrl === window.location.href
+      //       // ||
+      //       // We need to check this condition! so it will work on all domains but will update accroding to the pattern or will not show at all
+      //       // urlsMatchPattern(savedUrl, window.location.href)
+      //     ) {
+      //       // נוודא שיש לנו מערך תקין של אינדיקטורים
+      //       return Array.isArray(savedIndicators) ? savedIndicators : [];
+      //     }
+      //     return [];
+      //   })
+      //   // נוסיף בדיקת תקינות לכל אינדיקטור
+      //   .filter((indicator) => {
+      //     console.log("Checking indicator:", indicator);
+      //     return (
+      //       indicator && indicator.elementInfo && indicator.elementInfo.path
+      //     );
+      //   });
     }
     console.log(
       { currentPageIndicators },

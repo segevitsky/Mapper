@@ -1,8 +1,27 @@
 import { useState, useEffect, useCallback } from "react";
 import { NetworkCall } from "../../types";
+// import { debounce } from "../../utils/general";
+
+export function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout;
+
+  return function executedFunction(...args: Parameters<T>) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
 
 // useNetworkCalls.ts
 export const useNetworkCalls = () => {
+  const [searchTerm, setSearchTerm] = useState("");
   const [networkCallsAll, setNetworkCallsAll] = useState<NetworkCall[]>([]);
   const [networkCalls, setNetworkCalls] = useState<NetworkCall[]>([]);
 
@@ -37,19 +56,33 @@ export const useNetworkCalls = () => {
     return () => chrome.runtime.onMessage.removeListener(handleNetworkCall);
   }, []);
 
-  const handleSearch = (search: string) => {
-    console.log("Searching for:", search);
-    const filteredCalls = networkCalls.filter((call) => {
-      const url = call.url.toLowerCase();
-      const method = call.method.toLowerCase();
-      const searchLower = search.toLowerCase();
-      return url.includes(searchLower) || method.includes(searchLower);
-    });
-    if (search === "") {
-      setNetworkCalls(networkCallsAll);
-    } else {
+  const debouncedSearch = useCallback(
+    debounce((term: string) => {
+      if (!term.trim()) {
+        setNetworkCalls(networkCallsAll);
+        return;
+      }
+
+      const searchTerms = term.toLowerCase().split(" ").filter(Boolean);
+
+      const filteredCalls = networkCallsAll.filter((call) => {
+        const url = call.url.toLowerCase();
+        const method = call.method.toLowerCase();
+
+        return searchTerms.every(
+          (term) => url.includes(term) || method.includes(term)
+        );
+      });
+
       setNetworkCalls(filteredCalls);
-    }
+    }, 300),
+    [networkCallsAll]
+  );
+
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTerm = e.target.value;
+    setSearchTerm(newTerm);
+    debouncedSearch(newTerm);
   };
 
   // נעדכן את הפאנל
@@ -83,5 +116,5 @@ export const useNetworkCalls = () => {
     chrome.storage.local.set({ networkCalls: [] });
   };
 
-  return { networkCalls, clearAllNewtworkCalls, handleSearch };
+  return { networkCalls, clearAllNewtworkCalls, handleSearch, searchTerm };
 };

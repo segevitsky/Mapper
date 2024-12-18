@@ -25,3 +25,20 @@ export const getBorderByTiming = (timing: number) => {
   if (timing > 2000) return "2px solid #ffd700"; // צהוב לאיטיות בינונית
   return "none";
 };
+
+export function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout;
+
+  return function executedFunction(...args: Parameters<T>) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
