@@ -5,6 +5,7 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
+    "sourceMap": true,
 
     /* Bundler mode */
     "moduleResolution": "Bundler",
@@ -25,6 +26,7 @@
     "src",
     "src/panel/components/Toolbar.tsx",
     "dist/NetworkList.tsx",
-    "dist/ApiMappingModal.tsx"
-, "src/content/content.ts"  ]
+    "dist/ApiMappingModal.tsx",
+    "src/content/content.ts"
+  ]
 }

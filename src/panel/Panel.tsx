@@ -113,6 +113,18 @@ export const Panel: React.FC = () => {
     });
   };
 
+  // Remove this function after cleaning the unneeded indi's data
+  // const clearCurrentUrlIndi = () => {
+  //   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+  //     if (tabs[0]?.id) {
+  //       chrome.tabs.sendMessage(tabs[0].id, {
+  //         type: "CLEAR_CURRENT_URL_INDICATORS",
+  //         data: "_tab_",
+  //       });
+  //     }
+  //   });
+  // };
+
   return (
     <div
       style={{
@@ -185,6 +197,13 @@ export const Panel: React.FC = () => {
             />
             <span className="ml-1 text-1xl">Clear Indicators</span>
           </div>
+          {/* <div
+            onClick={clearCurrentUrlIndi}
+            style={{ fontWeight: "bold", fontSize: "1rem" }}
+          >
+            {" "}
+            clear Current Url Indi{" "}
+          </div> */}
           <br />
           <div className={flexContStart}>
             <ImSpinner

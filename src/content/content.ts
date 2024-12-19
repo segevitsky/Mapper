@@ -270,6 +270,7 @@ function createIndicator(data: any, item: any, element: any) {
         indicator.remove();
         tooltip.remove();
         chrome.storage.local.get(["indicators"], (result) => {
+          // change this to the new storage structure
           const indicators = result.indicators || {};
           if (indicators[window.location.href]) {
             indicators[window.location.href] = indicators[
@@ -687,39 +688,29 @@ function loadIndicators() {
     if (!uuid && !window.location.href.includes("tab")) {
       const pathToSaveInStorage = window.location.pathname.split("/")[1];
       currentPageIndicators = indicators[pathToSaveInStorage];
-    } else if (!uuidInUrl && window.location.href.includes("tab")) {
+    } else if (!uuid && window.location.href.includes("tab")) {
       const pathToSaveInStorage = window.location.pathname.split("/")[1];
       const urlParams = new URLSearchParams(window.location.search);
       const tabValue = urlParams.get("tab") || "default";
       currentPageIndicators = indicators[pathToSaveInStorage][tabValue];
     } else {
-      console.log(
-        "We have a uuid in the url this is for the patient pages and study pages and other pages that include a uuid"
-      );
-      // we also need to take care of the indicator itself to update the last call url so it can get the latest data for the entity!!!!
-      // currentPageIndicators = Object.entries(indicators)
-      //   .flatMap(([savedUrl, savedIndicators]) => {
-      //     console.log("Checking URL:", savedUrl);
-      //     console.log("With indicators:", savedIndicators);
-
-      //     if (
-      //       savedUrl === window.location.href
-      //       // ||
-      //       // We need to check this condition! so it will work on all domains but will update accroding to the pattern or will not show at all
-      //       // urlsMatchPattern(savedUrl, window.location.href)
-      //     ) {
-      //       // נוודא שיש לנו מערך תקין של אינדיקטורים
-      //       return Array.isArray(savedIndicators) ? savedIndicators : [];
-      //     }
-      //     return [];
-      //   })
-      //   // נוסיף בדיקת תקינות לכל אינדיקטור
-      //   .filter((indicator) => {
-      //     console.log("Checking indicator:", indicator);
-      //     return (
-      //       indicator && indicator.elementInfo && indicator.elementInfo.path
-      //     );
-      //   });
+      const uuidInUrl = checkIfUrlHasUuid(window.location.href);
+      if (uuidInUrl && !window.location.href.includes("tab")) {
+        const lastElementBeforeUUID = window.location.pathname
+          .split("/")
+          .slice(-2)[0];
+        console.log(
+          indicators[lastElementBeforeUUID],
+          "indicators in patient page"
+        );
+        currentPageIndicators = indicators[lastElementBeforeUUID];
+      } else {
+        const lastElementBeforeUUID =
+          window.location.pathname.split("/").slice(-2)[0] + "_tab";
+        const urlParams = new URLSearchParams(window.location.search);
+        const tabValue = urlParams.get("tab") || "";
+        currentPageIndicators = indicators[lastElementBeforeUUID][tabValue];
+      }
     }
     console.log(
       { currentPageIndicators },
@@ -739,6 +730,20 @@ function loadIndicators() {
         setTimeout(() => {
           createIndicatorFromData(indicator);
         }, 5000);
+      }
+    });
+
+    const currentPageIndicatorsUuuidArray = currentPageIndicators.map(
+      (indi: IndicatorData) => indi.id
+    );
+    document.querySelectorAll(".indicator").forEach((indicator: any) => {
+      console.log({ indicator }, "Indicator found in load");
+      console.log(indicator.dataset.indicatorId, "indicator id to remove");
+      console.log({ currentPageIndicatorsUuuidArray }, "uuid array to compare");
+      if (
+        !currentPageIndicatorsUuuidArray.includes(indicator.dataset.indicatorId)
+      ) {
+        indicator.remove();
       }
     });
   });
@@ -868,14 +873,37 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
             };
           }
         } else {
-          const ind = indicators[window.location.href].find(
-            (i: any) => i.id === indicator.dataset.indicatorId
-          );
-          if (ind) {
-            ind.offset = {
-              top: totalOffsetTop,
-              left: totalOffsetLeft,
-            };
+          if (uuidInUrl && !window.location.href.includes("tab")) {
+            const lastElementBeforeUUID = window.location.pathname
+              .split("/")
+              .slice(-2)[0];
+            const currentPageIndicators =
+              indicators[lastElementBeforeUUID] || [];
+            const ind = currentPageIndicators.find(
+              (i: any) => i.id === indicator.dataset.indicatorId
+            );
+            if (ind) {
+              ind.offset = {
+                top: totalOffsetTop,
+                left: totalOffsetLeft,
+              };
+            }
+          } else {
+            const lastElementBeforeUUID =
+              window.location.pathname.split("/").slice(-2)[0] + "_tab";
+            const urlParams = new URLSearchParams(window.location.search);
+            const tabValue = urlParams.get("tab") || "default";
+            const currentPageIndicators =
+              indicators[lastElementBeforeUUID][tabValue] || [];
+            const ind = currentPageIndicators.find(
+              (i: any) => i.id === indicator.dataset.indicatorId
+            );
+            if (ind) {
+              ind.offset = {
+                top: totalOffsetTop,
+                left: totalOffsetLeft,
+              };
+            }
           }
         }
         chrome.storage.local.set({ indicators });
@@ -1064,6 +1092,18 @@ chrome.runtime.onMessage.addListener((message) => {
       });
       break;
 
+    case "CLEAR_CURRENT_URL_INDICATORS":
+      chrome.storage.local.get(["indicators"], (result) => {
+        const indicators = result.indicators || {};
+        console.log(
+          indicators["Dashboard"],
+          "this is the data i want to delete"
+        );
+        delete indicators["Dashboard"];
+        chrome.storage.local.set({ indicators });
+      });
+      break;
+
     case "TOGGLE_INDICATORS": {
       const indicators = document.querySelectorAll(".indicator");
       indicators.forEach((indicator) => {
@@ -1124,7 +1164,11 @@ function updateRelevantIndicators(newCall: NetworkCall) {
           timestamp: Date.now(),
           url: newCall.url, // שומרים את ה-URL המלא החדש,
         };
-        // indicator.calls.push(newCall);
+        if (indicator.calls.length) {
+          indicator.calls.push(newCall);
+        } else {
+          indicator.calls = [newCall];
+        }
 
         const indicatorElement = document.getElementById(
           `indi-${indicator.id}`
