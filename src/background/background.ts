@@ -3,6 +3,7 @@ console.log("Background script loaded");
 
 const pendingRequests = new Map();
 
+//JIRA START
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log({ message, sender }, "this is the message in background.ts");
   if (message.type === "CREATE_JIRA_TICKET") {
@@ -88,6 +89,7 @@ async function createJiraTicket(data: any) {
 
   return response.json();
 }
+// END JIRA
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "URL_CHANGED") {
@@ -138,7 +140,10 @@ chrome.webRequest.onCompleted.addListener(
   (details) => {
     console.log("Request completed:", details);
     console.log("initiator", details.initiator);
-    if (details.type === "xmlhttprequest") {
+    if (
+      details.type === "xmlhttprequest" &&
+      details.initiator === "https://pre-prod-sleep.itamar-online.com"
+    ) {
       const request = pendingRequests.get(details.requestId);
       if (request) {
         // let parsedBody = null;

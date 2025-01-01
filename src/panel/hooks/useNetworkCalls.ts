@@ -26,8 +26,6 @@ export const useNetworkCalls = () => {
   const [networkCalls, setNetworkCalls] = useState<NetworkCall[]>([]);
 
   useEffect(() => {
-    console.log("Setting up network calls listener");
-
     const handleNetworkCall = (message: any) => {
       console.log("Network call received:", message);
       if (message.type === "NEW_NETWORK_CALL") {
@@ -55,6 +53,19 @@ export const useNetworkCalls = () => {
     chrome.runtime.onMessage.addListener(handleNetworkCall);
     return () => chrome.runtime.onMessage.removeListener(handleNetworkCall);
   }, []);
+
+  useEffect(() => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: "ALL_NETWORK_CALLS",
+          data: {
+            networkCalls: networkCalls,
+          },
+        });
+      }
+    });
+  }, [networkCalls, networkCallsAll.length]);
 
   const debouncedSearch = useCallback(
     debounce((term: string) => {

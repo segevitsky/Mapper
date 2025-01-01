@@ -9,12 +9,16 @@
     "webRequestBlocking",
     "debugger",
     "tabs",
-    "<all_urls>"
+    "<all_urls>",
+    "identity"
   ],
   "host_permissions": [
     "<all_urls>",
     "https://*.atlassian.net/*",
-    "https://indiemapper.atlassian.net/*"
+    "https://indiemapper.atlassian.net/*",
+    "*://*.firebaseio.com/*",
+    "*://*.firebase.com/*",
+    "*://*.googleapis.com/*"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.atlassian.net"

@@ -3,11 +3,11 @@ import { IndicatorData, NetworkCall } from "../types";
 import { waitForElement, getBorderByTiming } from "../utils/general";
 import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
 import { URLChangeDetector } from "../utils/urlChangeDetector";
+import { generateStoragePath } from "../utils/storage";
 import {
   extractUUIDFromUrl,
   identifyDynamicParams,
   updateUrlWithNewUUID,
-  urlsMatchPattern,
   checkIfUrlHasUuid,
 } from "../utils/urlUrils";
 
@@ -19,7 +19,7 @@ let highlighter: HTMLElement | null = null;
 let modalContainer: HTMLElement;
 let innerModalContainer: HTMLElement;
 let pageIndicators: any[] = [];
-const uuidInUrl = checkIfUrlHasUuid(window.location.href);
+let networkCalls: NetworkCall[] = [];
 
 // אתחול בטעינת הדף
 createContainers();
@@ -28,7 +28,6 @@ loadIndicators();
 
 // יצירת instance יחיד
 const urlDetector = new URLChangeDetector();
-const pathToSaveInStorage = window.location.pathname.split("/")[1];
 
 // נרשם לשינויי URL
 urlDetector.subscribe(() => {
@@ -59,46 +58,46 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // פונקציה חדשה לקבלת המידע העדכני
-async function getCurrentIndicatorData(
-  indicatorId: string
-): Promise<IndicatorData> {
-  return new Promise((resolve, reject) => {
-    chrome.storage.local.get(["indicators"], (result) => {
-      const indicators = result.indicators || {};
+// async function getCurrentIndicatorData(
+//   indicatorId: string
+// ): Promise<IndicatorData> {
+//   return new Promise((resolve, reject) => {
+//     chrome.storage.local.get(["indicators"], (result) => {
+//       const indicators = result.indicators || {};
 
-      const matchingIndicator = Object.entries(indicators)
-        .flatMap(([savedUrl, savedIndicators]) => {
-          if (
-            savedUrl === window.location.href ||
-            urlsMatchPattern(savedUrl, window.location.href)
-          ) {
-            return savedIndicators;
-          }
-          return [];
-        })
-        .find(
-          (ind): ind is IndicatorData =>
-            (ind as IndicatorData).id === indicatorId
-        );
+//       const matchingIndicator = Object.entries(indicators)
+//         .flatMap(([savedUrl, savedIndicators]) => {
+//           if (
+//             savedUrl === window.location.href ||
+//             urlsMatchPattern(savedUrl, window.location.href)
+//           ) {
+//             return savedIndicators;
+//           }
+//           return [];
+//         })
+//         .find(
+//           (ind): ind is IndicatorData =>
+//             (ind as IndicatorData).id === indicatorId
+//         );
 
-      if (!matchingIndicator) {
-        reject(new Error(`Indicator with id ${indicatorId} not found`));
-        return;
-      }
+//       if (!matchingIndicator) {
+//         reject(new Error(`Indicator with id ${indicatorId} not found`));
+//         return;
+//       }
 
-      if (matchingIndicator.pattern) {
-        const currentPageUUID = extractUUIDFromUrl(window.location.href);
-        matchingIndicator.baseUrl = window.location.href;
-        matchingIndicator.lastCall.url = updateUrlWithNewUUID(
-          matchingIndicator.lastCall.url,
-          currentPageUUID
-        );
-      }
+//       if (matchingIndicator.pattern) {
+//         const currentPageUUID = extractUUIDFromUrl(window.location.href);
+//         matchingIndicator.baseUrl = window.location.href;
+//         matchingIndicator.lastCall.url = updateUrlWithNewUUID(
+//           matchingIndicator.lastCall.url,
+//           currentPageUUID
+//         );
+//       }
 
-      resolve(matchingIndicator);
-    });
-  });
-}
+//       resolve(matchingIndicator);
+//     });
+//   });
+// }
 
 // יצירת מיכל למודל ולאינדיקטורים
 function createContainers() {
@@ -272,14 +271,40 @@ function createIndicator(data: any, item: any, element: any) {
         chrome.storage.local.get(["indicators"], (result) => {
           // change this to the new storage structure
           const indicators = result.indicators || {};
-          if (indicators[window.location.href]) {
-            indicators[window.location.href] = indicators[
-              window.location.href
-            ].filter((ind: IndicatorData) => ind.id !== indicatorData.id);
+          const path = generateStoragePath(window.location.href);
+          let currentPageIndicators = indicators[path] || [];
+          if (Object.keys(currentPageIndicators).length > 0) {
+            currentPageIndicators = currentPageIndicators.filter(
+              (ind: IndicatorData) => ind.id !== indicatorData.id
+            );
             chrome.storage.local.set({ indicators });
           }
         });
       });
+
+    tooltip.querySelector(".change-position")?.addEventListener("click", () => {
+      // toggle position from relative to absolute and vise versa
+      const currentPosition = indicator.style.position;
+      indicator.style.position =
+        currentPosition === "absolute" ? "relative" : "absolute";
+
+      // update the position in the storage
+      // get all indicators from storage
+      chrome.storage.local.get(["indicators"], (result) => {
+        const indicators = result.indicators || {};
+        const pathToUpdate = generateStoragePath(window.location.href);
+        const currentPageIndicators = indicators[pathToUpdate] || [];
+
+        // find the indicator we want to update
+        const indicatorToUpdate = currentPageIndicators.find(
+          (ind: IndicatorData) => ind.id === indicatorData.id
+        );
+        // update the position
+        indicatorToUpdate.updatedPosition = indicator.style.position;
+        // save the updated indicators
+        chrome.storage.local.set({ indicators });
+      });
+    });
 
     // מוסיפים האזנה למקשים כשהטולטיפ פתוח
     const moveHandler = (e: KeyboardEvent) => {
@@ -314,71 +339,16 @@ function createIndicator(data: any, item: any, element: any) {
     document.body.appendChild(tooltip);
   });
 
-  // this function knows how to distinguish between uuid as a query param and uuid as a path param
-  if (!uuidInUrl && !window.location.href.includes("tab")) {
-    // we need to save our indicators according to our pathname splitted by '/' if the url doesn't have a uuid in it except if it is ca query param
-    chrome.storage.local.get(["indicators"], (res) => {
-      const indicators = res.indicators || {};
-      indicators[pathToSaveInStorage] = indicators[pathToSaveInStorage] || [];
-      indicators[pathToSaveInStorage].push(indicatorData);
-      chrome.storage.local.set({ indicators }, () => {
-        elementByPath.after(indicator);
-      });
+  const storagePath = generateStoragePath(window.location.href);
+
+  chrome.storage.local.get(["indicators"], (result) => {
+    const indicators = result.indicators || {};
+    indicators[storagePath] = indicators[storagePath] || [];
+    indicators[storagePath].push(indicatorData);
+    chrome.storage.local.set({ indicators }, () => {
+      elementByPath.after(indicator);
     });
-    // This is in case there is a uuid in the saved url we are at so for now we will save it in the current url
-  } else if (!uuidInUrl && window.location.href.includes("tab")) {
-    chrome.storage.local.get(["indicators"], (res) => {
-      const indicators = res.indicators || {};
-      const urlParams = new URLSearchParams(window.location.search);
-      const tabValue = urlParams.get("tab") || "default";
-      indicators[pathToSaveInStorage] = indicators[pathToSaveInStorage] || {};
-      indicators[pathToSaveInStorage][tabValue] =
-        indicators[pathToSaveInStorage][tabValue] || [];
-      // הוסף את האינדיקטור החדש
-      indicators[pathToSaveInStorage][tabValue].push(indicatorData);
-
-      console.log({ indicators }, "our indicators after adding one more");
-
-      chrome.storage.local.set({ indicators }, () => {
-        elementByPath.after(indicator);
-      });
-    });
-  } else {
-    if (uuidInUrl && !window.location.href.includes("tab")) {
-      // lets add the indicator to our storage
-      console.log("add function here");
-      const lastElementBeforeUUID = window.location.pathname
-        .split("/")
-        .slice(-2)[0];
-      chrome.storage.local.get(["indicators"], (result) => {
-        const indicators = result.indicators || {};
-        indicators[lastElementBeforeUUID] =
-          indicators[lastElementBeforeUUID] || [];
-        indicators[lastElementBeforeUUID].push(indicatorData);
-        chrome.storage.local.set({ indicators }, () => {
-          elementByPath.after(indicator);
-        });
-      });
-    } else {
-      console.log("add function here for uuid and tab");
-      const lastElementBeforeUUID =
-        window.location.pathname.split("/").slice(-2)[0] + "_tab";
-      const urlParams = new URLSearchParams(window.location.search);
-      const tabValue = urlParams.get("tab") || "default";
-
-      chrome.storage.local.get(["indicators"], (result) => {
-        const indicators = result.indicators || {};
-        indicators[lastElementBeforeUUID] =
-          indicators[lastElementBeforeUUID] || {};
-        indicators[lastElementBeforeUUID][tabValue] =
-          indicators[lastElementBeforeUUID][tabValue] || [];
-        indicators[lastElementBeforeUUID][tabValue].push(indicatorData);
-        chrome.storage.local.set({ indicators }, () => {
-          elementByPath.after(indicator);
-        });
-      });
-    }
-  }
+  });
 }
 
 // הצגת המודל
@@ -678,48 +648,15 @@ async function createJiraTicketFromIndicator(data: any) {
 }
 
 function loadIndicators() {
+  const storagePath = generateStoragePath(window.location.href);
+
   chrome.storage.local.get(["indicators"], (result) => {
-    console.log("Loading indicators, current URL:", window.location.href);
     console.log("All saved indicators:", result.indicators);
 
     const indicators = result.indicators || {};
-    const uuid = checkIfUrlHasUuid(window.location.href);
-    let currentPageIndicators = [];
-    if (!uuid && !window.location.href.includes("tab")) {
-      const pathToSaveInStorage = window.location.pathname.split("/")[1];
-      currentPageIndicators = indicators[pathToSaveInStorage];
-    } else if (!uuid && window.location.href.includes("tab")) {
-      const pathToSaveInStorage = window.location.pathname.split("/")[1];
-      const urlParams = new URLSearchParams(window.location.search);
-      const tabValue = urlParams.get("tab") || "default";
-      currentPageIndicators = indicators[pathToSaveInStorage][tabValue];
-    } else {
-      const uuidInUrl = checkIfUrlHasUuid(window.location.href);
-      if (uuidInUrl && !window.location.href.includes("tab")) {
-        const lastElementBeforeUUID = window.location.pathname
-          .split("/")
-          .slice(-2)[0];
-        console.log(
-          indicators[lastElementBeforeUUID],
-          "indicators in patient page"
-        );
-        currentPageIndicators = indicators[lastElementBeforeUUID];
-      } else {
-        const lastElementBeforeUUID =
-          window.location.pathname.split("/").slice(-2)[0] + "_tab";
-        const urlParams = new URLSearchParams(window.location.search);
-        const tabValue = urlParams.get("tab") || "";
-        currentPageIndicators = indicators[lastElementBeforeUUID][tabValue];
-      }
-    }
-    console.log(
-      { currentPageIndicators },
-      "Current page indicators in load function"
-    );
-    // נעביר רק אינדיקטורים תקינים
-    if (currentPageIndicators) {
-      pageIndicators = currentPageIndicators.slice();
-    }
+    const currentPageIndicators = indicators[storagePath] || [];
+    pageIndicators = currentPageIndicators.slice();
+
     currentPageIndicators.forEach(createIndicatorFromData);
 
     // Make sure we have all indicators
@@ -761,6 +698,23 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
       indicatorData.lastCall.url,
       currentPageUUID
     );
+
+    // lets update the current indicator in the storage
+    chrome.storage.local.get(["indicators"], (result) => {
+      const indicators = result.indicators || {};
+      const pathToUpdate = generateStoragePath(window.location.href);
+      const currentPageIndicators = indicators[pathToUpdate] || [];
+      const ind = currentPageIndicators.find(
+        (i: IndicatorData) => i.id === indicatorData.id
+      );
+      if (ind) {
+        ind.lastCall.url = updateUrlWithNewUUID(
+          ind.lastCall.url,
+          currentPageUUID
+        );
+      }
+      chrome.storage.local.set({ indicators });
+    });
   }
 
   const elementByPath = await waitForElement(indicatorData.elementInfo.path);
@@ -847,64 +801,16 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
       // lets save the new position in our storage according to our new rules
       chrome.storage.local.get(["indicators"], (result) => {
         const indicators = result.indicators || {};
-        if (!uuidInUrl && !window.location.href.includes("tab")) {
-          const currentPageIndicators = indicators[pathToSaveInStorage] || [];
-          const ind = currentPageIndicators.find(
-            (i: any) => i.id === indicator.dataset.indicatorId
-          );
-          if (ind) {
-            ind.offset = {
-              top: totalOffsetTop,
-              left: totalOffsetLeft,
-            };
-          }
-        } else if (!uuidInUrl && window.location.href.includes("tab")) {
-          const urlParams = new URLSearchParams(window.location.search);
-          const tabValue = urlParams.get("tab") || "default";
-          const currentPageIndicators =
-            indicators[pathToSaveInStorage][tabValue] || [];
-          const ind = currentPageIndicators.find(
-            (i: any) => i.id === indicator.dataset.indicatorId
-          );
-          if (ind) {
-            ind.offset = {
-              top: totalOffsetTop,
-              left: totalOffsetLeft,
-            };
-          }
-        } else {
-          if (uuidInUrl && !window.location.href.includes("tab")) {
-            const lastElementBeforeUUID = window.location.pathname
-              .split("/")
-              .slice(-2)[0];
-            const currentPageIndicators =
-              indicators[lastElementBeforeUUID] || [];
-            const ind = currentPageIndicators.find(
-              (i: any) => i.id === indicator.dataset.indicatorId
-            );
-            if (ind) {
-              ind.offset = {
-                top: totalOffsetTop,
-                left: totalOffsetLeft,
-              };
-            }
-          } else {
-            const lastElementBeforeUUID =
-              window.location.pathname.split("/").slice(-2)[0] + "_tab";
-            const urlParams = new URLSearchParams(window.location.search);
-            const tabValue = urlParams.get("tab") || "default";
-            const currentPageIndicators =
-              indicators[lastElementBeforeUUID][tabValue] || [];
-            const ind = currentPageIndicators.find(
-              (i: any) => i.id === indicator.dataset.indicatorId
-            );
-            if (ind) {
-              ind.offset = {
-                top: totalOffsetTop,
-                left: totalOffsetLeft,
-              };
-            }
-          }
+        const pathToUpdate = generateStoragePath(window.location.href);
+        const currentPageIndicators = indicators[pathToUpdate] || [];
+        const ind = currentPageIndicators.find(
+          (i: IndicatorData) => i.id === indicator.dataset.indicatorId
+        );
+        if (ind) {
+          ind.offset = {
+            top: totalOffsetTop,
+            left: totalOffsetLeft,
+          };
         }
         chrome.storage.local.set({ indicators });
       });
@@ -1004,22 +910,14 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
       const currentPosition = indicator.style.position;
       indicator.style.position =
         currentPosition === "absolute" ? "relative" : "absolute";
+
       // update the position in the storage
       // get all indicators from storage
       chrome.storage.local.get(["indicators"], (result) => {
         const indicators = result.indicators || {};
-        // get the current page indicators
-        const uuid = checkIfUrlHasUuid(window.location.href);
-        let currentPageIndicators = [];
-        if (!uuid && !window.location.href.includes("tab")) {
-          currentPageIndicators = indicators[pathToSaveInStorage] || [];
-        } else if (!uuidInUrl && window.location.href.includes("tab")) {
-          const urlParams = new URLSearchParams(window.location.search);
-          const tabValue = urlParams.get("tab") || "default";
-          currentPageIndicators = indicators[pathToSaveInStorage][tabValue];
-        } else {
-          currentPageIndicators = indicators[window.location.href] || [];
-        }
+        const pathToUpdate = generateStoragePath(window.location.href);
+        const currentPageIndicators = indicators[pathToUpdate] || [];
+
         // find the indicator we want to update
         const indicatorToUpdate = currentPageIndicators.find(
           (ind: IndicatorData) => ind.id === currentData.id
@@ -1055,7 +953,7 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
 
     case "STOP_INSPECT_MODE":
-      disableInspectMode();
+      enableInspectMode();
       break;
 
     case "SHOW_API_MODAL":
@@ -1073,22 +971,11 @@ chrome.runtime.onMessage.addListener((message) => {
       // lets check if the url has a uuid in it
 
       chrome.storage.local.get(["indicators"], (result) => {
-        const indicators = result.indicators || {};
-        // NEED TO FIX THIS FUNCTION TO DELETE ALL INDICATORS FOR GENERAL URL => NOT ONLY IN
-        //SPECIFIC URL SINCE THE LOAD IS DYNAMIC ALSO FOR THE GENERAL URL
-
-        if (!uuidInUrl && !window.location.href.includes("tab")) {
-          delete indicators[pathToSaveInStorage];
-          chrome.storage.local.set({ indicators });
-        } else if (!uuidInUrl && window.location.href.includes("tab")) {
-          const urlParams = new URLSearchParams(window.location.search);
-          const tabValue = urlParams.get("tab") || "default";
-          delete indicators[pathToSaveInStorage][tabValue];
-          chrome.storage.local.set({ indicators });
-        } else {
-          delete indicators[window.location.href];
-          chrome.storage.local.set({ indicators });
-        }
+        let indicators = result.indicators || {};
+        console.log({ indicators }, "our indicators before deleting");
+        // lets delete all the indicators in storage
+        indicators = {};
+        chrome.storage.local.set({ indicators });
       });
       break;
 
@@ -1122,6 +1009,14 @@ chrome.runtime.onMessage.addListener((message) => {
     case "UPDATE_INDICATORS":
       updateRelevantIndicators(message.data);
       break;
+
+    case "NEW_NETWORK_CALL":
+      updateRelevantIndicators(message.data);
+      break;
+
+    case "ALL_NETWORK_CALLS":
+      updateIndicatorsOnceFinishedLoading(message.data);
+      break;
   }
 
   return true;
@@ -1129,7 +1024,25 @@ chrome.runtime.onMessage.addListener((message) => {
 
 const updatableobject: { [key: string]: number } = {};
 
+function updateIndicatorsOnceFinishedLoading(data: any) {
+  console.log({ data }, "this is the data we got from the background");
+  const { networkCalls } = data;
+  console.log(networkCalls, "this is the data we got from the background");
+
+  let currentPageIndicators: any[] = [];
+  chrome.storage.local.get(["indicators"], (result) => {
+    const path = generateStoragePath(window.location.href);
+    currentPageIndicators = result.indicators[path] || [];
+  });
+  console.log({ currentPageIndicators }, "this is the current page indicators");
+  // find the indicators that exist in our current page indicators and in our network calls
+  networkCalls.forEach((call: NetworkCall) => {
+    updateRelevantIndicators(call);
+  });
+}
+
 function updateRelevantIndicators(newCall: NetworkCall) {
+  console.log("Updating indicators with new call:", newCall);
   const currentPageIndicators = pageIndicators || [];
   console.log("indicators in update function", currentPageIndicators);
   console.log({ currentPageIndicators }, "Current page indicators");
@@ -1144,9 +1057,20 @@ function updateRelevantIndicators(newCall: NetworkCall) {
         indicator: indicatorUrl.pathname,
         newCall: newCallUrl.pathname,
       });
+
+      if (newCall.url.includes("studies?")) {
+        console.log(
+          "this is the new call and the indicator",
+          newCall,
+          indicator
+        );
+      }
+
       if (
-        indicator?.method === newCall.method &&
-        indicatorUrl.pathname === newCallUrl.pathname
+        (indicator?.method === newCall.method &&
+          indicatorUrl.pathname === newCallUrl.pathname) ||
+        (indicator?.lastCall?.url === newCall.url &&
+          indicator?.method === newCall.method)
         //   ||
         // urlsMatchPattern(
         //   location.origin + indicatorUrl.pathname,
@@ -1227,14 +1151,6 @@ function updateRelevantIndicators(newCall: NetworkCall) {
 
   console.log("Has updates:", hasUpdates);
   console.log("Indicators after update:", currentPageIndicators);
-
-  // if (hasUpdates) {
-  //   indicators[window.location.href] = currentPageIndicators;
-  //   chrome.storage.local.set({ indicators }, () => {
-  //     console.log("Storage updated successfully");
-  //   });
-  // }
-  // });
 }
 
 // פונקציה חדשה לעדכון תוכן הטולטיפ

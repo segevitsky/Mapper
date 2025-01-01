@@ -34,6 +34,9 @@ export function matchUrlPattern(newUrl: string, patternUrl: string): boolean {
   return normalizedNew === normalizedPattern;
 }
 
+export const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function urlsMatchPattern(
   savedUrl: string,
   currentUrl: string

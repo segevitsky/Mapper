@@ -8,19 +8,21 @@ type IndicatorsListProps = {
 
 const IndicatorsList = ({ currentUrl }: IndicatorsListProps) => {
   const [indiesList, setIndiesList] = useState([]);
+  console.log({ indiesList }, "our indiesList");
 
   useEffect(() => {
     chrome.storage.local.get(["indicators"], (result) => {
       setIndiesList(result.indicators);
     });
   }, []);
+
   const entries: any = Object.entries(indiesList)
     .filter((el) => {
       return el[0].includes(currentUrl.split("/")[2]);
     })
     .filter((el) => (el[1] as any[])?.length > 0);
 
-  console.log({ entries }, 'these are our indicators entries');
+  console.log({ entries }, "these are our indicators entries");
 
   return (
     <div>
