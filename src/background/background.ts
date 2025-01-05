@@ -2,6 +2,10 @@
 console.log("Background script loaded");
 
 const pendingRequests = new Map();
+const envsArray: string[] = [
+  "https://pre-prod-sleep.itamar-online.com",
+  "https://staging-sleep.itamar-online.com",
+];
 
 //JIRA START
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -93,6 +97,7 @@ async function createJiraTicket(data: any) {
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "URL_CHANGED") {
+    console.log("URL changed to:", message.url);
     // שליחת הודעה לפאנל (אם הוא פתוח)
     chrome.runtime.sendMessage({
       type: "REFRESH_PANEL",

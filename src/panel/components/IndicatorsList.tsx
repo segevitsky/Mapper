@@ -6,35 +6,61 @@ type IndicatorsListProps = {
   currentUrl: string;
 };
 
-const IndicatorsList = ({ currentUrl }: IndicatorsListProps) => {
-  const [indiesList, setIndiesList] = useState([]);
-  console.log({ indiesList }, "our indiesList");
+export const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export function generateStoragePath(url: string): string {
+  const urlObj = new URL(url);
+  const search = urlObj.search;
+  const pathname = urlObj.pathname;
+  const params = new URLSearchParams(search);
+  const tabValue = params.get("tab");
+
+  const pathParts = pathname
+    .split("/")
+    .filter(Boolean)
+    .filter((el) => el !== "/")
+    .filter((el) => el !== "")
+    .filter((el) => !uuidRegex.test(el));
+
+  if (tabValue) {
+    pathParts.push(tabValue);
+  }
+
+  return pathParts.join("_");
+}
+
+const IndicatorsList = ({ currentUrl }: IndicatorsListProps) => {
+  const [indiesList, setIndiesList] = useState<Record<string, IndicatorData[]>>(
+    {}
+  ); // כאן נשמור את האינדיקטורים
+  console.log({ indiesList, currentUrl }, "our indiesList");
+  const path = generateStoragePath(currentUrl);
+  console.log({ path }, "our path");
+  console.log(indiesList?.path ?? [], "our path in indiesList");
+
+  let currentIndies = {};
   useEffect(() => {
     chrome.storage.local.get(["indicators"], (result) => {
+      currentIndies = result.indicators;
       setIndiesList(result.indicators);
     });
-  }, []);
-
-  const entries: any = Object.entries(indiesList)
-    .filter((el) => {
-      return el[0].includes(currentUrl.split("/")[2]);
-    })
-    .filter((el) => (el[1] as any[])?.length > 0);
-
-  console.log({ entries }, "these are our indicators entries");
+  }, [
+    Object.keys(indiesList).length,
+    currentIndies,
+    Object.keys(currentIndies).length,
+  ]);
 
   return (
     <div>
       <p className={panelHeadline}> Indicators List </p>
-      <br />
-      <ul className="max-h-[60vh] overflow-y-scroll">
-        {entries?.length > 0 &&
-          entries?.map((el: any) => (
+      {Object.keys(indiesList).length > 0 &&
+        Object.keys(indiesList).map((el: any) => {
+          return (
             <div key={el}>
-              <p> URL: {el[0]} </p>
+              <p> URL: {el.includes("_") ? el.replaceAll("_", " => ") : el} </p>
               <div className="">
-                {el[1].map(
+                {indiesList[el]?.map(
                   (
                     indicator: IndicatorData // גם כאן
                   ) => (
@@ -47,8 +73,8 @@ const IndicatorsList = ({ currentUrl }: IndicatorsListProps) => {
                 )}
               </div>
             </div>
-          ))}
-      </ul>
+          );
+        })}
     </div>
   );
 };

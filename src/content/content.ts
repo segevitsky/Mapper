@@ -8,7 +8,6 @@ import {
   extractUUIDFromUrl,
   identifyDynamicParams,
   updateUrlWithNewUUID,
-  checkIfUrlHasUuid,
 } from "../utils/urlUrils";
 
 // content.ts
@@ -19,7 +18,7 @@ let highlighter: HTMLElement | null = null;
 let modalContainer: HTMLElement;
 let innerModalContainer: HTMLElement;
 let pageIndicators: any[] = [];
-let networkCalls: NetworkCall[] = [];
+let latestNetworkCalls: NetworkCall[] = [];
 
 // אתחול בטעינת הדף
 createContainers();
@@ -32,11 +31,12 @@ const urlDetector = new URLChangeDetector();
 // נרשם לשינויי URL
 urlDetector.subscribe(() => {
   // מחיקת האינדיקטורים הקיימים
-  document.querySelectorAll(".indicator").forEach((indicator) => {
+  document.querySelectorAll(".indicator")?.forEach((indicator) => {
     indicator.remove();
   });
   // טעינה מחדש
   loadIndicators();
+  updateIndicatorsOnceFinishedLoading(latestNetworkCalls);
 });
 
 window.addEventListener("popstate", () => {
@@ -56,48 +56,6 @@ window.addEventListener("load", () => {
 document.addEventListener("DOMContentLoaded", () => {
   loadIndicators();
 });
-
-// פונקציה חדשה לקבלת המידע העדכני
-// async function getCurrentIndicatorData(
-//   indicatorId: string
-// ): Promise<IndicatorData> {
-//   return new Promise((resolve, reject) => {
-//     chrome.storage.local.get(["indicators"], (result) => {
-//       const indicators = result.indicators || {};
-
-//       const matchingIndicator = Object.entries(indicators)
-//         .flatMap(([savedUrl, savedIndicators]) => {
-//           if (
-//             savedUrl === window.location.href ||
-//             urlsMatchPattern(savedUrl, window.location.href)
-//           ) {
-//             return savedIndicators;
-//           }
-//           return [];
-//         })
-//         .find(
-//           (ind): ind is IndicatorData =>
-//             (ind as IndicatorData).id === indicatorId
-//         );
-
-//       if (!matchingIndicator) {
-//         reject(new Error(`Indicator with id ${indicatorId} not found`));
-//         return;
-//       }
-
-//       if (matchingIndicator.pattern) {
-//         const currentPageUUID = extractUUIDFromUrl(window.location.href);
-//         matchingIndicator.baseUrl = window.location.href;
-//         matchingIndicator.lastCall.url = updateUrlWithNewUUID(
-//           matchingIndicator.lastCall.url,
-//           currentPageUUID
-//         );
-//       }
-
-//       resolve(matchingIndicator);
-//     });
-//   });
-// }
 
 // יצירת מיכל למודל ולאינדיקטורים
 function createContainers() {
@@ -494,7 +452,7 @@ function showModal(
     if (listContainer) {
       listContainer.innerHTML = filteredCallsList || "No matching calls found";
 
-      modalContent.querySelectorAll(".api-call-item").forEach((item) => {
+      modalContent.querySelectorAll(".api-call-item")?.forEach((item) => {
         item.addEventListener("click", () => {
           // כל הלוגיקה של הקליק שכבר יש לנו
           const callId = item.getAttribute("data-call-id");
@@ -520,7 +478,7 @@ function showModal(
   });
 
   // הוספת מאזינים לקליקים על הקריאות
-  modalContent.querySelectorAll(".api-call-item").forEach((item) => {
+  modalContent.querySelectorAll(".api-call-item")?.forEach((item) => {
     item.addEventListener("click", () => {
       const callId = item.getAttribute("data-call-id");
       const selectedCall = data.networkCalls.find((call) => call.id === callId);
@@ -657,10 +615,10 @@ function loadIndicators() {
     const currentPageIndicators = indicators[storagePath] || [];
     pageIndicators = currentPageIndicators.slice();
 
-    currentPageIndicators.forEach(createIndicatorFromData);
+    currentPageIndicators?.forEach(createIndicatorFromData);
 
     // Make sure we have all indicators
-    currentPageIndicators.forEach((indicator: any) => {
+    currentPageIndicators?.forEach((indicator: any) => {
       const indicatorElement = document.getElementById(`indi-${indicator.id}`);
       if (!indicatorElement) {
         console.log({ indicator }, "Indicator not found - retrying load");
@@ -670,7 +628,7 @@ function loadIndicators() {
       }
     });
 
-    const currentPageIndicatorsUuuidArray = currentPageIndicators.map(
+    const currentPageIndicatorsUuuidArray = currentPageIndicators?.map(
       (indi: IndicatorData) => indi.id
     );
     document.querySelectorAll(".indicator").forEach((indicator: any) => {
@@ -964,7 +922,7 @@ chrome.runtime.onMessage.addListener((message) => {
     case "CLEAR_INDICATORS":
       // This here depends on my current url! so I need to get the current url and delete the indicators according to it
       // according to wheather it is a full path or a path like DASHBOAR, ACCESS, etc...
-      document.querySelectorAll(".indicator").forEach((indicator) => {
+      document.querySelectorAll(".indicator")?.forEach((indicator) => {
         indicator.remove();
       });
 
@@ -993,7 +951,7 @@ chrome.runtime.onMessage.addListener((message) => {
 
     case "TOGGLE_INDICATORS": {
       const indicators = document.querySelectorAll(".indicator");
-      indicators.forEach((indicator) => {
+      indicators?.forEach((indicator) => {
         const currentDisplay = window.getComputedStyle(indicator).display;
         (indicator as HTMLElement).style.display =
           currentDisplay === "none" ? "inline-block" : "none";
@@ -1016,6 +974,7 @@ chrome.runtime.onMessage.addListener((message) => {
 
     case "ALL_NETWORK_CALLS":
       updateIndicatorsOnceFinishedLoading(message.data);
+      latestNetworkCalls = message.data.networkCalls;
       break;
   }
 
@@ -1036,7 +995,7 @@ function updateIndicatorsOnceFinishedLoading(data: any) {
   });
   console.log({ currentPageIndicators }, "this is the current page indicators");
   // find the indicators that exist in our current page indicators and in our network calls
-  networkCalls.forEach((call: NetworkCall) => {
+  networkCalls?.forEach((call: NetworkCall) => {
     updateRelevantIndicators(call);
   });
 }
@@ -1048,7 +1007,7 @@ function updateRelevantIndicators(newCall: NetworkCall) {
   console.log({ currentPageIndicators }, "Current page indicators");
 
   let hasUpdates = false;
-  currentPageIndicators.forEach((indicator: IndicatorData) => {
+  currentPageIndicators?.forEach((indicator: IndicatorData) => {
     try {
       const indicatorUrl = new URL(indicator?.lastCall?.url);
       const newCallUrl = new URL(newCall.url);
@@ -1070,7 +1029,9 @@ function updateRelevantIndicators(newCall: NetworkCall) {
         (indicator?.method === newCall.method &&
           indicatorUrl.pathname === newCallUrl.pathname) ||
         (indicator?.lastCall?.url === newCall.url &&
-          indicator?.method === newCall.method)
+          indicator?.method === newCall.method) ||
+        generateStoragePath(indicator?.lastCall?.url) ===
+          generateStoragePath(newCall.url)
         //   ||
         // urlsMatchPattern(
         //   location.origin + indicatorUrl.pathname,
