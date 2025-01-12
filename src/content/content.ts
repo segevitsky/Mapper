@@ -9,6 +9,7 @@ import {
   identifyDynamicParams,
   updateUrlWithNewUUID,
 } from "../utils/urlUrils";
+// import { authenticatedLoadIndicators } from "./loginManager";
 
 // content.ts
 let isInspectMode = false;
@@ -24,6 +25,7 @@ let latestNetworkCalls: NetworkCall[] = [];
 createContainers();
 injectStyles();
 loadIndicators();
+// authenticatedLoadIndicators(loadIndicators);
 
 // יצירת instance יחיד
 const urlDetector = new URLChangeDetector();
@@ -41,20 +43,24 @@ urlDetector.subscribe(() => {
 
 window.addEventListener("popstate", () => {
   loadIndicators();
+  // authenticatedLoadIndicators(loadIndicators);
 });
 
 // ונוסיף גם האזנה לשינויי hash אם יש כאלה
 window.addEventListener("hashchange", () => {
   loadIndicators();
+  // authenticatedLoadIndicators(loadIndicators);
 });
 
 window.addEventListener("load", () => {
   loadIndicators();
+  // authenticatedLoadIndicators(loadIndicators);
 });
 
 // בדיקה נוספת אחרי שהדום מוכן
 document.addEventListener("DOMContentLoaded", () => {
   loadIndicators();
+  // authenticatedLoadIndicators(loadIndicators);
 });
 
 // יצירת מיכל למודל ולאינדיקטורים
@@ -813,7 +819,7 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
           ${Math.floor(currentData.lastCall.timing?.duration)}ms
         </span>
       </div>
-      <div style="color: #666; word-break: break-all; margin: 8px 0;">
+      <div class='indi-url' style="color: #666; word-break: break-all; margin: 8px 0;">
         ${currentData?.lastCall.url}
       </div>
       <div style="color: ${
@@ -848,6 +854,19 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
         tooltip.remove();
         removeIndicatorFromStorage(currentData.id);
       });
+
+    tooltip.querySelector(".indi-url")?.addEventListener("click", () => {
+      // send message to the panel to print the response of all network calls perhaps find this one using the url
+      chrome.runtime.sendMessage({
+        type: "SHOW_REQUEST_REPONSE",
+        data: {
+          url: currentData.lastCall.url,
+          timiing: currentData.lastCall.timing.duration,
+        },
+      });
+      tooltip.remove();
+      removeIndicatorFromStorage(currentData.id);
+    });
 
     // הוספת האזנה לכפתור החדש
     tooltip
@@ -925,7 +944,6 @@ chrome.runtime.onMessage.addListener((message) => {
       document.querySelectorAll(".indicator")?.forEach((indicator) => {
         indicator.remove();
       });
-
       // lets check if the url has a uuid in it
 
       chrome.storage.local.get(["indicators"], (result) => {
@@ -935,6 +953,10 @@ chrome.runtime.onMessage.addListener((message) => {
         indicators = {};
         chrome.storage.local.set({ indicators });
       });
+      break;
+
+    case "NETWORK_RESPONSE":
+      console.log("network response", message.data);
       break;
 
     case "CLEAR_CURRENT_URL_INDICATORS":

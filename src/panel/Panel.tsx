@@ -17,12 +17,41 @@ import { flexContStart } from "./styles";
 export const Panel: React.FC = () => {
   const { networkCalls, handleSearch, searchTerm } = useNetworkCalls();
   const [selectedElement, setSelectedElement] = useState<any>(null);
+  const [networkResponses, setNetworkResponses] = useState<any[]>([]);
 
   const [showIndicators, setShowIndicators] = useState(true);
   const [currentUrl, setCurrentUrl] = useState(window.location.href);
   const [selectedNetworkCall, setSelectedNetworkCall] = useState<
     NetworkCall | undefined
   >();
+
+  const [selectedNetworkResponse, setSelectedNetworkResponse] = useState<any>();
+
+  console.log({ networkResponses }, "our network responses");
+
+  useEffect(() => {
+    const handleSelectedNetworkResponse = (message: {
+      type: string;
+      data: { url: string; timing: string };
+    }) => {
+      if (message.type === "SHOW_REQUEST_REPONSE") {
+        console.log("Selected network response:", message.data);
+        const selectedResponse = networkResponses.find(
+          (response) => response.url === message.data.url
+        );
+        const { data } = message;
+        console.log({ selectedResponse }, "this is the selected response");
+        alert(JSON.stringify(message.data));
+        setSelectedNetworkResponse(
+          selectedResponse ?? { networkResponses, data }
+        );
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleSelectedNetworkResponse);
+    return () =>
+      chrome.runtime.onMessage.removeListener(handleSelectedNetworkResponse);
+  }, []);
 
   useEffect(() => {
     const handleElementSelected = (message: any) => {
@@ -52,6 +81,31 @@ export const Panel: React.FC = () => {
     chrome.runtime.onMessage.addListener(handleElementSelected);
     return () => chrome.runtime.onMessage.removeListener(handleElementSelected);
   }, []);
+
+  useEffect(() => {
+    const handleArrivingNetworkResponse = (message: {
+      type: string;
+      data: { body: { data: string } };
+      url: string;
+    }) => {
+      if (message.type === "NETWORK_RESPONSE") {
+        console.log({ message }, "A NEW NETWORK RESPONSE IN THE PANEL!!");
+        // alert(JSON.stringify(message.data.body.data));
+        setNetworkResponses((prev) => [
+          ...prev,
+          {
+            data: JSON.stringify(message.data.body) ?? {},
+            url: JSON.stringify(message.url),
+          },
+        ]);
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleArrivingNetworkResponse);
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleArrivingNetworkResponse);
+    };
+  }, [networkResponses]);
 
   useEffect(() => {
     const handleMessage = (message: any) => {
@@ -182,6 +236,7 @@ export const Panel: React.FC = () => {
                 onClick={toggleIndiators}
               />
             )}
+            <div> {JSON.stringify(networkResponses)} </div>
             {showIndicators ? (
               <span className="ml-1 text-1xl">Hide Indicators</span>
             ) : (

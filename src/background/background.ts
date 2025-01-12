@@ -268,9 +268,21 @@ chrome.debugger.onEvent.addListener(async (source, method, params: any) => {
         { requestId }
       );
 
+      // lets also send the url of the request
+
       console.log("Response body:", responseBody);
+      chrome.runtime.sendMessage({
+        type: "NETWORK_RESPONSE",
+        data: responseBody,
+        url: params.response.url,
+      });
     } catch (error) {
       console.error("Error getting response body:", error);
+      chrome.runtime.sendMessage({
+        type: "NETWORK_RESPONSE",
+        data: { body: "Error getting response body" },
+        url: params.response.url,
+      });
     }
   }
 });
