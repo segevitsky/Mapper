@@ -20,14 +20,12 @@ export const NetworkList: React.FC<{
   calls: NetworkCall[];
   onSelectCall: any;
 }> = ({ calls, onSelectCall }) => {
-  console.log({ calls });
   const filteredCalls = calls
     .filter((call) => call.method !== "OPTIONS")
     .filter((call) => call.error !== BLOCKED_BY_CLIENT);
-  console.log({ filteredCalls });
   return (
     <div className="flex flex-col-reverse gap-4">
-      {calls?.map((call) => (
+      {filteredCalls?.map((call) => (
         <div
           key={call.id}
           onClick={() => onSelectCall(call)}
@@ -77,18 +75,6 @@ export const NetworkList: React.FC<{
           {call.error && (
             <div className="mt-2 text-sm text-red-600">Error: {call.error}</div>
           )}
-
-          {/* Optional expanded view with headers */}
-          {/* {isExpanded && call.responseHeaders && (
-            <div className="mt-2 text-sm">
-              <div className="font-medium mb-1">Headers:</div>
-              {call.responseHeaders.map((header, idx) => (
-                <div key={idx} className="text-gray-600">
-                  {header.name}: {header.value}
-                </div>
-              ))}
-            </div>
-          )} */}
         </div>
       ))}
     </div>

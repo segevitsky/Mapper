@@ -1,6 +1,10 @@
 import { JiraTicketData } from "../services/jiraService";
 import { IndicatorData, NetworkCall } from "../types";
-import { waitForElement, getBorderByTiming } from "../utils/general";
+import {
+  waitForElement,
+  getBorderByTiming,
+  removeDuplicatedIndicatorElements,
+} from "../utils/general";
 import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
 import { URLChangeDetector } from "../utils/urlChangeDetector";
 import { generateStoragePath } from "../utils/storage";
@@ -39,27 +43,34 @@ urlDetector.subscribe(() => {
   // טעינה מחדש
   loadIndicators();
   updateIndicatorsOnceFinishedLoading(latestNetworkCalls);
+  removeDuplicatedIndicatorElements();
 });
 
 window.addEventListener("popstate", () => {
   loadIndicators();
+  removeDuplicatedIndicatorElements();
   // authenticatedLoadIndicators(loadIndicators);
 });
 
 // ונוסיף גם האזנה לשינויי hash אם יש כאלה
 window.addEventListener("hashchange", () => {
   loadIndicators();
+  removeDuplicatedIndicatorElements();
   // authenticatedLoadIndicators(loadIndicators);
 });
 
 window.addEventListener("load", () => {
   loadIndicators();
+  // remove all indicators except the first index
+  removeDuplicatedIndicatorElements();
   // authenticatedLoadIndicators(loadIndicators);
 });
 
 // בדיקה נוספת אחרי שהדום מוכן
 document.addEventListener("DOMContentLoaded", () => {
   loadIndicators();
+  removeDuplicatedIndicatorElements();
+  console.log({ pageIndicators }, "DOMContentLoaded page indicators");
   // authenticatedLoadIndicators(loadIndicators);
 });
 
@@ -681,12 +692,17 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
     });
   }
 
+  console.log("indicators path", indicatorData.elementInfo.path);
   const elementByPath = await waitForElement(indicatorData.elementInfo.path);
-  const elementBefore = elementByPath.previousElementSibling;
+
+  console.log({ indicatorData, elementByPath }, "element by path");
+  const elementBefore = elementByPath?.previousElementSibling;
   let originalElementAndElementBeforeAreInline = false;
 
   if (elementBefore) {
     originalElementAndElementBeforeAreInline = true;
+  } else {
+    originalElementAndElementBeforeAreInline = false;
   }
 
   const indicator = document.createElement("div");
@@ -726,7 +742,7 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
 
   addIndicatorEvents(indicator, indicatorData);
   // elementByPath.after(indicator);
-  elementByPath.insertAdjacentElement("beforebegin", indicator);
+  elementByPath?.insertAdjacentElement("beforebegin", indicator);
 }
 
 function addIndicatorEvents(indicator: HTMLElement, data: any) {
@@ -929,6 +945,10 @@ chrome.runtime.onMessage.addListener((message) => {
       enableInspectMode();
       break;
 
+    case "NETWORK_IDLE":
+      console.log("network tab idle", message);
+      break;
+
     case "STOP_INSPECT_MODE":
       enableInspectMode();
       break;
@@ -981,6 +1001,27 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
     }
 
+    case "DELETE_INDICATOR": {
+      // lets remove the indicator from storage
+      const indicatorId = message.data;
+      const path = generateStoragePath(window.location.href);
+      chrome.storage.local.get(["indicators"], (result) => {
+        const indicators = result.indicators || {};
+        const currentPageIndicators = indicators[path] || [];
+        const updatedIndicators = currentPageIndicators.filter(
+          (ind: IndicatorData) => ind.id !== indicatorId
+        );
+        indicators[path] = updatedIndicators;
+        chrome.storage.local.set({ indicators });
+      });
+      // lets also remove the indicator from the dom
+      const indicator = document.getElementById(`indi-${indicatorId}`);
+      if (indicator) {
+        indicator.remove();
+      }
+      break;
+    }
+
     case "RELOAD_INDICATORS": {
       loadIndicators();
       break;
@@ -995,8 +1036,9 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
 
     case "ALL_NETWORK_CALLS":
-      updateIndicatorsOnceFinishedLoading(message.data);
-      latestNetworkCalls = message.data.networkCalls;
+      console.log("for now");
+      // updateIndicatorsOnceFinishedLoading(message.data);
+      // latestNetworkCalls = message.data.networkCalls;
       break;
   }
 

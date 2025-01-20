@@ -187,6 +187,13 @@ chrome.webRequest.onCompleted.addListener(
         });
 
         pendingRequests.delete(details.requestId);
+
+        if (pendingRequests.size === 0) {
+          chrome.runtime.sendMessage({
+            type: "NETWORK_IDLE",
+            timestamp: Date.now(),
+          });
+        }
       }
     }
   },

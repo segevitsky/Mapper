@@ -3,16 +3,13 @@ import { NetworkList } from "./components/NetworkList";
 import IndicatorsList from "./components/IndicatorsList";
 import { Toolbar } from "./components/Toolbar";
 import { useNetworkCalls } from "./hooks/useNetworkCalls";
-// import { useMappings } from "./hooks/useMappings";
-// import ApiMappingModal from "./components/ApiMappingModal";
 import "../index.css";
 import { NetworkCall } from "../types";
-// import { StatusIndicator } from "./components/StatusIndicator";
-import ApiDetailsModal from "./components/ApiDetailsModal";
 import { GrClear } from "react-icons/gr";
 import { LuToggleLeft, LuToggleRight } from "react-icons/lu";
 import { ImSpinner } from "react-icons/im";
 import { flexContStart } from "./styles";
+import ApiResponsePanel from "./components/ResponseModal";
 
 export const Panel: React.FC = () => {
   const { networkCalls, handleSearch, searchTerm } = useNetworkCalls();
@@ -35,23 +32,50 @@ export const Panel: React.FC = () => {
       data: { url: string; timing: string };
     }) => {
       if (message.type === "SHOW_REQUEST_REPONSE") {
-        console.log("Selected network response:", message.data);
-        const selectedResponse = networkResponses.find(
-          (response) => response.url === message.data.url
-        );
-        const { data } = message;
-        console.log({ selectedResponse }, "this is the selected response");
-        alert(JSON.stringify(message.data));
-        setSelectedNetworkResponse(
-          selectedResponse ?? { networkResponses, data }
-        );
+        // שימוש בפונקציית עדכון שתמיד תקבל את הערך העדכני
+        setSelectedNetworkResponse(() => {
+          const selectedResponse = networkResponses.find(
+            (response) => response.url === message.data.url
+          );
+          return selectedResponse ?? { networkResponses, data: message.data };
+        });
       }
     };
 
     chrome.runtime.onMessage.addListener(handleSelectedNetworkResponse);
     return () =>
       chrome.runtime.onMessage.removeListener(handleSelectedNetworkResponse);
-  }, []);
+  }, [networkResponses]); // אין צורך בתלויות
+
+  useEffect(() => {
+    const handleArrivingNetworkResponse = (message: {
+      type: string;
+      data: any;
+      url: string;
+    }) => {
+      if (
+        message.type === "NETWORK_RESPONSE" &&
+        message.url.includes(
+          "https://pre-prod-sleep.itamar-online.com/backend/"
+        ) &&
+        !message.data.body.includes("Error")
+      ) {
+        console.log({ message }, "A NEW NETWORK RESPONSE IN THE PANEL!!");
+        // alert(JSON.stringify(message.data.body.data));
+        // setNetworkResponses([message]);
+        const networkResponsesCopy = [...networkResponses];
+        networkResponsesCopy.push(message);
+        setNetworkResponses(networkResponsesCopy);
+        // alert(JSON.stringify(networkResponses));
+        // setNetworkResponses((prev) => [...prev, message]);
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleArrivingNetworkResponse);
+    return () => {
+      chrome.runtime.onMessage.removeListener(handleArrivingNetworkResponse);
+    };
+  }, [networkResponses]);
 
   useEffect(() => {
     const handleElementSelected = (message: any) => {
@@ -81,31 +105,6 @@ export const Panel: React.FC = () => {
     chrome.runtime.onMessage.addListener(handleElementSelected);
     return () => chrome.runtime.onMessage.removeListener(handleElementSelected);
   }, []);
-
-  useEffect(() => {
-    const handleArrivingNetworkResponse = (message: {
-      type: string;
-      data: { body: { data: string } };
-      url: string;
-    }) => {
-      if (message.type === "NETWORK_RESPONSE") {
-        console.log({ message }, "A NEW NETWORK RESPONSE IN THE PANEL!!");
-        // alert(JSON.stringify(message.data.body.data));
-        setNetworkResponses((prev) => [
-          ...prev,
-          {
-            data: JSON.stringify(message.data.body) ?? {},
-            url: JSON.stringify(message.url),
-          },
-        ]);
-      }
-    };
-
-    chrome.runtime.onMessage.addListener(handleArrivingNetworkResponse);
-    return () => {
-      chrome.runtime.onMessage.removeListener(handleArrivingNetworkResponse);
-    };
-  }, [networkResponses]);
 
   useEffect(() => {
     const handleMessage = (message: any) => {
@@ -224,6 +223,7 @@ export const Panel: React.FC = () => {
           <h2 className="color-white text-lg font-thin mb-4 text-white">
             Mappings
           </h2>
+          <div> {JSON.stringify(selectedNetworkResponse)} </div>
           <div className="flex justify-start align-middle">
             {!showIndicators ? (
               <LuToggleLeft
@@ -236,7 +236,6 @@ export const Panel: React.FC = () => {
                 onClick={toggleIndiators}
               />
             )}
-            <div> {JSON.stringify(networkResponses)} </div>
             {showIndicators ? (
               <span className="ml-1 text-1xl">Hide Indicators</span>
             ) : (
@@ -252,13 +251,6 @@ export const Panel: React.FC = () => {
             />
             <span className="ml-1 text-1xl">Clear Indicators</span>
           </div>
-          {/* <div
-            onClick={clearCurrentUrlIndi}
-            style={{ fontWeight: "bold", fontSize: "1rem" }}
-          >
-            {" "}
-            clear Current Url Indi{" "}
-          </div> */}
           <br />
           <div className={flexContStart}>
             <ImSpinner
@@ -271,9 +263,10 @@ export const Panel: React.FC = () => {
           <IndicatorsList currentUrl={currentUrl} />
         </div>
       </div>
-      <ApiDetailsModal
-        call={selectedNetworkCall}
-        onClose={() => setSelectedNetworkCall(undefined)}
+      <ApiResponsePanel
+        isVisible={!!selectedNetworkResponse}
+        response={selectedNetworkResponse}
+        onClose={() => setSelectedNetworkResponse(undefined)}
       />
     </div>
   );

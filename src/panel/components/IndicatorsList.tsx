@@ -51,6 +51,18 @@ const IndicatorsList = ({ currentUrl }: IndicatorsListProps) => {
     Object.keys(currentIndies).length,
   ]);
 
+  const deleteIndicatorHandler = (indicatorId: string) => {
+    // lets send a message to our content script to delete the indicator
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id !== undefined) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          type: "DELETE_INDICATOR",
+          data: indicatorId,
+        });
+      }
+    });
+  };
+
   return (
     <div>
       <p className={panelHeadline}> Indicators List </p>
@@ -65,9 +77,16 @@ const IndicatorsList = ({ currentUrl }: IndicatorsListProps) => {
                     indicator: IndicatorData // גם כאן
                   ) => (
                     <div className="p-4 text-white shadow-md w-fit mb-4">
-                      <p> saved on page: {indicator?.baseUrl ?? "-"}</p>
                       <p> method: {indicator?.method ?? "-"}</p>
                       <p> status: {indicator?.lastCall?.status ?? "-"}</p>
+                      <p> baseUrl: {indicator?.lastCall?.url ?? "-"}</p>
+                      <div
+                        className="text-right text-white pt-2 pb-2 cursor-pointer &hover:text-red-500"
+                        onClick={() => deleteIndicatorHandler(indicator.id)}
+                      >
+                        {" "}
+                        Delete Indi{" "}
+                      </div>
                     </div>
                   )
                 )}

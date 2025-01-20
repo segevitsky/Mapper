@@ -42,3 +42,10 @@ export function debounce<T extends (...args: any[]) => any>(
     timeout = setTimeout(later, wait);
   };
 }
+
+export function removeDuplicatedIndicatorElements() {
+  const arrayOfIndies = document.querySelectorAll(".indicator");
+  arrayOfIndies.forEach((el, index) => {
+    if (index !== 0) el.remove();
+  });
+}
