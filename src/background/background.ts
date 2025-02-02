@@ -251,92 +251,133 @@ const debuggerTabs = new Map<number, boolean>();
 
 // פונקציה לחיבור הדיבאגר
 async function attachDebugger(tabId: number): Promise<void> {
-  if (!debuggerTabs.get(tabId)) {
+  try {
+    // נוודא שהדיבאגר מנותק לפני חיבור מחדש
     try {
-      await chrome.debugger.attach({ tabId }, "1.3");
-      await chrome.debugger.sendCommand({ tabId }, "Network.enable");
+      await chrome.debugger.detach({ tabId });
+    } catch (e) {
+      // התעלם משגיאות אם הדיבאגר כבר מנותק
+    }
 
-      let requestCount = 0;
-      let networkIdleTimeout: NodeJS.Timeout | undefined;
-      const requestData = new Map<string, NetworkRequestInfo>();
+    await chrome.debugger.attach({ tabId }, "1.3");
+    await chrome.debugger.sendCommand({ tabId }, "Network.enable");
 
-      chrome.debugger.onEvent.addListener((source, method, params: any) => {
-        if (source.tabId !== tabId) return;
+    let requestCount = 0;
+    let networkIdleTimeout: NodeJS.Timeout | undefined;
+    const requestData = new Map<string, NetworkRequestInfo>();
 
-        switch (method) {
-          case "Network.requestWillBeSent":
-            requestCount++;
-            if (networkIdleTimeout) {
-              clearTimeout(networkIdleTimeout);
-            }
-            requestData.set(params.requestId, { request: params });
-            break;
+    // הסרת המאזין הקודם אם קיים
+    chrome.debugger.onEvent.removeListener(debuggerEventHandler);
 
-          case "Network.responseReceived": {
-            const requestInfo = requestData.get(params.requestId);
-            if (requestInfo && params.response) {
-              requestInfo.response = params.response;
-              requestInfo.headers = params.response.headers;
+    function debuggerEventHandler(source: any, method: string, params: any) {
+      if (source.tabId !== tabId) return;
 
-              // Get response body
-              try {
-                chrome.debugger.sendCommand(
-                  { tabId },
-                  "Network.getResponseBody",
-                  { requestId: params.requestId },
-                  (responseBody) => {
-                    if (responseBody) {
-                      requestInfo.body = responseBody;
-                    }
-                  }
-                );
-              } catch (error) {
-                console.error("Failed to get response body:", error);
-              }
-            }
-            break;
+      switch (method) {
+        case "Network.navigationRequested":
+          // איפוס הנתונים בעת ניווט חדש
+          requestCount = 0;
+          requestData.clear();
+          if (networkIdleTimeout) {
+            clearTimeout(networkIdleTimeout);
           }
+          break;
 
-          case "Network.loadingFinished":
-            chrome.debugger.sendCommand(
-              { tabId },
-              "Network.getResponseBody",
-              { requestId: params.requestId },
-              (response) => {
-                const requestInfo = requestData.get(params.requestId);
-                if (requestInfo) {
-                  requestInfo.body = response;
-                  requestInfo.timing = params.timestamp;
+        case "Network.requestWillBeSent":
+          requestCount++;
+          if (networkIdleTimeout) {
+            clearTimeout(networkIdleTimeout);
+          }
+          requestData.set(params.requestId, { request: params });
+          break;
+
+        case "Network.responseReceived": {
+          const requestInfo = requestData.get(params.requestId);
+          if (requestInfo && params.response) {
+            requestInfo.response = params.response;
+            requestInfo.headers = params.response.headers;
+
+            // קבלת תוכן התגובה
+            chrome.debugger
+              .sendCommand({ tabId }, "Network.getResponseBody", {
+                requestId: params.requestId,
+              })
+              .then((responseBody) => {
+                if (responseBody) {
+                  requestInfo.body = responseBody;
                 }
-              }
-            );
-            requestCount--;
-            checkIdle();
-            break;
-
-          case "Network.loadingFailed":
-            requestCount--;
-            checkIdle();
-            break;
+              })
+              .catch((error) => {
+                console.error("Failed to get response body:", error);
+              });
+          }
+          break;
         }
-      });
 
-      function checkIdle(): void {
-        if (requestCount === 0) {
-          networkIdleTimeout = setTimeout(() => {
-            chrome.tabs.sendMessage(tabId, {
+        case "Network.loadingFinished":
+          chrome.debugger
+            .sendCommand({ tabId }, "Network.getResponseBody", {
+              requestId: params.requestId,
+            })
+            .then((response) => {
+              const requestInfo = requestData.get(params.requestId);
+              if (requestInfo) {
+                requestInfo.body = response;
+                requestInfo.timing = params.timestamp;
+              }
+            })
+            .catch((error) => {
+              console.error("Failed to get response body:", error);
+            });
+          requestCount--;
+          checkIdle();
+          break;
+
+        case "Network.loadingFailed":
+          requestCount--;
+          checkIdle();
+          break;
+      }
+    }
+
+    function checkIdle(): void {
+      if (requestCount === 0) {
+        if (networkIdleTimeout) {
+          clearTimeout(networkIdleTimeout);
+        }
+        networkIdleTimeout = setTimeout(() => {
+          console.log("Network is idle, sending data...");
+          chrome.tabs
+            .sendMessage(tabId, {
               type: "NETWORK_IDLE",
               requests: Array.from(requestData.values()),
+            })
+            .catch((error) => {
+              console.error("Failed to send NETWORK_IDLE message:", error);
             });
-            requestData.clear();
-          }, 500);
-        }
+          // לא מנקים את הנתונים מיד כדי לאפשר טיפול בבקשות מאוחרות
+          setTimeout(() => requestData.clear(), 1000);
+        }, 500);
       }
-
-      debuggerTabs.set(tabId, true);
-    } catch (err) {
-      console.error("Failed to attach debugger:", err);
     }
+
+    // הוספת המאזין החדש
+    chrome.debugger.onEvent.addListener(debuggerEventHandler);
+
+    // ניקוי בעת ניתוק הדיבאגר
+    chrome.debugger.onDetach.addListener((source) => {
+      if (source.tabId === tabId) {
+        chrome.debugger.onEvent.removeListener(debuggerEventHandler);
+        if (networkIdleTimeout) {
+          clearTimeout(networkIdleTimeout);
+        }
+        requestData.clear();
+      }
+    });
+
+    debuggerTabs.set(tabId, true);
+  } catch (err) {
+    console.error("Failed to attach debugger:", err);
+    debuggerTabs.delete(tabId);
   }
 }
 

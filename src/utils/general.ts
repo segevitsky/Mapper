@@ -49,3 +49,46 @@ export function removeDuplicatedIndicatorElements() {
     if (index !== 0) el.remove();
   });
 }
+
+export function waitForIndicator(
+  indicatorId: string,
+  timeout: number = 5000
+): Promise<Element | null> {
+  return new Promise((resolve) => {
+    const elementId = `indi-${indicatorId}`;
+    const existingElement = document.getElementById(elementId);
+
+    if (existingElement) {
+      resolve(existingElement);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      observer.disconnect();
+      resolve(null);
+    }, timeout);
+
+    const observer = new MutationObserver((mutations) => {
+      // מחפשים בכל המוטציות החדשות
+      for (const mutation of mutations) {
+        // בודקים אם נוסף האלמנט שלנו
+        if (mutation.type === "childList") {
+          const element = document.getElementById(elementId);
+          if (element) {
+            clearTimeout(timeoutId);
+            observer.disconnect();
+            resolve(element);
+            return;
+          }
+        }
+      }
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["id"], // נצפה רק על שינויים ב-ID
+    });
+  });
+}

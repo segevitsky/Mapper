@@ -1,4 +1,5 @@
 import { IndicatorData, NetworkRequest } from "../../types";
+import { waitForIndicator } from "../../utils/general";
 import { generateStoragePath } from "../../utils/storage";
 
 // src/content/services/indicatorMonitor.ts
@@ -12,19 +13,19 @@ export class IndicatorMonitor {
     return this._instance;
   }
 
-  private updateIndicatorContent(
+  private async updateIndicatorContent(
     indicator: IndicatorData,
     newCall: NetworkRequest
   ) {
     const duration =
-      newCall.response.timing.receiveHeadersEnd -
-      newCall.response.timing.sendStart;
+      (newCall?.response?.timing?.receiveHeadersEnd ?? 1000) -
+      (newCall?.response?.timing?.sendStart ?? 1000);
     indicator.lastCall = {
       ...indicator.lastCall,
       status: newCall.response?.status,
       timing: {
-        startTime: newCall.response.timing.sendStart,
-        endTime: newCall.response.timing.sendEnd,
+        startTime: newCall?.response?.timing?.sendStart ?? 0,
+        endTime: newCall?.response?.timing?.sendEnd ?? 0,
         duration,
       },
       timestamp: Date.now(),
@@ -33,7 +34,8 @@ export class IndicatorMonitor {
     };
     indicator = { ...indicator, ...newCall };
 
-    const indicatorElement = document.getElementById(`indi-${indicator.id}`);
+    // const indicatorElement = document.getElementById(`indi-${indicator.id}`);
+    const indicatorElement = await waitForIndicator(indicator.id);
 
     console.log("Found indicator element:", indicatorElement);
     console.log("indicator after update", indicator);
