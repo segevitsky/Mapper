@@ -50,6 +50,7 @@ export interface IndicatorData {
     };
     timestamp: number;
     url: string;
+    updatedInThisRound?: boolean;
   };
   pattern?: DynamicPattern;
   updatedPosition?: string;
@@ -66,4 +67,47 @@ export type MovementObject = {
   right: number;
   top: number;
   bottom: number;
+};
+
+export type NetworkRequest = {
+  body: {
+    base64Encoded: boolean;
+    body: string;
+  };
+  headers: Record<string, string>;
+  request: {
+    documentURL: string;
+    frameId: string;
+    hasUserGesture: boolean;
+    initiator: {
+      type: string;
+      stack?: {
+        callFrames: Array<{
+          functionName: string;
+          scriptId: string;
+          url: string;
+          lineNumber: number;
+          columnNumber: number;
+        }>;
+      };
+    };
+    loaderId: string;
+    method: string;
+    url: string;
+  };
+  response: {
+    alternateProtocolUsage: string;
+    charset: string;
+    connectionId: number;
+    connectionReused: boolean;
+    encodedDataLength: number;
+    status: number;
+    timing: {
+      sendStart: number;
+      sendEnd: number;
+      receiveHeadersEnd: number;
+    };
+    url: string;
+  };
+  timing: number;
 };

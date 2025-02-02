@@ -13,6 +13,7 @@ import {
   identifyDynamicParams,
   updateUrlWithNewUUID,
 } from "../utils/urlUrils";
+import { IndicatorMonitor } from "./services/indicatorMonitor";
 // import { authenticatedLoadIndicators } from "./loginManager";
 
 // content.ts
@@ -23,7 +24,7 @@ let highlighter: HTMLElement | null = null;
 let modalContainer: HTMLElement;
 let innerModalContainer: HTMLElement;
 let pageIndicators: any[] = [];
-let latestNetworkCalls: NetworkCall[] = [];
+// let latestNetworkCalls: NetworkCall[] = [];
 
 // אתחול בטעינת הדף
 createContainers();
@@ -42,7 +43,7 @@ urlDetector.subscribe(() => {
   });
   // טעינה מחדש
   loadIndicators();
-  updateIndicatorsOnceFinishedLoading(latestNetworkCalls);
+  // updateIndicatorsOnceFinishedLoading(latestNetworkCalls);
   removeDuplicatedIndicatorElements();
 });
 
@@ -632,6 +633,8 @@ function loadIndicators() {
     const currentPageIndicators = indicators[storagePath] || [];
     pageIndicators = currentPageIndicators.slice();
 
+    console.log(storagePath, "storage path");
+
     currentPageIndicators?.forEach(createIndicatorFromData);
 
     // Make sure we have all indicators
@@ -945,9 +948,43 @@ chrome.runtime.onMessage.addListener((message) => {
       enableInspectMode();
       break;
 
-    case "NETWORK_IDLE":
+    case "NETWORK_IDLE": {
       console.log("network tab idle", message);
+      const monitor = IndicatorMonitor.getInstance();
+      console.log({ pageIndicators }, "page indicators in network idle place");
+      // debugger;
+      const failedIndicators = monitor.checkIndicatorsUpdate(
+        pageIndicators,
+        message.requests
+      );
+      if (failedIndicators && failedIndicators.length > 0) {
+        // lets display a popup for the user asking him if these network requests failed or never happened
+        const popup = document.createElement("div");
+        popup.style.cssText = `
+          position: fixed;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          background: white;
+          padding: 16px;
+          border-radius: 8px;
+          box-shadow: 0 2px 12px rgba(0,0,0,0.1);
+          z-index: 999999;
+        `;
+        popup.innerHTML = `
+          <h3>Failed Network Calls</h3>
+          <ul>
+            ${failedIndicators
+              .map((ind) => `<li>${ind.lastCall.url}</li>`)
+              .join("")}
+          </ul>
+          <button id="retry-failed-indicators">Retry</button>
+          <button id="remove-failed-indicators">Remove</button>
+        `;
+      }
+
       break;
+    }
 
     case "STOP_INSPECT_MODE":
       enableInspectMode();
@@ -1028,47 +1065,46 @@ chrome.runtime.onMessage.addListener((message) => {
     }
 
     case "UPDATE_INDICATORS":
+      console.log("update indicators", message);
       updateRelevantIndicators(message.data);
       break;
 
     case "NEW_NETWORK_CALL":
+      console.log("new network call", message.data);
       updateRelevantIndicators(message.data);
       break;
 
-    case "ALL_NETWORK_CALLS":
-      console.log("for now");
-      // updateIndicatorsOnceFinishedLoading(message.data);
-      // latestNetworkCalls = message.data.networkCalls;
-      break;
+    // case "ALL_NETWORK_CALLS":
+    //   console.log("for now");
+    //   // updateIndicatorsOnceFinishedLoading(message.data);
+    //   // latestNetworkCalls = message.data.networkCalls;
+    //   break;
   }
 
   return true;
 });
 
-const updatableobject: { [key: string]: number } = {};
+// const updatableobject: { [key: string]: number } = {};
 
-function updateIndicatorsOnceFinishedLoading(data: any) {
-  console.log({ data }, "this is the data we got from the background");
-  const { networkCalls } = data;
-  console.log(networkCalls, "this is the data we got from the background");
+// function updateIndicatorsOnceFinishedLoading(data: any) {
+//   console.log({ data }, "this is the data we got from the background");
+//   const { networkCalls } = data;
+//   console.log(networkCalls, "this is the data we got from the background");
 
-  let currentPageIndicators: any[] = [];
-  chrome.storage.local.get(["indicators"], (result) => {
-    const path = generateStoragePath(window.location.href);
-    currentPageIndicators = result.indicators[path] || [];
-  });
-  console.log({ currentPageIndicators }, "this is the current page indicators");
-  // find the indicators that exist in our current page indicators and in our network calls
-  networkCalls?.forEach((call: NetworkCall) => {
-    updateRelevantIndicators(call);
-  });
-}
+//   let currentPageIndicators: any[] = [];
+//   chrome.storage.local.get(["indicators"], (result) => {
+//     const path = generateStoragePath(window.location.href);
+//     currentPageIndicators = result.indicators[path] || [];
+//   });
+//   console.log({ currentPageIndicators }, "this is the current page indicators");
+//   // find the indicators that exist in our current page indicators and in our network calls
+//   networkCalls?.forEach((call: NetworkCall) => {
+//     updateRelevantIndicators(call);
+//   });
+// }
 
 function updateRelevantIndicators(newCall: NetworkCall) {
-  console.log("Updating indicators with new call:", newCall);
   const currentPageIndicators = pageIndicators || [];
-  console.log("indicators in update function", currentPageIndicators);
-  console.log({ currentPageIndicators }, "Current page indicators");
 
   let hasUpdates = false;
   currentPageIndicators?.forEach((indicator: IndicatorData) => {
@@ -1081,29 +1117,26 @@ function updateRelevantIndicators(newCall: NetworkCall) {
         newCall: newCallUrl.pathname,
       });
 
-      if (newCall.url.includes("studies?")) {
-        console.log(
-          "this is the new call and the indicator",
-          newCall,
-          indicator
-        );
+      if (indicator.lastCall.url.includes("screening")) {
+        console.log("screening indicator", indicator);
+        // debugger;
       }
 
       if (
-        (indicator?.method === newCall.method &&
-          indicatorUrl.pathname === newCallUrl.pathname) ||
-        (indicator?.lastCall?.url === newCall.url &&
-          indicator?.method === newCall.method) ||
+        indicator?.method === newCall.method &&
+        //   indicatorUrl.pathname === newCallUrl.pathname) ||
+        // (indicator?.lastCall?.url === newCall.url &&
+        //   indicator?.method === newCall.method) ||
         generateStoragePath(indicator?.lastCall?.url) ===
           generateStoragePath(newCall.url)
-        //   ||
-        // urlsMatchPattern(
-        //   location.origin + indicatorUrl.pathname,
-        //   location.origin + newCallUrl.pathname
-        // )
       ) {
-        console.log("Found matching indicator:", indicator.id);
-        updatableobject[indicator.id] += 1;
+        console.log("Found matching indicator:", indicator);
+        console.log(
+          "comparison paths",
+          generateStoragePath(indicator?.lastCall?.url),
+          generateStoragePath(newCall.url)
+        );
+        // updatableobject[indicator.id] += 1;
 
         // עדכון המידע
         indicator.lastCall = {
@@ -1112,6 +1145,7 @@ function updateRelevantIndicators(newCall: NetworkCall) {
           timing: newCall.timing,
           timestamp: Date.now(),
           url: newCall.url, // שומרים את ה-URL המלא החדש,
+          updatedInThisRound: true,
         };
         if (indicator.calls.length) {
           indicator.calls.push(newCall);
@@ -1123,7 +1157,7 @@ function updateRelevantIndicators(newCall: NetworkCall) {
           `indi-${indicator.id}`
         );
 
-        console.log("Found indicator element:", !!indicatorElement);
+        console.log("Found indicator element:", indicatorElement);
 
         if (indicatorElement) {
           indicatorElement.classList.add("indicator-updating");
@@ -1140,6 +1174,8 @@ function updateRelevantIndicators(newCall: NetworkCall) {
             lastUpdated: Date.now(),
           };
 
+          console.log("Updated data in update relevant field:", updatedData);
+
           indicatorElement.setAttribute(
             "data-indicator-info",
             JSON.stringify(updatedData)
@@ -1150,6 +1186,11 @@ function updateRelevantIndicators(newCall: NetworkCall) {
           if (openTooltip) {
             updateTooltipContent(openTooltip, updatedData);
           }
+
+          console.log(
+            { currentPageIndicators },
+            "Current page indicators after update"
+          );
 
           // אנימציה
           (indicatorElement as HTMLElement).style.transform = "scale(1.2)";

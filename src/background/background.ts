@@ -1,6 +1,24 @@
 // background.ts
 console.log("Background script loaded");
 
+interface NetworkRequestInfo {
+  request?: any;
+  response?: any;
+  headers?: Record<string, string>;
+  body?: any;
+  timing?: number;
+}
+
+interface DebuggerEventParams {
+  requestId: string;
+  request?: any;
+  response?: {
+    headers: Record<string, string>;
+    [key: string]: any;
+  };
+  timestamp?: number;
+}
+
 const pendingRequests = new Map();
 const envsArray: string[] = [
   "https://pre-prod-sleep.itamar-online.com",
@@ -187,13 +205,6 @@ chrome.webRequest.onCompleted.addListener(
         });
 
         pendingRequests.delete(details.requestId);
-
-        if (pendingRequests.size === 0) {
-          chrome.runtime.sendMessage({
-            type: "NETWORK_IDLE",
-            timestamp: Date.now(),
-          });
-        }
       }
     }
   },
@@ -239,11 +250,89 @@ console.log("Background script loaded");
 const debuggerTabs = new Map<number, boolean>();
 
 // פונקציה לחיבור הדיבאגר
-async function attachDebugger(tabId: number) {
+async function attachDebugger(tabId: number): Promise<void> {
   if (!debuggerTabs.get(tabId)) {
     try {
       await chrome.debugger.attach({ tabId }, "1.3");
       await chrome.debugger.sendCommand({ tabId }, "Network.enable");
+
+      let requestCount = 0;
+      let networkIdleTimeout: NodeJS.Timeout | undefined;
+      const requestData = new Map<string, NetworkRequestInfo>();
+
+      chrome.debugger.onEvent.addListener((source, method, params: any) => {
+        if (source.tabId !== tabId) return;
+
+        switch (method) {
+          case "Network.requestWillBeSent":
+            requestCount++;
+            if (networkIdleTimeout) {
+              clearTimeout(networkIdleTimeout);
+            }
+            requestData.set(params.requestId, { request: params });
+            break;
+
+          case "Network.responseReceived": {
+            const requestInfo = requestData.get(params.requestId);
+            if (requestInfo && params.response) {
+              requestInfo.response = params.response;
+              requestInfo.headers = params.response.headers;
+
+              // Get response body
+              try {
+                chrome.debugger.sendCommand(
+                  { tabId },
+                  "Network.getResponseBody",
+                  { requestId: params.requestId },
+                  (responseBody) => {
+                    if (responseBody) {
+                      requestInfo.body = responseBody;
+                    }
+                  }
+                );
+              } catch (error) {
+                console.error("Failed to get response body:", error);
+              }
+            }
+            break;
+          }
+
+          case "Network.loadingFinished":
+            chrome.debugger.sendCommand(
+              { tabId },
+              "Network.getResponseBody",
+              { requestId: params.requestId },
+              (response) => {
+                const requestInfo = requestData.get(params.requestId);
+                if (requestInfo) {
+                  requestInfo.body = response;
+                  requestInfo.timing = params.timestamp;
+                }
+              }
+            );
+            requestCount--;
+            checkIdle();
+            break;
+
+          case "Network.loadingFailed":
+            requestCount--;
+            checkIdle();
+            break;
+        }
+      });
+
+      function checkIdle(): void {
+        if (requestCount === 0) {
+          networkIdleTimeout = setTimeout(() => {
+            chrome.tabs.sendMessage(tabId, {
+              type: "NETWORK_IDLE",
+              requests: Array.from(requestData.values()),
+            });
+            requestData.clear();
+          }, 500);
+        }
+      }
+
       debuggerTabs.set(tabId, true);
     } catch (err) {
       console.error("Failed to attach debugger:", err);

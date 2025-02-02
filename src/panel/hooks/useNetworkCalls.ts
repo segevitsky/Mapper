@@ -54,18 +54,18 @@ export const useNetworkCalls = () => {
     return () => chrome.runtime.onMessage.removeListener(handleNetworkCall);
   }, []);
 
-  useEffect(() => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0]?.id) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          type: "ALL_NETWORK_CALLS",
-          data: {
-            networkCalls: networkCalls,
-          },
-        });
-      }
-    });
-  }, [networkCalls, networkCallsAll.length]);
+  // useEffect(() => {
+  //   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+  //     if (tabs[0]?.id) {
+  //       chrome.tabs.sendMessage(tabs[0].id, {
+  //         type: "ALL_NETWORK_CALLS",
+  //         data: {
+  //           networkCalls: networkCalls,
+  //         },
+  //       });
+  //     }
+  //   });
+  // }, [networkCalls, networkCallsAll.length]);
 
   const debouncedSearch = useCallback(
     debounce((term: string) => {
