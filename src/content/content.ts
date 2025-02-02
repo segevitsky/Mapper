@@ -598,28 +598,8 @@ chrome.runtime.onMessage.addListener((message) => {
       );
       if (failedIndicators && failedIndicators.length > 0) {
         // lets display a popup for the user asking him if these network requests failed or never happened
-        const popup = document.createElement("div");
-        popup.style.cssText = `
-          position: fixed;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          background: white;
-          padding: 16px;
-          border-radius: 8px;
-          box-shadow: 0 2px 12px rgba(0,0,0,0.1);
-          z-index: 999999;
-        `;
-        popup.innerHTML = `
-          <h3>Failed Network Calls</h3>
-          <ul>
-            ${failedIndicators
-              .map((ind) => `<li>${ind.lastCall.url}</li>`)
-              .join("")}
-          </ul>
-          <button id="retry-failed-indicators">Retry</button>
-          <button id="remove-failed-indicators">Remove</button>
-        `;
+        // lets also send the report to our panel so we can display it there
+        console.log("failed indicators", failedIndicators);
       }
 
       break;
