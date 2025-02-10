@@ -508,6 +508,16 @@ function injectStyles() {
       cursor: pointer;
     }
 
+    .show-response {
+      margin-top: 8px;
+      padding: 4px 8px;
+      background: tomato;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
     .change-indicator-position {
         border: 0;
         padding: 0.25rem;
@@ -516,6 +526,64 @@ function injectStyles() {
         border-radius: 3px;
         margin: 0 0.3rem;
       }
+
+     .response-container {
+   margin-top: 16px;
+   border-top: 1px solid #eee;
+   padding-top: 16px;x
+ }
+
+ .response-tabs {
+   display: flex;
+   gap: 8px;
+   margin-bottom: 12px;
+ }
+
+ .tab-button {
+   padding: 6px 12px;
+   border: none;
+   border-radius: 4px;
+   background: #f5f5f5;
+   cursor: pointer;
+   font-size: 13px;
+ }
+
+ .tab-button.active {
+   background: #cf556c;
+   color: white;
+ }
+
+ .tab-pane {
+   display: none;
+   padding: 12px;
+   background: #f9f9f9;
+   border-radius: 4px;
+ }
+
+ .tab-pane.active {
+   display: block;
+ }
+
+ .security-section,
+ .performance-section,
+ .request-section {
+   margin-bottom: 16px;
+ }
+
+ h4 {
+   margin: 0 0 8px 0;
+   font-size: 14px;
+ }
+
+ pre {
+   background: #f5f5f5;
+   padding: 8px;
+   border-radius: 4px;
+   overflow-x: auto;
+   max-height: 300px;
+   margin: 8px 0;
+   font-size: 12px;
+ }
   `;
   document.head.appendChild(style);
 }

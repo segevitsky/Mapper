@@ -275,6 +275,29 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
         removeIndicatorFromStorage(currentData.id);
       });
 
+      tooltip.querySelector(".show-response")?.addEventListener("click", () => {
+        const responsePanel = tooltip.querySelector('.response-container');
+        if (!responsePanel) return;
+      
+        // Toggle display
+        const isHidden = (responsePanel as HTMLElement).style.display === 'none';
+        (responsePanel as HTMLElement).style.display = isHidden ? 'block' : 'none';
+      
+        if (isHidden) {
+          // Load Security Tab
+          const securityPane = responsePanel.querySelector('#security');
+          (securityPane as HTMLElement).innerHTML = generateSecurityContent(currentData);
+      
+          // Load Performance Tab 
+          const performancePane = responsePanel.querySelector('#performance');
+          (performancePane as HTMLElement).innerHTML = generatePerformanceContent(currentData);
+      
+          // Load Request/Response Tab
+          const requestPane = responsePanel.querySelector('#request');
+          (requestPane as HTMLElement).innerHTML = generateRequestContent(currentData);
+        }
+      });
+
     tooltip.querySelector(".indi-url")?.addEventListener("click", () => {
       console.log({ currentData }, "restOfData");
       const dataIndicatorInfo = JSON.parse(
@@ -349,3 +372,113 @@ function removeIndicatorFromStorage(indicatorId: string) {
     }
   });
 }
+
+
+function generateSecurityContent(data: any) {
+  const securityHeaders = filterSecurityHeaders(data.headers);
+  const cert = data.response?.securityDetails;
+  
+  return `
+    <div class="security-section">
+      <h4>Security Headers</h4>
+      <div class="security-headers">
+        ${Object.entries(securityHeaders)
+          .map(([key, value]) => `<div><strong>${key}:</strong> ${value}</div>`)
+          .join('')}
+      </div>
+
+      ${cert ? `
+        <h4>Certificate Details</h4>
+        <div class="cert-details">
+          <div>Issuer: ${cert.issuer}</div>
+          <div>Protocol: ${cert.protocol}</div>
+          <div>Valid Until: ${new Date(cert.validTo * 1000).toLocaleDateString()}</div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+function generatePerformanceContent(data: any) {
+  const timing = data.lastCall.timing;
+  
+  return `
+    <div class="performance-section">
+      <div class="timing">
+        <h4>Response Time</h4>
+        <div>Total Duration: ${timing.duration}ms</div>
+        <div>Start Time: ${timing.startTime}ms</div>
+        <div>End Time: ${timing.endTime}ms</div>
+      </div>
+    </div>
+  `;
+}
+
+function generateRequestContent(data: any) {
+  return `
+    <div class="request-section">
+      <h4>Request Details</h4>
+      <div class="request-details">
+        <div>Method: ${data.method}</div>
+        <div>URL: ${data.lastCall.url}</div>
+      </div>
+      
+      ${data.body ? `
+        <h4>Response Body</h4>
+        <pre class="response-body">${formatBody(data.body)}</pre>
+      ` : ''}
+    </div>
+  `;
+}
+
+function filterSecurityHeaders(headers: any) {
+  const securityHeaderPrefixes = ['x-', 'content-security-', 'strict-transport-', 'access-control-'];
+  return Object.entries(headers || {})
+    .filter(([key]) => 
+      securityHeaderPrefixes.some(prefix => key.toLowerCase().startsWith(prefix))
+    )
+    .reduce((acc, [key, value]) => ({...acc, [key]: value}), {});
+ }
+ 
+ function formatBody(body: string) {
+  try {
+    const parsed = JSON.parse(body);
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return body;
+  }
+ }
+ 
+ function sanitizeHTML(str: string) {
+  return str.replace(/[&<>"']/g, (match) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[match] || ''));
+ };
+
+ 
+ function formatBytes(bytes: number) {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+ }
+ 
+ function handleTabClick(e: Event, responsePanel: HTMLElement) {
+  const target = e.target as HTMLElement;
+  const tabName = target.dataset.tab;
+  
+  responsePanel.querySelectorAll('.tab-button').forEach(btn => 
+    btn.classList.remove('active')
+  );
+  responsePanel.querySelectorAll('.tab-pane').forEach(pane => 
+    pane.classList.remove('active')
+  );
+  
+  target.classList.add('active');
+  responsePanel.querySelector(`#${tabName}`)?.classList.add('active');
+ }
