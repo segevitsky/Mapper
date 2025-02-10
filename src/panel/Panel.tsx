@@ -10,19 +10,23 @@ import { LuToggleLeft, LuToggleRight } from "react-icons/lu";
 import { ImSpinner } from "react-icons/im";
 import { flexContStart } from "./styles";
 import ApiResponsePanel from "./components/ResponseModal";
+import FailedIndicatorsReport from "./components/FailedIndicatorsReport";
 
 export const Panel: React.FC = () => {
   const { networkCalls, handleSearch, searchTerm } = useNetworkCalls();
-  const [selectedElement, setSelectedElement] = useState<any>(null);
+  const [setSelectedElement] = useState<any>(null);
   const [networkResponses, setNetworkResponses] = useState<any[]>([]);
 
   const [showIndicators, setShowIndicators] = useState(true);
   const [currentUrl, setCurrentUrl] = useState(window.location.href);
-  const [selectedNetworkCall, setSelectedNetworkCall] = useState<
-    NetworkCall | undefined
-  >();
-
   const [selectedNetworkResponse, setSelectedNetworkResponse] = useState<any>();
+
+  // FAILED INDICATORS STATE
+
+  const [showFailedIndicatorsReport, setShowFailedIndicatorsReport] =
+    useState(false);
+  const [failedIndicatorData, setFailedIndicatorData] = useState<any>();
+  const [allNetworkCalls, setAllNetworkCalls] = useState<NetworkCall[]>([]);
 
   console.log({ networkResponses }, "our network responses");
 
@@ -61,13 +65,9 @@ export const Panel: React.FC = () => {
         !message.data.body.includes("Error")
       ) {
         console.log({ message }, "A NEW NETWORK RESPONSE IN THE PANEL!!");
-        // alert(JSON.stringify(message.data.body.data));
-        // setNetworkResponses([message]);
         const networkResponsesCopy = [...networkResponses];
         networkResponsesCopy.push(message);
         setNetworkResponses(networkResponsesCopy);
-        // alert(JSON.stringify(networkResponses));
-        // setNetworkResponses((prev) => [...prev, message]);
       }
     };
 
@@ -110,6 +110,16 @@ export const Panel: React.FC = () => {
     const handleMessage = (message: any) => {
       if (message.type === "REFRESH_PANEL") {
         setCurrentUrl(message.url);
+      }
+      if (message.type === "INDICATOR_FAILED") {
+        const { failedIndicators } = message.data;
+        alert("indicator failed got here");
+        const requests = message.data.message;
+        setFailedIndicatorData(failedIndicators);
+        setAllNetworkCalls(requests);
+        if (failedIndicators.length > 0) {
+          setShowFailedIndicatorsReport(true);
+        }
       }
     };
 
@@ -216,7 +226,11 @@ export const Panel: React.FC = () => {
 
           <NetworkList
             calls={networkCalls}
-            onSelectCall={setSelectedNetworkCall}
+            onSelectCall={() =>
+              console.log(
+                "we need to add here something that would show the data of the selected network call"
+              )
+            }
           />
         </div>
         <div className="w-1/2 p-4 overflow-auto border-l border-gray-200">
@@ -268,6 +282,14 @@ export const Panel: React.FC = () => {
         response={selectedNetworkResponse}
         onClose={() => setSelectedNetworkResponse(undefined)}
       />
+      {showFailedIndicatorsReport && (
+        <FailedIndicatorsReport
+          failedIndicatorData={failedIndicatorData}
+          allNetworkCalls={allNetworkCalls}
+          onClose={() => setShowFailedIndicatorsReport(false)}
+          onDelete={(id) => console.log("Delete indicator with id:", id)}
+        />
+      )}
     </div>
   );
 };

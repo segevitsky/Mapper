@@ -60,6 +60,7 @@ export interface IndicatorData {
   };
   calls: NetworkCall[];
   hisDaddyElement?: any;
+  body?: any;
 }
 
 export type MovementObject = {

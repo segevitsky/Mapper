@@ -20,6 +20,12 @@ export class IndicatorMonitor {
     const duration =
       (newCall?.response?.timing?.receiveHeadersEnd ?? 1000) -
       (newCall?.response?.timing?.sendStart ?? 1000);
+
+    console.log(
+      { duration, indicator },
+      "this is the updated duration in the indicators monitor screen"
+    );
+
     indicator.lastCall = {
       ...indicator.lastCall,
       status: newCall.response?.status,
@@ -29,7 +35,7 @@ export class IndicatorMonitor {
         duration,
       },
       timestamp: Date.now(),
-      url: newCall.response.url, // שומרים את ה-URL המלא החדש,
+      url: newCall?.response?.url ?? indicator.lastCall.url, // שומרים את ה-URL המלא החדש,
       updatedInThisRound: true,
     };
     indicator = { ...indicator, ...newCall };
@@ -157,7 +163,7 @@ export class IndicatorMonitor {
     //   return !indicator.lastCall?.updatedInThisRound;
     // });
 
-    const failedIndicatorsArray: NetworkRequest | IndicatorData[] = [];
+    // const failedIndicatorsArray: NetworkRequest | IndicatorData[] = [];
 
     // if (outdatedIndicators.length > 0) {
     // console.log("Found indicators that did not update:", outdatedIndicators);
@@ -170,8 +176,6 @@ export class IndicatorMonitor {
           ) === generateStoragePath(indicator.lastCall?.url)
       );
 
-      // debugger;
-
       if (networkCall) {
         console.log(
           "Updating indicator with this network call",
@@ -179,13 +183,8 @@ export class IndicatorMonitor {
           networkCall
         );
         this.updateIndicatorContent(indicator, networkCall);
-      } else {
-        failedIndicatorsArray.push(indicator);
       }
     });
-    if (failedIndicatorsArray.length > 0) {
-      return failedIndicatorsArray;
-    }
   }
 }
 

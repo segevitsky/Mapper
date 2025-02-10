@@ -247,10 +247,23 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
         Create Jira Ticket
       </button>
       <button class="remove-indicator">Remove</button>
+      <button class="show-response action-button"> Show Response </button>
       <button class="change-position change-indicator-position"> Stick </button>
       <button class="close-indicator-tooltip"> Close </button>
       <div style="margin-top: 8px; font-size: 12px; color: #666;">
         Use arrow keys to fine tune your indi's position
+      </div>
+      <div class="response-container" style="display: none;">
+         <div class="response-tabs">
+             <button class="tab-button active" data-tab="security">Security</button>
+             <button class="tab-button" data-tab="performance">Performance</button>
+             <button class="tab-button" data-tab="request">Request/Response</button>
+         </div>
+         <div class="tab-content">
+             <div id="security" class="tab-pane active"></div>
+             <div id="performance" class="tab-pane"></div>
+             <div id="request" class="tab-pane"></div>
+         </div>
       </div>
     `;
 
@@ -263,12 +276,19 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
       });
 
     tooltip.querySelector(".indi-url")?.addEventListener("click", () => {
+      console.log({ currentData }, "restOfData");
+      const dataIndicatorInfo = JSON.parse(
+        indicator.getAttribute("data-indicator-info") || "{}"
+      );
+      console.log({ dataIndicatorInfo }, "restOfData");
       // send message to the panel to print the response of all network calls perhaps find this one using the url
       chrome.runtime.sendMessage({
         type: "SHOW_REQUEST_REPONSE",
         data: {
           url: currentData.lastCall.url,
           timiing: currentData.lastCall.timing.duration,
+          // send the data-indicator-info as well
+          restOfData: dataIndicatorInfo ?? currentData,
         },
       });
       tooltip.remove();

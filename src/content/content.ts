@@ -592,16 +592,32 @@ chrome.runtime.onMessage.addListener((message) => {
       const monitor = IndicatorMonitor.getInstance();
       console.log({ pageIndicators }, "page indicators in network idle place");
       // debugger;
-      const failedIndicators = monitor.checkIndicatorsUpdate(
-        pageIndicators,
-        message.requests
-      );
-      if (failedIndicators && failedIndicators.length > 0) {
-        // lets display a popup for the user asking him if these network requests failed or never happened
-        // lets also send the report to our panel so we can display it there
-        console.log("failed indicators", failedIndicators);
-      }
-
+      monitor.checkIndicatorsUpdate(pageIndicators, message.requests);
+      // if (failedIndicators && failedIndicators.length > 0) {
+      //   // lets display a popup for the user asking him if these network requests failed or never happened
+      //   // lets also send the report to our panel so we can display it there
+      //   console.log("failed indicators", failedIndicators);
+      // }
+      // lets check if we have any indicators that did not update
+      const failedIndicators: any[] = [];
+      const allIndicators = document.querySelectorAll(".indicator");
+      allIndicators.forEach((indicator) => {
+        const indicatorIsUpdated = indicator.getAttribute(
+          "data-indicator-info"
+        );
+        if (!indicatorIsUpdated) {
+          console.log("indicator did not update", indicator);
+          failedIndicators.push(indicator);
+          console.log(
+            { failedIndicators, message },
+            "failed indicators and all network reqs"
+          );
+          // chrome.runtime.sendMessage({
+          //   type: "INDICATOR_FAILED",
+          //   data: { failedIndicators, message },
+          // });
+        }
+      });
       break;
     }
 
