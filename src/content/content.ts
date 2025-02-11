@@ -135,8 +135,8 @@ function createIndicator(data: any, item: any, element: any) {
     const tooltip = document.createElement("div");
     tooltip.style.cssText = `
               position: fixed;
-              top: 16rem;
-              left: 40%;
+              top: 10rem;
+              left: 33%;
               background: #fff;
               padding: 12px 16px;
               border-radius: 8px;
@@ -508,14 +508,26 @@ function injectStyles() {
       cursor: pointer;
     }
 
-    .show-response {
+    .close-indicator-tooltip {
       margin-top: 8px;
       padding: 4px 8px;
-      background: tomato;
+      background: #028391;
       color: white;
       border: none;
       border-radius: 4px;
       cursor: pointer;
+    }
+
+    .show-response {
+      margin-top: 8px;
+      padding: 4px 8px;
+      background: #FAA968;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: .5rem;
+      
     }
 
     .change-indicator-position {
