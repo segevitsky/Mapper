@@ -1,9 +1,9 @@
 import { JiraTicketData } from "../services/jiraService";
 import { IndicatorData, NetworkCall } from "../types";
-import // waitForElement,
+// import // waitForElement,
 // getBorderByTiming,
 // removeDuplicatedIndicatorElements,
-"../utils/general";
+// "../utils/general";
 import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
 // import { URLChangeDetector } from "../utils/urlChangeDetector";
 import { generateStoragePath } from "../utils/storage";
@@ -671,13 +671,7 @@ chrome.runtime.onMessage.addListener((message) => {
       console.log("network tab idle", message);
       const monitor = IndicatorMonitor.getInstance();
       console.log({ pageIndicators }, "page indicators in network idle place");
-      // debugger;
       monitor.checkIndicatorsUpdate(pageIndicators, message.requests);
-      // if (failedIndicators && failedIndicators.length > 0) {
-      //   // lets display a popup for the user asking him if these network requests failed or never happened
-      //   // lets also send the report to our panel so we can display it there
-      //   console.log("failed indicators", failedIndicators);
-      // }
       // lets check if we have any indicators that did not update
       const failedIndicators: any[] = [];
       const allIndicators = document.querySelectorAll(".indicator");
@@ -774,11 +768,6 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
     }
 
-    // case "RELOAD_INDICATORS": {
-    //   loadIndicators();
-    //   break;
-    // }
-
     case "UPDATE_INDICATORS":
       console.log("update indicators", message);
       updateRelevantIndicators(message.data);
@@ -788,35 +777,10 @@ chrome.runtime.onMessage.addListener((message) => {
       console.log("new network call", message.data);
       updateRelevantIndicators(message.data);
       break;
-
-    // case "ALL_NETWORK_CALLS":
-    //   console.log("for now");
-    //   // updateIndicatorsOnceFinishedLoading(message.data);
-    //   // latestNetworkCalls = message.data.networkCalls;
-    //   break;
   }
 
   return true;
 });
-
-// const updatableobject: { [key: string]: number } = {};
-
-// function updateIndicatorsOnceFinishedLoading(data: any) {
-//   console.log({ data }, "this is the data we got from the background");
-//   const { networkCalls } = data;
-//   console.log(networkCalls, "this is the data we got from the background");
-
-//   let currentPageIndicators: any[] = [];
-//   chrome.storage.local.get(["indicators"], (result) => {
-//     const path = generateStoragePath(window.location.href);
-//     currentPageIndicators = result.indicators[path] || [];
-//   });
-//   console.log({ currentPageIndicators }, "this is the current page indicators");
-//   // find the indicators that exist in our current page indicators and in our network calls
-//   networkCalls?.forEach((call: NetworkCall) => {
-//     updateRelevantIndicators(call);
-//   });
-// }
 
 function updateRelevantIndicators(newCall: NetworkCall) {
   const currentPageIndicators = pageIndicators || [];
@@ -834,14 +798,10 @@ function updateRelevantIndicators(newCall: NetworkCall) {
 
       if (indicator.lastCall.url.includes("screening")) {
         console.log("screening indicator", indicator);
-        // debugger;
       }
 
       if (
         indicator?.method === newCall.method &&
-        //   indicatorUrl.pathname === newCallUrl.pathname) ||
-        // (indicator?.lastCall?.url === newCall.url &&
-        //   indicator?.method === newCall.method) ||
         generateStoragePath(indicator?.lastCall?.url) ===
           generateStoragePath(newCall.url)
       ) {
@@ -851,7 +811,6 @@ function updateRelevantIndicators(newCall: NetworkCall) {
           generateStoragePath(indicator?.lastCall?.url),
           generateStoragePath(newCall.url)
         );
-        // updatableobject[indicator.id] += 1;
 
         // עדכון המידע
         indicator.lastCall = {

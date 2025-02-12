@@ -220,7 +220,10 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
         : "#f44336";
 
     tooltip.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: center;">
+    <div class='tooltip-header' style="float: right !important"> 
+      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#5f6368"><path d="M480-80 310-250l57-57 73 73v-206H235l73 72-58 58L80-480l169-169 57 57-72 72h206v-206l-73 73-57-57 170-170 170 170-57 57-73-73v206h205l-73-72 58-58 170 170-170 170-57-57 73-73H520v205l72-73 58 58L480-80Z"/></svg>
+    </div>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
         <strong>${currentData.method}</strong>
         <span style="color: ${durationColor}; font-weight: bold;">
           ${Math.floor(currentData.lastCall.timing?.duration)}ms
@@ -267,12 +270,28 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
       </div>
     `;
 
+    const cleanup = makeDraggable(tooltip, {
+      handle: ".tooltip-header",
+      bounds: true,
+      onDragEnd: (position) => {
+        // אפשר לשמור את המיקום האחרון
+        console.log("Final position:", position);
+      },
+    });
+
     tooltip
       .querySelector(".remove-indicator")
       ?.addEventListener("click", () => {
         indicator.remove();
         tooltip.remove();
         removeIndicatorFromStorage(currentData.id);
+      });
+
+    tooltip
+      .querySelector(".close-indicator-tooltip")
+      ?.addEventListener("click", () => {
+        if (cleanup) cleanup(); // מנקה את כל ה-event listeners
+        tooltip.remove();
       });
 
     tooltip.querySelector(".show-response")?.addEventListener("click", () => {
@@ -480,27 +499,27 @@ function formatBody(body: string) {
   }
 }
 
-function sanitizeHTML(str: string) {
-  return str.replace(
-    /[&<>"']/g,
-    (match) =>
-      ({
-        "&": "&amp;",
-        "<": "&lt;",
-        ">": "&gt;",
-        '"': "&quot;",
-        "'": "&#39;",
-      }[match] || "")
-  );
-}
+// function sanitizeHTML(str: string) {
+//   return str.replace(
+//     /[&<>"']/g,
+//     (match) =>
+//       ({
+//         "&": "&amp;",
+//         "<": "&lt;",
+//         ">": "&gt;",
+//         '"': "&quot;",
+//         "'": "&#39;",
+//       }[match] || "")
+//   );
+// }
 
-function formatBytes(bytes: number) {
-  if (bytes === 0) return "0 Bytes";
-  const k = 1024;
-  const sizes = ["Bytes", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-}
+// function formatBytes(bytes: number) {
+//   if (bytes === 0) return "0 Bytes";
+//   const k = 1024;
+//   const sizes = ["Bytes", "KB", "MB", "GB"];
+//   const i = Math.floor(Math.log(bytes) / Math.log(k));
+//   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+// }
 
 function handleTabClick(e: Event, responsePanel: HTMLElement) {
   const target = e.target as HTMLElement;
@@ -515,4 +534,90 @@ function handleTabClick(e: Event, responsePanel: HTMLElement) {
 
   target.classList.add("active");
   responsePanel.querySelector(`#${tabName}`)?.classList.add("active");
+}
+
+interface DraggableOptions {
+  handle?: string; // CSS selector for drag handle
+  bounds?: boolean; // Whether to constrain to window bounds
+  onDragEnd?: (position: { x: number; y: number }) => void; // Callback when drag ends
+}
+
+function makeDraggable(element: HTMLElement, options: DraggableOptions = {}) {
+  const { handle = null, bounds = true, onDragEnd = null } = options;
+
+  let isDragging = false;
+  let currentX: number;
+  let currentY: number;
+  let initialX: number;
+  let initialY: number;
+
+  const handleElement = handle ? element.querySelector(handle) : element;
+  if (!handleElement) return;
+
+  (handleElement as HTMLElement).style.cursor = "move";
+  (handleElement as HTMLElement).style.userSelect = "none";
+
+  function startDragging(e: MouseEvent) {
+    isDragging = true;
+
+    const rect = element.getBoundingClientRect();
+    initialX = e.clientX - rect.left;
+    initialY = e.clientY - rect.top;
+
+    element.style.transition = "none"; // Disable transitions while dragging
+    element.style.zIndex = "100000"; // Bring to front while dragging
+  }
+
+  function drag(e: MouseEvent) {
+    if (!isDragging) return;
+
+    e.preventDefault();
+
+    currentX = e.clientX - initialX;
+    currentY = e.clientY - initialY;
+
+    // Constrain to window bounds if enabled
+    if (bounds) {
+      const rect = element.getBoundingClientRect();
+      const maxX = window.innerWidth - rect.width;
+      const maxY = window.innerHeight - rect.height;
+
+      currentX = Math.min(Math.max(0, currentX), maxX);
+      currentY = Math.min(Math.max(0, currentY), maxY);
+    }
+
+    // Apply smooth movement
+    requestAnimationFrame(() => {
+      element.style.left = `${currentX}px`;
+      element.style.top = `${currentY}px`;
+    });
+  }
+
+  function stopDragging() {
+    if (!isDragging) return;
+
+    isDragging = false;
+    element.style.transition = "box-shadow 0.3s ease"; // Restore transitions
+    element.style.zIndex = "99999";
+
+    // Save final position if callback provided
+    if (onDragEnd) {
+      onDragEnd({ x: currentX, y: currentY });
+    }
+  }
+
+  // Add event listeners
+  (handleElement as HTMLElement).addEventListener("mousedown", startDragging);
+  document.addEventListener("mousemove", drag);
+  document.addEventListener("mouseup", stopDragging);
+
+  // Return cleanup function
+  return () => {
+    (handleElement as HTMLElement).removeEventListener(
+      "mousedown",
+      startDragging
+    );
+    document.removeEventListener("mousemove", drag);
+    document.removeEventListener("mouseup", stopDragging);
+  };
 }

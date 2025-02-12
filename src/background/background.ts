@@ -1,22 +1,31 @@
 // background.ts
-console.log("Background script loaded");
 
-interface NetworkRequestInfo {
-  request?: any;
-  response?: any;
-  headers?: Record<string, string>;
-  body?: any;
-  timing?: number;
+interface NetworkIdleMessage {
+  type: "NETWORK_IDLE";
+  requests: NetworkRequestInfo[];
 }
 
-interface DebuggerEventParams {
-  requestId: string;
-  request?: any;
-  response?: {
-    headers: Record<string, string>;
-    [key: string]: any;
-  };
+interface NetworkRequestInfo {
+  request: any;
+  response?: any;
+  headers?: Record<string, string>;
+  body?: { base64Encoded: boolean; body: string };
+  timing?: number;
+  cancelled?: boolean;
+  cancelReason?: string;
+  failed?: boolean;
+  errorText?: string;
+  blockedReason?: string;
+  status?: number;
+  statusText?: string;
   timestamp?: number;
+  duration?: number;
+}
+
+interface IdleCheckState {
+  requestCount: number;
+  timeout: NodeJS.Timeout | undefined;
+  lastActivityTimestamp: number;
 }
 
 const pendingRequests = new Map();
@@ -249,96 +258,210 @@ console.log("Background script loaded");
 // מעקב אחרי טאבים שמחוברים לדיבאגר
 const debuggerTabs = new Map<number, boolean>();
 
-// פונקציה לחיבור הדיבאגר
 async function attachDebugger(tabId: number): Promise<void> {
-  if (!debuggerTabs.get(tabId)) {
-    try {
-      await chrome.debugger.attach({ tabId }, "1.3");
-      await chrome.debugger.sendCommand({ tabId }, "Network.enable");
+  if (debuggerTabs.get(tabId)) {
+    console.warn("Debugger already attached to tab:", tabId);
+    return;
+  }
 
-      let requestCount = 0;
-      let networkIdleTimeout: NodeJS.Timeout | undefined;
-      const requestData = new Map<string, NetworkRequestInfo>();
+  try {
+    await chrome.debugger.attach({ tabId }, "1.3");
+    await chrome.debugger.sendCommand({ tabId }, "Network.enable");
+    await chrome.debugger.sendCommand({ tabId }, "Page.enable");
 
-      chrome.debugger.onEvent.addListener((source, method, params: any) => {
-        if (source.tabId !== tabId) return;
+    const requestData = new Map<string, NetworkRequestInfo>();
+    let idleCheckState: IdleCheckState = {
+      requestCount: 0,
+      timeout: undefined,
+      lastActivityTimestamp: Date.now(),
+    };
 
-        switch (method) {
-          case "Network.requestWillBeSent":
-            requestCount++;
-            if (networkIdleTimeout) {
-              clearTimeout(networkIdleTimeout);
-            }
-            requestData.set(params.requestId, { request: params });
-            break;
+    function resetIdleCheck(): void {
+      if (idleCheckState.timeout) {
+        clearTimeout(idleCheckState.timeout);
+      }
+      idleCheckState = {
+        requestCount: 0,
+        timeout: undefined,
+        lastActivityTimestamp: Date.now(),
+      };
+      requestData.clear();
+    }
 
-          case "Network.responseReceived": {
-            const requestInfo = requestData.get(params.requestId);
-            if (requestInfo && params.response) {
-              requestInfo.response = params.response;
-              requestInfo.headers = params.response.headers;
+    function cleanup(): void {
+      resetIdleCheck();
+      chrome.debugger.onEvent.removeListener(debuggerListener);
+      chrome.debugger.onDetach.removeListener(detachListener);
+      chrome.webNavigation.onBeforeNavigate.removeListener(navigationListener);
+      debuggerTabs.delete(tabId);
+    }
 
-              // Get response body
-              try {
-                chrome.debugger.sendCommand(
-                  { tabId },
-                  "Network.getResponseBody",
-                  { requestId: params.requestId },
-                  (responseBody) => {
-                    if (responseBody) {
-                      requestInfo.body = responseBody;
-                    }
-                  }
-                );
-              } catch (error) {
-                console.error("Failed to get response body:", error);
-              }
-            }
-            break;
-          }
+    function checkIdle(): void {
+      idleCheckState.lastActivityTimestamp = Date.now();
 
-          case "Network.loadingFinished":
-            chrome.debugger.sendCommand(
-              { tabId },
-              "Network.getResponseBody",
-              { requestId: params.requestId },
-              (response) => {
-                const requestInfo = requestData.get(params.requestId);
-                if (requestInfo) {
-                  requestInfo.body = response;
-                  requestInfo.timing = params.timestamp;
-                }
-              }
-            );
-            requestCount--;
-            checkIdle();
-            break;
-
-          case "Network.loadingFailed":
-            requestCount--;
-            checkIdle();
-            break;
+      if (idleCheckState.requestCount === 0) {
+        if (idleCheckState.timeout) {
+          clearTimeout(idleCheckState.timeout);
         }
-      });
 
-      function checkIdle(): void {
-        if (requestCount === 0) {
-          networkIdleTimeout = setTimeout(() => {
-            chrome.tabs.sendMessage(tabId, {
+        idleCheckState.timeout = setTimeout(() => {
+          if (
+            idleCheckState.requestCount === 0 &&
+            Date.now() - idleCheckState.lastActivityTimestamp >= 500
+          ) {
+            const message: NetworkIdleMessage = {
               type: "NETWORK_IDLE",
               requests: Array.from(requestData.values()),
+            };
+
+            chrome.tabs.sendMessage(tabId, message).catch((error) => {
+              console.error("Failed to send NETWORK_IDLE message:", error);
             });
             requestData.clear();
-          }, 500);
-        }
+          }
+        }, 500);
       }
-
-      debuggerTabs.set(tabId, true);
-    } catch (err) {
-      console.error("Failed to attach debugger:", err);
     }
+
+    const debuggerListener = async (
+      source: chrome.debugger.Debuggee,
+      method: string,
+      params: any
+    ): Promise<void> => {
+      if (source.tabId !== tabId) return;
+
+      switch (method) {
+        case "Network.requestWillBeSent":
+          idleCheckState.requestCount++;
+          if (idleCheckState.timeout) {
+            clearTimeout(idleCheckState.timeout);
+          }
+          requestData.set(params.requestId, {
+            request: params,
+            timestamp: Date.now(),
+          });
+          break;
+
+        case "Network.responseReceived": {
+          const requestInfo = requestData.get(params.requestId);
+          if (requestInfo && params.response) {
+            requestInfo.response = params;
+            requestInfo.headers = params.response.headers;
+            requestInfo.status = params.response.status;
+            requestInfo.statusText = params.response.statusText;
+
+            try {
+              // קבלת מידע על זמנים מהדפדפן
+              if (params.response.timing) {
+                requestInfo.duration =
+                  params.response.timing.receiveHeadersEnd -
+                  params.response.timing.sendStart;
+              }
+
+              // קבלת ה-body
+              const responseBody = (await chrome.debugger.sendCommand(
+                { tabId },
+                "Network.getResponseBody",
+                { requestId: params.requestId }
+              )) as { body: string; base64Encoded: boolean };
+
+              if (responseBody) {
+                requestInfo.body = responseBody;
+              }
+            } catch (error) {
+              console.error("Failed to get timing or response body:", error);
+            }
+          }
+          break;
+        }
+
+        case "Network.requestWillBeCancelled": {
+          const cancelledRequest = requestData.get(params.requestId);
+          if (cancelledRequest) {
+            cancelledRequest.cancelled = true;
+            cancelledRequest.cancelReason = params.reason;
+          }
+          idleCheckState.requestCount = Math.max(
+            0,
+            idleCheckState.requestCount - 1
+          );
+          checkIdle();
+          break;
+        }
+
+        case "Network.loadingFailed": {
+          const failedRequest = requestData.get(params.requestId);
+          if (failedRequest) {
+            failedRequest.failed = true;
+            failedRequest.errorText = params.errorText;
+            failedRequest.blockedReason = params.blockedReason;
+          }
+          idleCheckState.requestCount = Math.max(
+            0,
+            idleCheckState.requestCount - 1
+          );
+          checkIdle();
+          break;
+        }
+
+        case "Network.loadingFinished": {
+          const requestInfo = requestData.get(params.requestId);
+          if (requestInfo) {
+            requestInfo.timing = params.timestamp;
+          }
+          idleCheckState.requestCount = Math.max(
+            0,
+            idleCheckState.requestCount - 1
+          );
+          checkIdle();
+          break;
+        }
+
+        case "Page.frameNavigated":
+          if (!params.frame?.parentId) {
+            resetIdleCheck();
+          }
+          break;
+
+        case "Page.reloadRequested":
+          resetIdleCheck();
+          break;
+      }
+    };
+
+    const detachListener = (debuggee: chrome.debugger.Debuggee): void => {
+      if (debuggee.tabId === tabId) {
+        cleanup();
+      }
+    };
+
+    const navigationListener = (
+      details: chrome.webNavigation.WebNavigationFramedCallbackDetails
+    ): void => {
+      if (details.tabId === tabId && details.frameId === 0) {
+        resetIdleCheck();
+      }
+    };
+
+    // Register all listeners
+    chrome.debugger.onEvent.addListener(debuggerListener);
+    chrome.debugger.onDetach.addListener(detachListener);
+    chrome.webNavigation.onBeforeNavigate.addListener(navigationListener);
+    chrome.tabs.onRemoved.addListener((closedTabId: number) => {
+      if (closedTabId === tabId) {
+        cleanup();
+      }
+    });
+
+    debuggerTabs.set(tabId, true);
+  } catch (err) {
+    console.error("Failed to attach debugger:", err);
+    debuggerTabs.delete(tabId);
+    throw err;
   }
 }
+
+// END NEW DEBUGGER => 12.2.2025
 
 // כשה-DevTools נפתחים
 chrome.runtime.onMessage.addListener(async (message, sender) => {

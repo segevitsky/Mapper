@@ -71,6 +71,8 @@ export type MovementObject = {
 };
 
 export type NetworkRequest = {
+  failed?: boolean;
+  errorText?: string;
   body: {
     base64Encoded: boolean;
     body: string;
@@ -109,6 +111,8 @@ export type NetworkRequest = {
       receiveHeadersEnd: number;
     };
     url: string;
+    response: any;
   };
   timing: number;
+  duration: number;
 };
