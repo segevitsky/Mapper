@@ -18,8 +18,9 @@ export class IndicatorMonitor {
     newCall: NetworkRequest
   ) {
     const duration =
+      newCall?.duration ||
       (newCall?.response?.timing?.receiveHeadersEnd ?? 1000) -
-      (newCall?.response?.timing?.sendStart ?? 1000);
+        (newCall?.response?.timing?.sendStart ?? 1000);
 
     console.log(
       { duration, indicator },
@@ -28,7 +29,9 @@ export class IndicatorMonitor {
 
     indicator.lastCall = {
       ...indicator.lastCall,
-      status: newCall.response?.status,
+      status: newCall?.failed
+        ? newCall?.errorText
+        : newCall.response.response.status,
       timing: {
         startTime: newCall?.response?.timing?.sendStart ?? 0,
         endTime: newCall?.response?.timing?.sendEnd ?? 0,
@@ -52,7 +55,9 @@ export class IndicatorMonitor {
       }, 500);
 
       (indicatorElement as HTMLElement).style.backgroundColor =
-        newCall.response?.status === 200 ? "rgba(25,200, 50, .75)" : "#f44336";
+        newCall.response?.response?.status === 200
+          ? "rgba(25,200, 50, .75)"
+          : "#f44336";
 
       // שמירת המידע המעודכן על האלמנט
       const updatedData = {
@@ -159,16 +164,8 @@ export class IndicatorMonitor {
       indicators,
       allNetworkCalls
     );
-    // const outdatedIndicators = indicators.filter((indicator) => {
-    //   return !indicator.lastCall?.updatedInThisRound;
-    // });
 
-    // const failedIndicatorsArray: NetworkRequest | IndicatorData[] = [];
-
-    // if (outdatedIndicators.length > 0) {
-    // console.log("Found indicators that did not update:", outdatedIndicators);
     indicators.forEach((indicator) => {
-      // debugger;
       const networkCall = allNetworkCalls.find(
         (call: any) =>
           generateStoragePath(
@@ -176,11 +173,19 @@ export class IndicatorMonitor {
           ) === generateStoragePath(indicator.lastCall?.url)
       );
 
-      if (networkCall) {
+      const allNetworkCallsThatMatch = allNetworkCalls.filter(
+        (call: any) =>
+          generateStoragePath(
+            call?.response?.url ?? call?.request?.request?.url
+          ) === generateStoragePath(indicator.lastCall?.url)
+      );
+
+      if (networkCall || allNetworkCallsThatMatch.length > 0) {
         console.log(
           "Updating indicator with this network call",
           indicator,
-          networkCall
+          allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1] ??
+            networkCall
         );
         this.updateIndicatorContent(indicator, networkCall);
       }
