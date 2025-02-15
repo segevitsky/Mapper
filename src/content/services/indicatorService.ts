@@ -25,9 +25,9 @@ export function loadIndicators() {
     currentPageIndicators?.forEach(createIndicatorFromData);
 
     // Make sure we have all indicators
-    currentPageIndicators?.forEach((indicator: any) => {
+    currentPageIndicators?.forEach(async (indicator: any) => {
       //   const indicatorElement = document.getElementById(`indi-${indicator.id}`);
-      const indicatorElement = waitForIndicator(indicator.id);
+      const indicatorElement = await waitForIndicator(indicator.id);
       if (!indicatorElement) {
         console.log({ indicator }, "Indicator not found - retrying load");
         setTimeout(() => {
@@ -40,9 +40,6 @@ export function loadIndicators() {
       (indi: IndicatorData) => indi.id
     );
     document.querySelectorAll(".indicator").forEach((indicator: any) => {
-      console.log({ indicator }, "Indicator found in load");
-      console.log(indicator.dataset.indicatorId, "indicator id to remove");
-      console.log({ currentPageIndicatorsUuuidArray }, "uuid array to compare");
       if (
         !currentPageIndicatorsUuuidArray.includes(indicator.dataset.indicatorId)
       ) {
@@ -64,6 +61,8 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
       indicatorData.lastCall.url,
       currentPageUUID
     );
+
+    indicatorData.updatedThisRound = false;
 
     // lets update the current indicator in the storage
     chrome.storage.local.get(["indicators"], (result) => {

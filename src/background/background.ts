@@ -299,28 +299,29 @@ async function attachDebugger(tabId: number): Promise<void> {
     function checkIdle(): void {
       idleCheckState.lastActivityTimestamp = Date.now();
 
-      if (idleCheckState.requestCount === 0) {
-        if (idleCheckState.timeout) {
-          clearTimeout(idleCheckState.timeout);
-        }
-
-        idleCheckState.timeout = setTimeout(() => {
-          if (
-            idleCheckState.requestCount === 0 &&
-            Date.now() - idleCheckState.lastActivityTimestamp >= 500
-          ) {
-            const message: NetworkIdleMessage = {
-              type: "NETWORK_IDLE",
-              requests: Array.from(requestData.values()),
-            };
-
-            chrome.tabs.sendMessage(tabId, message).catch((error) => {
-              console.error("Failed to send NETWORK_IDLE message:", error);
-            });
-            requestData.clear();
-          }
-        }, 500);
+      // if (idleCheckState.requestCount === 0) {
+      if (idleCheckState.timeout) {
+        clearTimeout(idleCheckState.timeout);
       }
+
+      idleCheckState.timeout = setTimeout(() => {
+        if (
+          // idleCheckState.requestCount === 0 &&
+          Date.now() - idleCheckState.lastActivityTimestamp >=
+          500
+        ) {
+          const message: NetworkIdleMessage = {
+            type: "NETWORK_IDLE",
+            requests: Array.from(requestData.values()),
+          };
+
+          chrome.tabs.sendMessage(tabId, message).catch((error) => {
+            console.error("Failed to send NETWORK_IDLE message:", error);
+          });
+          requestData.clear();
+        }
+      }, 500);
+      // }
     }
 
     const debuggerListener = async (

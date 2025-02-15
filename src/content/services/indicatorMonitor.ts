@@ -49,6 +49,14 @@ export class IndicatorMonitor {
     console.log("Found indicator element:", indicatorElement);
     console.log("indicator after update", indicator);
     if (indicatorElement) {
+      const repeatedIndicators = document.querySelectorAll(
+        `#indi-${indicator.id}`
+      );
+      if (repeatedIndicators.length > 1) {
+        repeatedIndicators.forEach((el, index) => {
+          if (index !== 0) el.remove();
+        });
+      }
       indicatorElement.classList.add("indicator-updating");
       setTimeout(() => {
         indicatorElement.classList.remove("indicator-updating");

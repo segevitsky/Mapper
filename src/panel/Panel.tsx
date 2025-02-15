@@ -38,9 +38,11 @@ export const Panel: React.FC = () => {
       if (message.type === "SHOW_REQUEST_REPONSE") {
         // שימוש בפונקציית עדכון שתמיד תקבל את הערך העדכני
         setSelectedNetworkResponse(() => {
-          const selectedResponse = networkResponses.find(
+          const selectedResponses = networkResponses.filter(
             (response) => response.url === message.data.url
           );
+          const selectedResponse =
+            selectedResponses[selectedResponses.length - 1];
           return selectedResponse ?? { networkResponses, data: message.data };
         });
       }

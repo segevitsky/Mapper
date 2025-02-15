@@ -61,6 +61,7 @@ export interface IndicatorData {
   calls: NetworkCall[];
   hisDaddyElement?: any;
   body?: any;
+  updatedThisRound?: boolean;
 }
 
 export type MovementObject = {
