@@ -544,10 +544,40 @@ function filterSecurityHeaders(headers: any) {
 function formatBody(body: string) {
   try {
     const parsed = JSON.parse(body);
-    return JSON.stringify(parsed, null, 2);
+    return syntaxHighlightJson(JSON.stringify(parsed, null, 2));
   } catch {
     return body;
   }
+}
+
+function syntaxHighlightJson(json: string) {
+  if (!json) return "";
+
+  // החלפת תווים מיוחדים
+  json = json
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  // הוספת צבעים לסינטקס
+  return json.replace(
+    /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
+    function (match) {
+      let cls = "json-number";
+      if (/^"/.test(match)) {
+        if (/:$/.test(match)) {
+          cls = "json-key";
+        } else {
+          cls = "json-string";
+        }
+      } else if (/true|false/.test(match)) {
+        cls = "json-boolean";
+      } else if (/null/.test(match)) {
+        cls = "json-null";
+      }
+      return `<span class="${cls}">${match}</span>`;
+    }
+  );
 }
 
 // function sanitizeHTML(str: string) {
@@ -671,4 +701,157 @@ function makeDraggable(element: HTMLElement, options: DraggableOptions = {}) {
     document.removeEventListener("mousemove", drag);
     document.removeEventListener("mouseup", stopDragging);
   };
+}
+
+export function injectStyles() {
+  const style = document.createElement("style");
+  style.textContent = `
+    #api-mapper-modal-container {
+      pointer-events: none;  // חשוב! מאפשר קליקים לעבור דרכו
+      position: fixed;
+      z-index: 999999;
+    }
+
+    #api-mapper-modal-container .modal-content {
+      pointer-events: auto;  // רק המודל עצמו יתפוס אירועים
+      position: absolute;
+      background: white;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      min-width: 300px;
+    }
+
+    #api-mapper-indicators-container {
+      pointer-events: none;
+      position: fixed;
+      z-index: 999999;
+    }
+
+    #api-mapper-indicators-container .indicator {
+      pointer-events: auto;
+    }
+
+    .indicator {
+      transition: all 0.2s ease;
+    }
+
+    .remove-indicator {
+      margin-top: 8px;
+      padding: 4px 8px;
+      background: #f44336;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .close-indicator-tooltip {
+      margin-top: 8px;
+      padding: 4px 8px;
+      background: #028391;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    .show-response {
+      margin-top: 8px;
+      padding: 4px 8px;
+      background: #FAA968;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: .5rem;
+      
+    }
+
+    .change-indicator-position {
+        border: 0;
+        padding: 0.25rem;
+        color: white;
+        background: rgb(95, 2, 31);
+        border-radius: 3px;
+        margin: 0 0.3rem;
+      }
+
+     .response-container {
+   margin-top: 16px;
+   border-top: 1px solid #eee;
+   padding-top: 16px;x
+ }
+
+ .response-tabs {
+   display: flex;
+   gap: 8px;
+   margin-bottom: 12px;
+ }
+
+ .tab-button {
+   padding: 6px 12px;
+   border: none;
+   border-radius: 4px;
+   background: #f5f5f5;
+   cursor: pointer;
+   font-size: 13px;
+ }
+
+ .tab-button.active {
+   background: #cf556c;
+   color: white;
+ }
+
+ .tab-pane {
+   display: none;
+   padding: 12px;
+   background: #f9f9f9;
+   border-radius: 4px;
+ }
+
+ .tab-pane.active {
+   display: block;
+ }
+
+ .security-section,
+ .performance-section,
+ .request-section {
+   margin-bottom: 16px;
+ }
+
+ h4 {
+   margin: 0 0 8px 0;
+   font-size: 14px;
+ }
+
+ pre {
+   background: #f5f5f5;
+   padding: 8px;
+   border-radius: 4px;
+   overflow-x: auto;
+   max-height: 300px;
+   margin: 8px 0;
+   font-size: 12px;
+ }
+
+.json-key {
+  color: #7952b3;
+}
+.json-string {
+  color: #28a745;
+}
+.json-number {
+  color: #1e88e5;
+}
+.json-boolean {
+  color: #ff5722;
+}
+.json-null {
+  color: #757575;
+}
+
+ 
+  `;
+  document.head.appendChild(style);
 }
