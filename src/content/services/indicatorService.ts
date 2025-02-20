@@ -575,7 +575,7 @@ function formatBody(body: string) {
 function handleTabClick(e: Event, responsePanel: HTMLElement) {
   const target = e.target as HTMLElement;
   const tabName = target.dataset.tab;
-
+  if (!tabName) return;
   responsePanel
     .querySelectorAll(".tab-button")
     .forEach((btn) => btn.classList.remove("active"));
