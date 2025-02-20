@@ -174,7 +174,8 @@ chrome.webRequest.onCompleted.addListener(
     console.log("initiator", details.initiator);
     if (
       details.type === "xmlhttprequest" &&
-      details.initiator === "https://pre-prod-sleep.itamar-online.com"
+      !!details.initiator &&
+      envsArray.includes(details.initiator)
     ) {
       const request = pendingRequests.get(details.requestId);
       if (request) {
@@ -191,22 +192,6 @@ chrome.webRequest.onCompleted.addListener(
             duration: details.timeStamp - request.timestamp,
           },
         };
-
-        // if (request.requestBody.raw) {
-        //   // המרה מ-ArrayBuffer לטקסט
-        //   const decoder = new TextDecoder("utf-8");
-        //   const rawData = request.requestBody.raw[0].bytes;
-        //   const textData = decoder.decode(rawData);
-
-        //   try {
-        //     // ניסיון לפרסר כ-JSON
-        //     parsedBody = JSON.parse(textData);
-        //     console.log("Parsed request body:", parsedBody);
-        //     fullRequest.requestBody = parsedBody;
-        //   } catch (e) {
-        //     console.log("Raw text data:", e, textData);
-        //   }
-        // }
 
         chrome.runtime.sendMessage({
           type: "NEW_NETWORK_CALL",

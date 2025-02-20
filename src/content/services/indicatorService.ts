@@ -1,3 +1,4 @@
+import path from "path";
 import { IndicatorData } from "../../types";
 import {
   getBorderByTiming,
@@ -6,10 +7,12 @@ import {
 } from "../../utils/general";
 import { generateStoragePath } from "../../utils/storage";
 import { extractUUIDFromUrl, updateUrlWithNewUUID } from "../../utils/urlUrils";
+import { allNetworkCalls } from "../content";
 
 export let pageIndicators: IndicatorData[] = [];
 
 export function loadIndicators() {
+  console.log({ allNetworkCalls }, "all network calls");
   const storagePath = generateStoragePath(window.location.href);
 
   chrome.storage.local.get(["indicators"], (result) => {
@@ -47,6 +50,8 @@ export function loadIndicators() {
       }
     });
   });
+
+  // add a monitor here to update the indicators?!
 }
 
 async function createIndicatorFromData(indicatorData: IndicatorData) {
@@ -111,7 +116,7 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
         : "#f44336"
     };
     cursor: pointer;
-    z-index: 999999;
+    z-index: 999998;
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     vertical-align: middle;
     position: ${
@@ -224,7 +229,7 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
     </div>
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <strong>${currentData.method}</strong>
-        <span style="color: ${durationColor}; font-weight: bold;">
+        <span id='tooltip-duration' style="color: ${durationColor}; font-weight: bold;">
           ${Math.floor(currentData.lastCall.timing?.duration)}ms
         </span>
       </div>
@@ -302,33 +307,80 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
         indicator.getAttribute("data-indicator-info") || "{}"
       );
 
-      // Toggle display
+      // Toggle display of the panel regardless of data
       const isHidden = (responsePanel as HTMLElement).style.display === "none";
       (responsePanel as HTMLElement).style.display = isHidden
         ? "block"
         : "none";
 
+      // If we're hiding the panel, no need to load data
+      if (!isHidden) return;
+
+      // Set up tab click handlers
       responsePanel.querySelectorAll(".tab-button").forEach(() => {
         responsePanel.addEventListener("click", (e) => {
           handleTabClick(e, responsePanel as HTMLElement);
         });
       });
 
-      if (isHidden) {
+      // Check if we need to get more data
+      if (
+        !allIndicatorData.body ||
+        !allIndicatorData.request ||
+        !allIndicatorData.response
+      ) {
+        // We need more data - get it from storage
+        chrome.storage.local.get(["indicators"], (result) => {
+          const indies = result.indicators || {};
+          const pathWereAt = generateStoragePath(window.location.href);
+          const relevantIndies = indies[pathWereAt] || [];
+          const indicatorDataFromStorage = relevantIndies.find(
+            (el: IndicatorData) => el.lastCall.url === currentData.lastCall.url
+          );
+
+          if (indicatorDataFromStorage) {
+            indicator.setAttribute(
+              "data-indicator-info",
+              JSON.stringify(indicatorDataFromStorage)
+            );
+            const tooltipDurationElement =
+              document.querySelector("#tooltip-duration");
+            if (tooltipDurationElement) {
+              tooltipDurationElement.innerHTML = `${Math.floor(
+                indicatorDataFromStorage?.duration ?? 0
+              )}ms`;
+            }
+            populatePanels(indicatorDataFromStorage);
+          } else {
+            // Use whatever data we have
+            populatePanels(allIndicatorData);
+          }
+        });
+      } else {
+        // We already have all the data we need
+        populatePanels(allIndicatorData);
+      }
+
+      // Helper function to avoid code duplication
+      function populatePanels(data: any) {
         // Load Security Tab
-        const securityPane = responsePanel.querySelector("#security");
-        (securityPane as HTMLElement).innerHTML =
-          generateSecurityContent(allIndicatorData);
+        const securityPane = (responsePanel as HTMLElement).querySelector(
+          "#security"
+        );
+        (securityPane as HTMLElement).innerHTML = generateSecurityContent(data);
 
         // Load Performance Tab
-        const performancePane = responsePanel.querySelector("#performance");
+        const performancePane = (responsePanel as HTMLElement).querySelector(
+          "#performance"
+        );
         (performancePane as HTMLElement).innerHTML =
-          generatePerformanceContent(allIndicatorData);
+          generatePerformanceContent(data);
 
         // Load Request/Response Tab
-        const requestPane = responsePanel.querySelector("#request");
-        (requestPane as HTMLElement).innerHTML =
-          generateRequestContent(allIndicatorData);
+        const requestPane = (responsePanel as HTMLElement).querySelector(
+          "#request"
+        );
+        (requestPane as HTMLElement).innerHTML = generateRequestContent(data);
       }
     });
 
@@ -438,15 +490,15 @@ function generateSecurityContent(data: any) {
 }
 
 function generatePerformanceContent(data: any) {
-  const timing = data.lastCall.timing;
+  const timing = data?.lastCall?.timing;
 
   return `
     <div class="performance-section">
       <div class="timing">
         <h4>Response Time</h4>
-        <div>Total Duration: ${timing.duration}ms</div>
-        <div>Start Time: ${timing.startTime}ms</div>
-        <div>End Time: ${timing.endTime}ms</div>
+        <div>Total Duration: ${timing?.duration ?? "timing issue"}ms</div>
+        <div>Start Time: ${timing?.startTime ?? "timing issue"}ms</div>
+        <div>End Time: ${timing?.endTime ?? "timing issue"}ms</div>
       </div>
     </div>
   `;
@@ -457,8 +509,8 @@ function generateRequestContent(data: any) {
     <div class="request-section">
       <h4>Request Details</h4>
       <div class="request-details">
-        <div>Method: ${data.method}</div>
-        <div>URL: ${data.lastCall.url}</div>
+        <div>Method: ${data?.method}</div>
+        <div>URL: ${data?.lastCall?.url}</div>
       </div>
       
       ${

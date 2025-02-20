@@ -24,8 +24,7 @@ let highlighter: HTMLElement | null = null;
 // content.ts - נוסיף את הלוגיקה למודל ולאינדיקטורים
 let modalContainer: HTMLElement;
 let innerModalContainer: HTMLElement;
-// let pageIndicators: any[] = [];
-// let latestNetworkCalls: NetworkCall[] = [];
+export const allNetworkCalls: NetworkCall[] = [];
 
 // אתחול בטעינת הדף
 createContainers();
@@ -95,13 +94,10 @@ function createIndicator(data: any, item: any, element: any) {
     calls: [selectedCall],
     hisDaddyElement: item,
   };
-  console.log("Creating new indicator before pattern:", indicatorData); // לוג לבדיקה
 
   if (pattern !== null && pattern !== undefined) {
     indicatorData.pattern = pattern;
   }
-
-  console.log("Creating new indicator after pattern:", indicatorData); // לוג לבדיקה
 
   const indicator = document.createElement("div");
   indicator.className = "indicator";
@@ -636,8 +632,6 @@ async function createJiraTicketFromIndicator(data: any) {
     securityInfo: securityAnalysis,
   };
 
-  console.log("Sending ticket data to background:", ticketData);
-
   chrome.runtime.sendMessage(
     {
       type: "CREATE_JIRA_TICKET",
@@ -670,7 +664,8 @@ chrome.runtime.onMessage.addListener((message) => {
     case "NETWORK_IDLE": {
       console.log("network tab idle", message);
       const monitor = IndicatorMonitor.getInstance();
-      console.log({ pageIndicators }, "page indicators in network idle place");
+
+      allNetworkCalls.push(...message.requests);
       monitor.checkIndicatorsUpdate(pageIndicators, message.requests);
       // lets check if we have any indicators that did not update
       const failedIndicators: any[] = [];

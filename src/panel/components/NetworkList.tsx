@@ -24,7 +24,7 @@ export const NetworkList: React.FC<{
     .filter((call) => call.method !== "OPTIONS")
     .filter((call) => call.error !== BLOCKED_BY_CLIENT);
   return (
-    <div className="flex flex-col-reverse gap-4">
+    <div className="flex flex-col-reverse gap-4 max-h-96 overflow-y-auto">
       {filteredCalls?.map((call) => (
         <div
           key={call.id}

@@ -167,37 +167,90 @@ export class IndicatorMonitor {
     indicators: IndicatorData[],
     allNetworkCalls?: any
   ): void | IndicatorData[] {
-    console.log(
-      "Checking indicators for updates...",
-      indicators,
-      allNetworkCalls
-    );
-
-    indicators.forEach((indicator) => {
-      const networkCall = allNetworkCalls.find(
-        (call: any) =>
-          generateStoragePath(
-            call?.response?.url ?? call?.request?.request?.url
-          ) === generateStoragePath(indicator.lastCall?.url)
-      );
-
-      const allNetworkCallsThatMatch = allNetworkCalls.filter(
-        (call: any) =>
-          generateStoragePath(
-            call?.response?.url ?? call?.request?.request?.url
-          ) === generateStoragePath(indicator.lastCall?.url)
-      );
-
-      if (networkCall || allNetworkCallsThatMatch.length > 0) {
-        console.log(
-          "Updating indicator with this network call",
-          indicator,
-          allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1] ??
-            networkCall
+    const indicatorsThatDidNotUpdate: IndicatorData[] = [];
+    if (indicators.length > 0) {
+      indicators.forEach((indicator) => {
+        const networkCall = allNetworkCalls.find(
+          (call: any) =>
+            generateStoragePath(
+              call?.response?.url ?? call?.request?.request?.url
+            ) === generateStoragePath(indicator.lastCall?.url)
         );
-        this.updateIndicatorContent(indicator, networkCall);
-      }
-    });
+
+        const allNetworkCallsThatMatch = allNetworkCalls.filter(
+          (call: any) =>
+            generateStoragePath(
+              call?.response?.url ?? call?.request?.request?.url
+            ) === generateStoragePath(indicator.lastCall?.url)
+        );
+
+        if (networkCall || allNetworkCallsThatMatch.length > 0) {
+          console.log(
+            "Updating indicator with this network call",
+            indicator,
+            allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1] ??
+              networkCall
+          );
+          this.updateIndicatorContent(indicator, networkCall);
+        } else {
+          // Add here a way to report this on the screen!
+          indicatorsThatDidNotUpdate.push(indicator);
+        }
+      });
+    } else {
+      // lets update all the indicators from our storage with our current network calls and save them back to storage
+      chrome.storage.local.get(["indicators"], (result) => {
+        const indies = result.indicators as { [key: string]: IndicatorData[] };
+
+        if (!indies) return;
+        let hasUpdates = false;
+
+        Object.keys(indies).forEach((key: string) => {
+          const arrayOfIndiesPerPath = indies[key];
+
+          arrayOfIndiesPerPath.forEach((indicator, index) => {
+            const networkCall = allNetworkCalls.find(
+              (call: any) =>
+                generateStoragePath(
+                  call?.response?.response?.url ?? call?.request?.request?.url
+                ) === generateStoragePath(indicator.lastCall?.url)
+            );
+
+            if (networkCall) {
+              console.log(
+                "מצאנו התאמה - מעדכנים אינדיקטור:",
+                indicator,
+                networkCall
+              );
+
+              // עדכון ישיר של האובייקט בתוך המערך
+              indies[key][index] = {
+                ...indicator,
+                ...networkCall,
+                lastCall: {
+                  ...indicator.lastCall,
+                  status:
+                    networkCall.response?.status || indicator.lastCall.status,
+                  timestamp: Date.now(),
+                  url:
+                    networkCall.response?.response?.url ||
+                    indicator.lastCall.url,
+                },
+              };
+
+              console.log("אינדיקטור אחרי עדכון", indies[key][index]);
+              hasUpdates = true;
+            }
+          });
+        });
+
+        // שמירה בסטוראג' רק אם היו עדכונים
+        if (hasUpdates) {
+          console.log("שומר אינדיקטורים מעודכנים", indies);
+          chrome.storage.local.set({ indicators: indies });
+        }
+      });
+    }
   }
 }
 
