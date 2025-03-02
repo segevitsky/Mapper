@@ -165,7 +165,7 @@ export async function createIndicatorFromData(indicatorData: IndicatorData) {
       indicatorData?.offset?.left ? indicatorData.offset.left + "px" : "0"
     };
     border: ${getBorderByTiming(
-      indicatorData.lastCall.timing.duration ?? autoIndicatorData.duration
+      indicatorData?.lastCall?.timing?.duration ?? autoIndicatorData?.duration
     )};
   `;
 
@@ -279,11 +279,11 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
 
     const durationColor =
       data.lastCall?.timing ||
-      data.lastCall.timing?.duration ||
+      data.lastCall?.timing?.duration ||
       data?.duration < 300
         ? "#4CAF50"
         : data?.lastCall?.timing ||
-          data.lastCall.timing?.duration ||
+          data?.lastCall?.timing?.duration ||
           data?.duration < 1000
         ? "#FFC107"
         : "#f44336";
@@ -475,7 +475,7 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
         type: "SHOW_REQUEST_REPONSE",
         data: {
           url: currentData.lastCall.url,
-          timiing: currentData.lastCall.timing.duration,
+          timiing: currentData?.lastCall?.timing?.duration,
           // send the data-indicator-info as well
           restOfData: dataIndicatorInfo ?? currentData,
         },

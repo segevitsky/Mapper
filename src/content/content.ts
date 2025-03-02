@@ -87,7 +87,7 @@ function createIndicator(data: any, item: any, element: any) {
     },
     lastCall: {
       status: selectedCall.status,
-      timing: selectedCall.timing,
+      timing: selectedCall?.timing ?? "debug here!",
       timestamp: Date.now(),
       url: selectedCall.url,
     },
@@ -538,7 +538,12 @@ chrome.runtime.onMessage.addListener((message) => {
       const monitor = IndicatorMonitor.getInstance();
 
       allNetworkCalls.push(...message.requests);
-      monitor.checkIndicatorsUpdate(pageIndicators, allNetworkCalls);
+      console.log({ message }, "network idle message");
+      monitor.checkIndicatorsUpdate(
+        pageIndicators,
+        allNetworkCalls,
+        message.requests
+      );
       // lets check if we have any indicators that did not update
       const failedIndicators: any[] = [];
       const allIndicators = document.querySelectorAll(".indicator");

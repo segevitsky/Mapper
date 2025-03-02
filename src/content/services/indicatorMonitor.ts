@@ -1,6 +1,9 @@
 import { IndicatorData, NetworkRequest } from "../../types";
 import { waitForIndicator } from "../../utils/general";
-import { generateStoragePath } from "../../utils/storage";
+import {
+  generatePatternBasedStoragePath,
+  generateStoragePath,
+} from "../../utils/storage";
 import { AutoIndicatorService } from "./autoIndicatorService";
 
 // src/content/services/indicatorMonitor.ts
@@ -107,9 +110,9 @@ export class IndicatorMonitor {
   private updateTooltipContent(tooltip: HTMLElement, data: IndicatorData) {
     console.log("lets update our indicator", data);
     const durationColor =
-      data.lastCall.timing.duration < 300
+      data.lastCall?.timing.duration < 300
         ? "#4CAF50"
-        : data.lastCall.timing.duration < 1000
+        : data.lastCall?.timing.duration < 1000
         ? "#FFC107"
         : "#f44336";
 
@@ -117,7 +120,7 @@ export class IndicatorMonitor {
     const durationSpan = tooltip.querySelector("span");
     if (durationSpan) {
       durationSpan.textContent = `${Math.floor(
-        data.lastCall.timing.duration
+        data.lastCall?.timing.duration
       )}ms`;
       durationSpan.style.color = durationColor;
     }
@@ -166,8 +169,10 @@ export class IndicatorMonitor {
 
   public checkIndicatorsUpdate(
     indicators: IndicatorData[],
-    allNetworkCalls?: any
+    allNetworkCalls?: any,
+    currentMessages?: any
   ): void | IndicatorData[] {
+    console.log({ currentMessages }, "currentMessages");
     const indicatorsThatDidNotUpdate: IndicatorData[] = [];
     if (indicators.length > 0) {
       indicators.forEach((indicator) => {
@@ -189,9 +194,30 @@ export class IndicatorMonitor {
             (el: any) => el?.request?.request?.method === indicator.method
           );
 
-        if (networkCall || allNetworkCallsThatMatch.length > 0) {
+        const allNetworkCallsThatMatchTest = allNetworkCalls
+          .filter(
+            (call: any) =>
+              generatePatternBasedStoragePath(
+                call?.response?.url ?? call?.request?.request?.url
+              ) === generatePatternBasedStoragePath(indicator.lastCall?.url)
+          )
+          .filter(
+            (el: any) => el?.request?.request?.method === indicator.method
+          );
+
+        console.log(
+          { allNetworkCallsThatMatchTest },
+          "allNetworkCallsThatMatchTest"
+        );
+
+        if (
+          networkCall ||
+          allNetworkCallsThatMatch.length > 0 ||
+          allNetworkCallsThatMatchTest.length > 0
+        ) {
           console.log(
             "Updating indicator with this network call",
+            allNetworkCallsThatMatchTest,
             indicator,
             allNetworkCallsThatMatch,
             allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1] ??
@@ -199,8 +225,9 @@ export class IndicatorMonitor {
           );
           this.updateIndicatorContent(
             indicator,
-            allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1] ??
-              networkCall
+            allNetworkCallsThatMatchTest[
+              allNetworkCallsThatMatchTest.length - 1
+            ] ?? networkCall
           );
         } else {
           // Add here a way to report this on the screen!

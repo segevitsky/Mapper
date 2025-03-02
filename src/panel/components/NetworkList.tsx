@@ -63,7 +63,7 @@ export const NetworkList: React.FC<{
             </div>
             {call.timing && (
               <span className="text-sm text-gray-500">
-                {Math.round(call.timing.duration)}ms
+                {Math.round(call?.timing?.duration)}ms
               </span>
             )}
           </div>
