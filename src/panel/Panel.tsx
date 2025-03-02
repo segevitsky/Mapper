@@ -204,7 +204,7 @@ export const Panel: React.FC = () => {
       </h1>
       <Toolbar />
       <div className="flex flex-1 overflow-hidden">
-        <div className="w-1/2 p-4 overflow-auto">
+        <div className="w-[50vw] p-4 overflow-auto">
           <div className="text-white flex flex-1 justify-between items-center">
             <h2 className="text-lg font-thin mb-4">Network Calls</h2>
             <div className="flex items-center cursor-pointer">
@@ -235,7 +235,8 @@ export const Panel: React.FC = () => {
             }
           />
         </div>
-        <div className="w-1/2 p-4 overflow-auto border-l border-gray-200">
+
+        <div className="w-[50vw] p-4 overflow-auto border-l border-gray-200">
           <h2 className="color-white text-lg font-thin mb-4 text-white">
             Mappings
           </h2>

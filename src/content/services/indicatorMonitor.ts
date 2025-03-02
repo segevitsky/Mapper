@@ -1,6 +1,7 @@
 import { IndicatorData, NetworkRequest } from "../../types";
 import { waitForIndicator } from "../../utils/general";
 import { generateStoragePath } from "../../utils/storage";
+import { AutoIndicatorService } from "./autoIndicatorService";
 
 // src/content/services/indicatorMonitor.ts
 export class IndicatorMonitor {
@@ -19,11 +20,11 @@ export class IndicatorMonitor {
   ) {
     const duration =
       newCall?.duration ||
-      (newCall?.response?.timing?.receiveHeadersEnd ?? 1000) -
-        (newCall?.response?.timing?.sendStart ?? 1000);
-
+      (newCall?.response?.response?.timing?.receiveHeadersEnd ?? 1000) -
+        (newCall?.response?.response?.timing?.sendStart ?? 1000);
+    console.log("indicatorUrl", indicator.lastCall.url);
     console.log(
-      { duration, indicator },
+      { duration, indicator, newCall },
       "this is the updated duration in the indicators monitor screen"
     );
 
@@ -31,7 +32,7 @@ export class IndicatorMonitor {
       ...indicator.lastCall,
       status: newCall?.failed
         ? newCall?.errorText
-        : newCall.response.response.status,
+        : newCall?.response?.response?.status ?? "error - debug",
       timing: {
         startTime: newCall?.response?.timing?.sendStart ?? 0,
         endTime: newCall?.response?.timing?.sendEnd ?? 0,
@@ -177,27 +178,37 @@ export class IndicatorMonitor {
             ) === generateStoragePath(indicator.lastCall?.url)
         );
 
-        const allNetworkCallsThatMatch = allNetworkCalls.filter(
-          (call: any) =>
-            generateStoragePath(
-              call?.response?.url ?? call?.request?.request?.url
-            ) === generateStoragePath(indicator.lastCall?.url)
-        );
+        const allNetworkCallsThatMatch = allNetworkCalls
+          .filter(
+            (call: any) =>
+              generateStoragePath(
+                call?.response?.url ?? call?.request?.request?.url
+              ) === generateStoragePath(indicator.lastCall?.url)
+          )
+          .filter(
+            (el: any) => el?.request?.request?.method === indicator.method
+          );
 
         if (networkCall || allNetworkCallsThatMatch.length > 0) {
           console.log(
             "Updating indicator with this network call",
             indicator,
+            allNetworkCallsThatMatch,
             allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1] ??
               networkCall
           );
-          this.updateIndicatorContent(indicator, networkCall);
+          this.updateIndicatorContent(
+            indicator,
+            allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1] ??
+              networkCall
+          );
         } else {
           // Add here a way to report this on the screen!
           indicatorsThatDidNotUpdate.push(indicator);
         }
       });
     } else {
+      // In this situation we are navigating to a page that has no indicators however his children might have indicators so we are checking
       // lets update all the indicators from our storage with our current network calls and save them back to storage
       chrome.storage.local.get(["indicators"], (result) => {
         const indies = result.indicators as { [key: string]: IndicatorData[] };
@@ -251,6 +262,9 @@ export class IndicatorMonitor {
         }
       });
     }
+    // RIGHT HERE WE NEED TO SEND A MESSAGE SAYING LETS START TO SCAN FOR INDICATORS
+    const autoIndicatorService = AutoIndicatorService.getInstance();
+    autoIndicatorService.scanForDataIndies(allNetworkCalls);
   }
 }
 

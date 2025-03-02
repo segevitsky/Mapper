@@ -62,6 +62,8 @@ export interface IndicatorData {
   hisDaddyElement?: any;
   body?: any;
   updatedThisRound?: boolean;
+  duration?: number;
+  status?: number;
 }
 
 export type MovementObject = {

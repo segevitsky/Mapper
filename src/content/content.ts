@@ -15,7 +15,11 @@ import {
 import { IndicatorMonitor } from "./services/indicatorMonitor";
 // import { authenticatedLoadIndicators } from "./loginManager";
 import { IndicatorLoader } from "./services/indicatorLoader";
-import { injectStyles, pageIndicators } from "./services/indicatorService";
+import {
+  getElementPath,
+  injectStyles,
+  pageIndicators,
+} from "./services/indicatorService";
 
 // content.ts
 let isInspectMode = false;
@@ -528,10 +532,13 @@ chrome.runtime.onMessage.addListener((message) => {
 
     case "NETWORK_IDLE": {
       console.log("network tab idle", message);
+      if (message.requests.length === 0) {
+        return;
+      }
       const monitor = IndicatorMonitor.getInstance();
 
       allNetworkCalls.push(...message.requests);
-      monitor.checkIndicatorsUpdate(pageIndicators, message.requests);
+      monitor.checkIndicatorsUpdate(pageIndicators, allNetworkCalls);
       // lets check if we have any indicators that did not update
       const failedIndicators: any[] = [];
       const allIndicators = document.querySelectorAll(".indicator");
@@ -856,32 +863,6 @@ function disableInspectMode() {
     highlighter.remove();
     highlighter = null;
   }
-}
-
-// פונקציה עזר לקבלת נתיב ייחודי לאלמנט
-function getElementPath(element: Element): string {
-  const path = [];
-  let currentElement = element;
-
-  while (currentElement.parentElement) {
-    let index = 1;
-    let sibling = currentElement;
-
-    while (sibling.previousElementSibling) {
-      if (sibling.previousElementSibling.tagName === currentElement.tagName) {
-        index++;
-      }
-      sibling = sibling.previousElementSibling;
-    }
-
-    const tagName = currentElement.tagName.toLowerCase();
-    const selector = index > 1 ? `${tagName}:nth-of-type(${index})` : tagName;
-    path.unshift(selector);
-
-    currentElement = currentElement.parentElement;
-  }
-
-  return path.join(" > ");
 }
 
 // content.ts

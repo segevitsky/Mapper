@@ -54,7 +54,7 @@ export function loadIndicators() {
   // add a monitor here to update the indicators?!
 }
 
-async function createIndicatorFromData(indicatorData: IndicatorData) {
+export async function createIndicatorFromData(indicatorData: IndicatorData) {
   const indicatorElement = document.getElementById(`indi-${indicatorData.id}`);
   if (indicatorElement) {
     return;
@@ -88,7 +88,27 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
   }
 
   console.log("indicators path", indicatorData.elementInfo.path);
-  const elementByPath = await waitForElement(indicatorData.elementInfo.path);
+  let elementByPath = await waitForElement(indicatorData.elementInfo.path);
+  const isAutoIndicator = indicatorData.id.includes("auto");
+
+  if (isAutoIndicator) {
+    const elements = document.querySelectorAll("[data-indi]");
+    const elementsArray = Array.from(elements);
+
+    const matchingElement = elementsArray.find((element) => {
+      const indiData = JSON.parse(element.getAttribute("data-indi") || "{}");
+      return indiData.url === indicatorData.lastCall.url;
+    });
+
+    if (matchingElement) {
+      const existingIndicator = elementByPath?.previousElementSibling;
+      if (existingIndicator?.hasAttribute("data-indicator-id")) {
+        console.log("Indicator already exists for this element");
+        return;
+      }
+      elementByPath = matchingElement;
+    }
+  }
 
   console.log({ indicatorData, elementByPath }, "element by path");
   const elementBefore = elementByPath?.previousElementSibling;
@@ -99,6 +119,18 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
   } else {
     originalElementAndElementBeforeAreInline = false;
   }
+
+  const allNetworkCallsThatMatch = allNetworkCalls
+    .filter(
+      (call: any) =>
+        generateStoragePath(
+          call?.response?.url ?? call?.request?.request?.url
+        ) === generateStoragePath(indicatorData.lastCall.url)
+    )
+    .filter((el: any) => el?.request?.request?.method === indicatorData.method);
+  const lastNetworkCall =
+    allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1];
+  const autoIndicatorData = { ...indicatorData, ...lastNetworkCall };
 
   const indicator = document.createElement("div");
   indicator.className = "indicator";
@@ -111,7 +143,7 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
     margin-left: 8px;
     border-radius: 50%;
     background-color: ${
-      indicatorData.lastCall.status === 200
+      indicatorData.lastCall.status === 200 || autoIndicatorData.status === 200
         ? "rgba(25,200, 50, .75)"
         : "#f44336"
     };
@@ -132,11 +164,20 @@ async function createIndicatorFromData(indicatorData: IndicatorData) {
     left: ${
       indicatorData?.offset?.left ? indicatorData.offset.left + "px" : "0"
     };
-    border: ${getBorderByTiming(indicatorData.lastCall.timing.duration)};
+    border: ${getBorderByTiming(
+      indicatorData.lastCall.timing.duration ?? autoIndicatorData.duration
+    )};
   `;
 
   addIndicatorEvents(indicator, indicatorData);
-  // elementByPath.after(indicator);
+
+  // only insert the indicator if no indicator is already attached to the element to avoid network idling for a couple of times
+  if (
+    elementByPath?.previousElementSibling &&
+    elementByPath?.previousElementSibling.getAttribute("data-indicator-info")
+  ) {
+    return;
+  }
   elementByPath?.insertAdjacentElement("beforebegin", indicator);
 }
 
@@ -194,9 +235,29 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
     document.addEventListener("keydown", moveHandler);
 
     // const currentData = await getCurrentIndicatorData(data.id);
-    const currentData = pageIndicators.filter(
+
+    let currentData = pageIndicators.filter(
       (el: IndicatorData) => el.id === data.id
     )[0];
+
+    if (!currentData) {
+      const allNetworkCallsThatMatch = allNetworkCalls
+        .filter(
+          (call: any) =>
+            generateStoragePath(
+              call?.response?.url ?? call?.request?.request?.url
+            ) === generateStoragePath(data.lastCall.url)
+        )
+        .filter((el: any) => el?.request?.request?.method === data.method);
+      const lastNetworkCall =
+        allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1];
+      currentData = { ...data, ...lastNetworkCall };
+      indicator.setAttribute(
+        "data-indicator-info",
+        JSON.stringify(currentData)
+      );
+    }
+
     console.log({ currentData }, "this is the current data for the indicator");
     const tooltip = document.createElement("div");
     tooltip.id = "indicator-tooltip";
@@ -217,29 +278,42 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
     `;
 
     const durationColor =
-      data.lastCall.timing < 300
+      data.lastCall?.timing ||
+      data.lastCall.timing?.duration ||
+      data?.duration < 300
         ? "#4CAF50"
-        : data.lastCall.timing < 1000
+        : data?.lastCall?.timing ||
+          data.lastCall.timing?.duration ||
+          data?.duration < 1000
         ? "#FFC107"
         : "#f44336";
 
     tooltip.innerHTML = `
-    <div class='tooltip-header' style="float: right !important"> 
-      <svg xmlns="http://www.w3.org/2000/svg" height="24px" viewBox="0 -960 960 960" width="24px" fill="#5f6368"><path d="M480-80 310-250l57-57 73 73v-206H235l73 72-58 58L80-480l169-169 57 57-72 72h206v-206l-73 73-57-57 170-170 170 170-57 57-73-73v206h205l-73-72 58-58 170 170-170 170-57-57 73-73H520v205l72-73 58 58L480-80Z"/></svg>
-    </div>
+    <div class='tooltip-header' style="background-color: rgb(207, 85, 108), width: 100%, height: 1rem"  /> 
     <div style="display: flex; justify-content: space-between; align-items: center;">
-        <strong>${currentData.method}</strong>
+        <strong>${currentData?.method ?? data?.method}</strong>
         <span id='tooltip-duration' style="color: ${durationColor}; font-weight: bold;">
-          ${Math.floor(currentData.lastCall.timing?.duration)}ms
+          ${Math.floor(
+            currentData?.lastCall?.timing?.duration ??
+              currentData?.duration ??
+              data?.lastCall?.timing?.duration ??
+              0
+          )}ms
         </span>
       </div>
       <div class='indi-url' style="color: #666; word-break: break-all; margin: 8px 0;">
-        ${currentData?.lastCall.url}
+        ${currentData?.lastCall?.url ?? data?.lastCall?.url}
       </div>
       <div style="color: ${
-        currentData.lastCall.status === 200 ? "#4CAF50" : "#f44336"
+        currentData?.lastCall?.status === 200 || currentData?.status === 200
+          ? "#4CAF50"
+          : "#f44336"
       }">
-        Status: ${currentData.lastCall.status}
+        Status: ${
+          currentData?.status ??
+          currentData?.lastCall?.status ??
+          data.lastCall.status
+        }
       </div>
       <button class="create-jira-ticket" style="
         margin-top: 8px;
@@ -322,23 +396,28 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
           handleTabClick(e, responsePanel as HTMLElement);
         });
       });
+      const isAutoIndicator =
+        Object.keys(allIndicatorData)?.length > 0
+          ? allIndicatorData.id.includes("auto")
+          : false;
 
       // Check if we need to get more data
       if (
         !allIndicatorData.body ||
         !allIndicatorData.request ||
-        !allIndicatorData.response
+        (!allIndicatorData.response && !isAutoIndicator)
       ) {
         // We need more data - get it from storage
         chrome.storage.local.get(["indicators"], (result) => {
           const indies = result.indicators || {};
           const pathWereAt = generateStoragePath(window.location.href);
           const relevantIndies = indies[pathWereAt] || [];
-          const indicatorDataFromStorage = relevantIndies.find(
+          const indicatorsDataFromStorage = relevantIndies.filter(
             (el: IndicatorData) => el.lastCall.url === currentData.lastCall.url
           );
-
-          if (indicatorDataFromStorage) {
+          if (indicatorsDataFromStorage.length > 0) {
+            const indicatorDataFromStorage =
+              indicatorsDataFromStorage[indicatorsDataFromStorage.length - 1];
             indicator.setAttribute(
               "data-indicator-info",
               JSON.stringify(indicatorDataFromStorage)
@@ -347,7 +426,9 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
               document.querySelector("#tooltip-duration");
             if (tooltipDurationElement) {
               tooltipDurationElement.innerHTML = `${Math.floor(
-                indicatorDataFromStorage?.duration ?? 0
+                indicatorDataFromStorage?.duration ??
+                  indicatorDataFromStorage?.lastCal.timinig.duration ??
+                  0
               )}ms`;
             }
             populatePanels(indicatorDataFromStorage);
@@ -459,9 +540,10 @@ function removeIndicatorFromStorage(indicatorId: string) {
 }
 
 function generateSecurityContent(data: any) {
-  const securityHeaders = filterSecurityHeaders(data.headers);
+  const securityHeaders = filterSecurityHeaders(data?.headers);
   const cert = data.response?.securityDetails;
-
+  if (!securityHeaders && !cert)
+    return `<div class="security-section"> No security headers found </div>`;
   return `
     <div class="security-section">
       <h4>Security Headers</h4>
@@ -490,15 +572,23 @@ function generateSecurityContent(data: any) {
 }
 
 function generatePerformanceContent(data: any) {
-  const timing = data?.lastCall?.timing;
+  const timing =
+    data.duration ??
+    data?.lastCall?.timing ??
+    data.lastCall?.timing?.duration ??
+    data?.timing;
 
   return `
     <div class="performance-section">
       <div class="timing">
         <h4>Response Time</h4>
-        <div>Total Duration: ${timing?.duration ?? "timing issue"}ms</div>
-        <div>Start Time: ${timing?.startTime ?? "timing issue"}ms</div>
-        <div>End Time: ${timing?.endTime ?? "timing issue"}ms</div>
+        <div>Total Duration: ${timing ?? "timing issue"}ms</div>
+        <div>Start Time: ${
+          data?.lastCall.timing?.startTime ?? "timing issue"
+        }ms</div>
+        <div>End Time: ${
+          data?.lastCall.timing?.endTime ?? "timing issue"
+        }ms</div>
       </div>
     </div>
   `;
@@ -517,7 +607,9 @@ function generateRequestContent(data: any) {
         data.body
           ? `
         <h4>Response Body</h4>
-        <pre class="response-body">${formatBody(data.body.body)}</pre>
+        <pre style="max-width: 50vw" class="response-body">${formatBody(
+          data.body.body
+        )}</pre>
       `
           : ""
       }
@@ -701,6 +793,31 @@ function makeDraggable(element: HTMLElement, options: DraggableOptions = {}) {
     document.removeEventListener("mousemove", drag);
     document.removeEventListener("mouseup", stopDragging);
   };
+}
+
+export function getElementPath(element: Element): string {
+  const path = [];
+  let currentElement = element;
+
+  while (currentElement.parentElement) {
+    let index = 1;
+    let sibling = currentElement;
+
+    while (sibling.previousElementSibling) {
+      if (sibling.previousElementSibling.tagName === currentElement.tagName) {
+        index++;
+      }
+      sibling = sibling.previousElementSibling;
+    }
+
+    const tagName = currentElement.tagName.toLowerCase();
+    const selector = index > 1 ? `${tagName}:nth-of-type(${index})` : tagName;
+    path.unshift(selector);
+
+    currentElement = currentElement.parentElement;
+  }
+
+  return path.join(" > ");
 }
 
 export function injectStyles() {

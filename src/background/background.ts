@@ -32,6 +32,12 @@ const pendingRequests = new Map();
 const envsArray: string[] = [
   "https://pre-prod-sleep.itamar-online.com",
   "https://staging-sleep.itamar-online.com",
+  "http://localhost:3000",
+  "https://localhost:3000",
+  "https://integration-sleep.itamar-online.com/",
+  "https://cloudpat.itamar-medical.com/",
+  "https://cloudpat-uk.itamar-medical.com/",
+  "https://cloudpat-au.itamar-medical.com/",
 ];
 
 //JIRA START

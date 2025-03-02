@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "API Element Mapper",
+  "name": "Indi - API",
   "version": "1.0",
   "description": "Map UI elements to API calls",
   "permissions": [
