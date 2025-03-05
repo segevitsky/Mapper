@@ -66,12 +66,23 @@ export class AutoIndicatorService {
         const storagePath = generateStoragePath(window.location.href);
         const currentPageIndicators = indicators[storagePath] || [];
 
-        const exists = currentPageIndicators.some(
-          (indicator: IndicatorData) =>
-            indicator.elementInfo?.path === element.tagName.toLowerCase() && // או getElementPath
-            indicator.lastCall?.url === config.url &&
-            indicator.method.toLowerCase() === config.method.toLowerCase()
-        );
+        function hasAdjacentElementIndi(element: any) {
+          const previous = element.previousElementSibling;
+          console.log({ previous });
+          return (
+            previous !== null &&
+            (previous.hasAttribute("data-indicator-info") ||
+              previous.hasAttribute("data-indicator-id"))
+          );
+        }
+
+        const exists =
+          currentPageIndicators.some(
+            (indicator: IndicatorData) =>
+              indicator.elementInfo?.path === element.tagName.toLowerCase() && // או getElementPath
+              indicator.lastCall?.url === config.url &&
+              indicator.method.toLowerCase() === config.method.toLowerCase()
+          ) || hasAdjacentElementIndi(element);
 
         resolve(exists);
       });

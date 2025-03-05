@@ -46,6 +46,9 @@ export class IndicatorMonitor {
       updatedInThisRound: true,
     };
     indicator = { ...indicator, ...newCall };
+    if (!newCall?.body) {
+      delete indicator.body;
+    }
 
     // const indicatorElement = document.getElementById(`indi-${indicator.id}`);
     const indicatorElement = await waitForIndicator(indicator.id);
