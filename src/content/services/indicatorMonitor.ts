@@ -176,7 +176,9 @@ export class IndicatorMonitor {
     currentMessages?: any
   ): void | IndicatorData[] {
     console.log({ currentMessages }, "currentMessages");
+
     const indicatorsThatDidNotUpdate: IndicatorData[] = [];
+
     if (indicators.length > 0) {
       indicators.forEach((indicator) => {
         const networkCall = allNetworkCalls.find(
@@ -208,6 +210,10 @@ export class IndicatorMonitor {
             (el: any) => el?.request?.request?.method === indicator.method
           );
 
+        const networkCallWithBody = allNetworkCallsThatMatchTest.find(
+          (el: any) => !!el.body
+        );
+
         console.log(
           { allNetworkCallsThatMatchTest },
           "allNetworkCallsThatMatchTest"
@@ -230,7 +236,9 @@ export class IndicatorMonitor {
             indicator,
             allNetworkCallsThatMatchTest[
               allNetworkCallsThatMatchTest.length - 1
-            ] ?? networkCall
+            ] ??
+              networkCallWithBody ??
+              networkCall
           );
         } else {
           // Add here a way to report this on the screen!
@@ -243,6 +251,45 @@ export class IndicatorMonitor {
       chrome.storage.local.get(["indicators"], (result) => {
         const indies = result.indicators as { [key: string]: IndicatorData[] };
 
+        const currentPageNestedIndies = Object.keys(indies)
+          .filter((key) =>
+            key.includes(generateStoragePath(window.location.href))
+          )
+          .map((key) => indies[key])
+          .flat()
+          .map((indicator: IndicatorData) => {
+            const networkCall = allNetworkCalls.find(
+              (call: any) =>
+                generateStoragePath(
+                  call?.response?.response?.url ?? call?.request?.request?.url
+                ) === generateStoragePath(indicator.lastCall?.url)
+            );
+
+            if (networkCall) {
+              console.log(
+                "מצאנו התאמה - מעדכנים אינדיקטור:",
+                indicator,
+                networkCall
+              );
+
+              // עדכון ישיר של האובייקט בתוך המערך
+              return {
+                ...indicator,
+                ...networkCall,
+                lastCall: {
+                  ...indicator.lastCall,
+                  status:
+                    networkCall.response?.status || indicator.lastCall.status,
+                  timestamp: Date.now(),
+                  url:
+                    networkCall.response?.response?.url ||
+                    indicator.lastCall.url,
+                },
+              };
+            }
+          });
+        console.log({ currentPageNestedIndies }, "currentPageNestedIndies");
+
         if (!indies) return;
         let hasUpdates = false;
 
@@ -254,7 +301,8 @@ export class IndicatorMonitor {
               (call: any) =>
                 generateStoragePath(
                   call?.response?.response?.url ?? call?.request?.request?.url
-                ) === generateStoragePath(indicator.lastCall?.url)
+                ) === generateStoragePath(indicator.lastCall?.url) &&
+                call.request.request.method === indicator.method
             );
 
             if (networkCall) {
@@ -292,6 +340,7 @@ export class IndicatorMonitor {
         }
       });
     }
+
     // RIGHT HERE WE NEED TO SEND A MESSAGE SAYING LETS START TO SCAN FOR INDICATORS
     const autoIndicatorService = AutoIndicatorService.getInstance();
     autoIndicatorService.scanForDataIndies(allNetworkCalls);

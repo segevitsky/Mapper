@@ -1,6 +1,9 @@
 // AutoIndicatorService.ts
 import { createIndicatorFromData } from "../services/indicatorService";
-import { generateStoragePath } from "../../utils/storage";
+import {
+  generatePatternBasedStoragePath,
+  generateStoragePath,
+} from "../../utils/storage";
 import { IndicatorData } from "../../types";
 
 type IndiConfig = {
@@ -47,7 +50,7 @@ export class AutoIndicatorService {
               indiConfig,
               networkCalls
             );
-            createIndicatorFromData(indicatorData);
+            createIndicatorFromData(indicatorData, true);
           }
         }
       } catch (error) {
@@ -96,9 +99,9 @@ export class AutoIndicatorService {
   ): IndicatorData {
     const matchingNetworkCalls = networkCalls.filter(
       (call) =>
-        generateStoragePath(
+        generatePatternBasedStoragePath(
           call?.response?.url ?? call?.request?.request?.url
-        ) === generateStoragePath(config.url)
+        ) === generatePatternBasedStoragePath(config.url)
     );
 
     if (matchingNetworkCalls.length > 0) {
@@ -106,7 +109,8 @@ export class AutoIndicatorService {
         (el) => config.method.toUpperCase() === el?.request?.request?.method
       );
       if (filteredCalls.length > 0) {
-        const data = filteredCalls[filteredCalls.length - 1];
+        // const dataOld = filteredCalls[filteredCalls.length - 1];
+        const data = filteredCalls.find((el) => !!el.body && el.body !== "");
         return {
           id: `auto-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
           baseUrl: window.location.href,
@@ -130,6 +134,7 @@ export class AutoIndicatorService {
             timestamp: Date.now(),
           },
           calls: data ? [data] : [],
+          ...data,
         };
       }
     }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { NetworkList } from "./components/NetworkList";
 import IndicatorsList from "./components/IndicatorsList";
 import { Toolbar } from "./components/Toolbar";
@@ -12,7 +12,10 @@ import { flexContStart } from "./styles";
 import ApiResponsePanel from "./components/ResponseModal";
 import FailedIndicatorsReport from "./components/FailedIndicatorsReport";
 
+const MAX_NETWORK_RESPONSES = 50;
+
 export const Panel: React.FC = () => {
+  const networkResponsesRef = useRef<any[]>([]);
   const { networkCalls, handleSearch, searchTerm } = useNetworkCalls();
   const [setSelectedElement] = useState<any>(null);
   const [networkResponses, setNetworkResponses] = useState<any[]>([]);
@@ -30,126 +33,87 @@ export const Panel: React.FC = () => {
 
   console.log({ networkResponses }, "our network responses");
 
+  // NEW USE-EFFECT
   useEffect(() => {
-    const handleSelectedNetworkResponse = (message: {
-      type: string;
-      data: { url: string; timing: string };
-    }) => {
-      if (message.type === "SHOW_REQUEST_REPONSE") {
-        // שימוש בפונקציית עדכון שתמיד תקבל את הערך העדכני
-        setSelectedNetworkResponse(() => {
-          const selectedResponses = networkResponses.filter(
+    const messageHandler = (message: any) => {
+      switch (message.type) {
+        case "SHOW_REQUEST_REPONSE": {
+          const responses = networkResponsesRef.current;
+          const selectedResponses = responses.filter(
             (response) => response.url === message.data.url
           );
-          const selectedResponse =
-            selectedResponses[selectedResponses.length - 1];
-          return selectedResponse ?? { networkResponses, data: message.data };
-        });
-      }
-    };
-
-    chrome.runtime.onMessage.addListener(handleSelectedNetworkResponse);
-    return () =>
-      chrome.runtime.onMessage.removeListener(handleSelectedNetworkResponse);
-  }, [networkResponses]); // אין צורך בתלויות
-
-  useEffect(() => {
-    const handleArrivingNetworkResponse = (message: {
-      type: string;
-      data: any;
-      url: string;
-    }) => {
-      if (
-        message.type === "NETWORK_RESPONSE" &&
-        message.url.includes(
-          "https://pre-prod-sleep.itamar-online.com/backend/"
-        ) &&
-        !message.data.body.includes("Error")
-      ) {
-        console.log({ message }, "A NEW NETWORK RESPONSE IN THE PANEL!!");
-        const networkResponsesCopy = [...networkResponses];
-        networkResponsesCopy.push(message);
-        setNetworkResponses(networkResponsesCopy);
-      }
-    };
-
-    chrome.runtime.onMessage.addListener(handleArrivingNetworkResponse);
-    return () => {
-      chrome.runtime.onMessage.removeListener(handleArrivingNetworkResponse);
-    };
-  }, [networkResponses]);
-
-  useEffect(() => {
-    const handleElementSelected = (message: any) => {
-      if (message.type === "ELEMENT_SELECTED") {
-        console.log("Network calls in panel:", networkCalls);
-        setSelectedElement(message.data); // אפשר לשמור את זה למקרה שנצטרך
-
-        // שליחת הודעה לcontent script במקום פתיחת המודל בפאנל
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          if (tabs[0]?.id) {
-            chrome.tabs.sendMessage(tabs[0].id, {
-              type: "SHOW_API_MODAL",
-              data: {
-                networkCalls: networkCalls,
-                element: message.data,
-                position: {
-                  top: message.data.rect.top,
-                  left: message.data.rect.right + 20,
-                },
-              },
-            });
-          }
-        });
-      }
-    };
-
-    chrome.runtime.onMessage.addListener(handleElementSelected);
-    return () => chrome.runtime.onMessage.removeListener(handleElementSelected);
-  }, []);
-
-  useEffect(() => {
-    const handleMessage = (message: any) => {
-      if (message.type === "REFRESH_PANEL") {
-        setCurrentUrl(message.url);
-      }
-      if (message.type === "INDICATOR_FAILED") {
-        const { failedIndicators } = message.data;
-        alert("indicator failed got here");
-        const requests = message.data.message;
-        setFailedIndicatorData(failedIndicators);
-        setAllNetworkCalls(requests);
-        if (failedIndicators.length > 0) {
-          setShowFailedIndicatorsReport(true);
+          const selectedResponse = selectedResponses[
+            selectedResponses.length - 1
+          ] || { data: message.data };
+          setSelectedNetworkResponse(selectedResponse);
+          break;
         }
+
+        case "NETWORK_RESPONSE":
+          if (
+            message.url.includes(
+              "https://pre-prod-sleep.itamar-online.com/backend/"
+            ) &&
+            !message.data.body?.includes("Error")
+          ) {
+            // הגבלת מספר התגובות השמורות
+            networkResponsesRef.current = [
+              ...networkResponsesRef.current,
+              message,
+            ].slice(-MAX_NETWORK_RESPONSES);
+
+            setNetworkResponses(networkResponsesRef.current);
+          }
+          break;
+
+        case "ELEMENT_SELECTED":
+          // טיפול באלמנט נבחר
+          console.log("Network calls in panel:", networkCalls);
+          setSelectedElement(message.data); // אפשר לשמור את זה למקרה שנצטרך
+
+          // שליחת הודעה לcontent script במקום פתיחת המודל בפאנל
+          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]?.id) {
+              chrome.tabs.sendMessage(tabs[0].id, {
+                type: "SHOW_API_MODAL",
+                data: {
+                  networkCalls: networkCalls,
+                  element: message.data,
+                  position: {
+                    top: message.data.rect.top,
+                    left: message.data.rect.right + 20,
+                  },
+                },
+              });
+            }
+          });
+          break;
+
+        case "REFRESH_PANEL":
+          setCurrentUrl(message.url);
+          break;
+
+        case "INDICATOR_FAILED":
+          // טיפול באינדיקטורים שנכשלו
+          break;
       }
     };
 
-    chrome.runtime.onMessage.addListener(handleMessage);
+    chrome.runtime.onMessage.addListener(messageHandler);
 
     return () => {
-      chrome.runtime.onMessage.removeListener(handleMessage);
+      chrome.runtime.onMessage.removeListener(messageHandler);
     };
   }, []);
 
+  // 4. שליחת הודעת DEVTOOLS_OPENED פעם אחת בלבד
   useEffect(() => {
-    console.log("Panel mounted"); // נוודא שהקומפוננטה נטענת
-
-    // וודא שיש גישה ל-chrome.devtools
     if (chrome.devtools) {
       const tabId = chrome.devtools.inspectedWindow.tabId;
-      console.log("Current tab ID:", tabId);
-
-      chrome.runtime.sendMessage(
-        {
-          type: "DEVTOOLS_OPENED",
-          tabId,
-        },
-        (response) => {
-          // בדיקה אם ההודעה נשלחה בהצלחה
-          console.log("Message sent, got response:", response);
-        }
-      );
+      chrome.runtime.sendMessage({
+        type: "DEVTOOLS_OPENED",
+        tabId,
+      });
     }
   }, []);
 
@@ -277,7 +241,7 @@ export const Panel: React.FC = () => {
             <span className="ml-1 text-1xl">Load Indicators</span>
           </div>
           <br />
-          <IndicatorsList currentUrl={currentUrl} />
+          {/* <IndicatorsList currentUrl={currentUrl} /> */}
         </div>
       </div>
       <ApiResponsePanel

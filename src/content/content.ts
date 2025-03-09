@@ -239,26 +239,29 @@ function createIndicator(data: any, item: any, element: any) {
       });
     });
 
-    // מוסיפים האזנה למקשים כשהטולטיפ פתוח
     const moveHandler = (e: KeyboardEvent) => {
       const step = 5; // פיקסלים לכל הזזה
       const currentTop = parseInt(indicator.style.top) || 0;
       const currentLeft = parseInt(indicator.style.left) || 0;
 
-      switch (e.key) {
-        case "ArrowUp":
-          indicator.style.top = `${currentTop - step}px`;
-          break;
-        case "ArrowDown":
-          indicator.style.top = `${currentTop + step}px`;
-          break;
-        case "ArrowLeft":
-          indicator.style.left = `${currentLeft - step}px`;
-          break;
-        case "ArrowRight":
-          indicator.style.left = `${currentLeft + step}px`;
-          break;
+      // פעולה רק אם מקש Shift לחוץ יחד עם מקשי החצים
+      if (e.shiftKey) {
+        switch (e.key) {
+          case "ArrowUp":
+            indicator.style.top = `${currentTop - step}px`;
+            break;
+          case "ArrowDown":
+            indicator.style.top = `${currentTop + step}px`;
+            break;
+          case "ArrowLeft":
+            indicator.style.left = `${currentLeft - step}px`;
+            break;
+          case "ArrowRight":
+            indicator.style.left = `${currentLeft + step}px`;
+            break;
+        }
       }
+      // אם Shift לא לחוץ, לא מתבצעת שום פעולה
     };
 
     document.addEventListener("keydown", moveHandler);
@@ -651,7 +654,7 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
   }
 
-  return true;
+  return false;
 });
 
 function updateRelevantIndicators(newCall: NetworkCall) {

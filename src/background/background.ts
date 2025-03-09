@@ -20,12 +20,18 @@ interface NetworkRequestInfo {
   statusText?: string;
   timestamp?: number;
   duration?: number;
+  requestInfo?: any;
+  bodyError?: string;
+  processed?: boolean;
 }
 
 interface IdleCheckState {
   requestCount: number;
-  timeout: NodeJS.Timeout | undefined;
+  timeout: ReturnType<typeof setTimeout> | undefined;
   lastActivityTimestamp: number;
+  navigationOccurred?: boolean;
+  sentIdle?: boolean;
+  lastIdleSentTimestamp?: number;
 }
 
 const pendingRequests = new Map();
@@ -141,6 +147,7 @@ chrome.runtime.onMessage.addListener((message) => {
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "RELAY_TO_CONTENT") {
+    console.log("Relaying message to content script:", message.data);
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]?.id) {
         chrome.tabs.sendMessage(tabs[0].id, {
@@ -249,6 +256,12 @@ console.log("Background script loaded");
 // מעקב אחרי טאבים שמחוברים לדיבאגר
 const debuggerTabs = new Map<number, boolean>();
 
+// END NEW DEBUGGER => 12.2.2025
+
+// כשה-DevTools נפתחים
+
+// best one yet that doesnt crash
+
 async function attachDebugger(tabId: number): Promise<void> {
   if (debuggerTabs.get(tabId)) {
     console.warn("Debugger already attached to tab:", tabId);
@@ -281,38 +294,118 @@ async function attachDebugger(tabId: number): Promise<void> {
 
     function cleanup(): void {
       resetIdleCheck();
+
+      // הסרת מאזינים עם בדיקות הגנה
       chrome.debugger.onEvent.removeListener(debuggerListener);
       chrome.debugger.onDetach.removeListener(detachListener);
-      chrome.webNavigation.onBeforeNavigate.removeListener(navigationListener);
+
+      // בדיקה שהאובייקט קיים לפני הסרה
+      if (chrome.webNavigation && chrome.webNavigation.onBeforeNavigate) {
+        chrome.webNavigation.onBeforeNavigate.removeListener(
+          navigationListener
+        );
+      }
+
       debuggerTabs.delete(tabId);
     }
 
+    // Helper for idling
+    // הוספה לקוד - פונקציה לשליחת הודעת NETWORK_IDLE באופן יותר עמיד
+    async function sendNetworkIdleMessage(requests: any) {
+      try {
+        // בדיקה שהטאב עדיין קיים
+        const tab = await chrome.tabs.get(tabId).catch(() => null);
+        if (!tab) {
+          console.log("Tab no longer exists, not sending message");
+          return false;
+        }
+
+        // ניסיון לשלוח הודעה עם טיפול בשגיאות
+        await chrome.tabs
+          .sendMessage(tabId, {
+            type: "NETWORK_IDLE",
+            requests: requests,
+          })
+          .catch((error) => {
+            if (
+              error?.message?.includes("message channel is closed") ||
+              error?.message?.includes("Receiving end does not exist")
+            ) {
+              console.log("Message channel closed, normal during navigation");
+              return false;
+            } else {
+              throw error; // זריקת שגיאות אחרות להמשך הטיפול
+            }
+          });
+
+        console.log("NETWORK_IDLE message sent successfully");
+        return true;
+      } catch (error) {
+        console.error("Failed to send NETWORK_IDLE message:", error);
+        return false;
+      }
+    }
+
+    // פונקציית checkIdle משופרת שמשתמשת בפונקציה לעיל
     function checkIdle(): void {
+      console.log(
+        "checkIdle called, requestCount:",
+        idleCheckState.requestCount
+      );
+
+      // עדכון זמן הפעילות האחרון
       idleCheckState.lastActivityTimestamp = Date.now();
 
-      // if (idleCheckState.requestCount === 0) {
+      // ביטול טיימר קודם אם קיים
       if (idleCheckState.timeout) {
         clearTimeout(idleCheckState.timeout);
       }
 
-      idleCheckState.timeout = setTimeout(() => {
-        if (
-          // idleCheckState.requestCount === 0 &&
-          Date.now() - idleCheckState.lastActivityTimestamp >=
-          500
-        ) {
-          const message: NetworkIdleMessage = {
-            type: "NETWORK_IDLE",
-            requests: Array.from(requestData.values()),
-          };
+      // הגדרת טיימר חדש
+      idleCheckState.timeout = setTimeout(async () => {
+        try {
+          console.log("Idle timeout fired, checking network status");
+          const timeSinceActivity =
+            Date.now() - idleCheckState.lastActivityTimestamp;
 
-          chrome.tabs.sendMessage(tabId, message).catch((error) => {
-            console.error("Failed to send NETWORK_IDLE message:", error);
-          });
-          requestData.clear();
+          if (idleCheckState.requestCount === 0 || timeSinceActivity > 2000) {
+            if (idleCheckState.requestCount > 0) {
+              console.log(
+                `Force sending NETWORK_IDLE despite requestCount=${idleCheckState.requestCount}, ${timeSinceActivity}ms elapsed`
+              );
+            } else {
+              console.log("Normal NETWORK_IDLE send, no pending requests");
+            }
+
+            // שליחת הנתונים רק אם יש בקשות לשלוח
+            if (requestData.size > 0) {
+              const requestsToSend = Array.from(requestData.values());
+              console.log(
+                `Sending ${requestsToSend.length} requests in NETWORK_IDLE message`
+              );
+
+              const success = await sendNetworkIdleMessage(requestsToSend);
+              if (success) {
+                requestData.clear();
+              }
+            } else {
+              console.log("No request data to send, skipping NETWORK_IDLE");
+            }
+          } else {
+            console.log(
+              `Not sending NETWORK_IDLE: ${idleCheckState.requestCount} requests still pending, last activity ${timeSinceActivity}ms ago`
+            );
+            console.log("lets try to send what we have until now");
+            const requestsToSend = Array.from(requestData.values());
+            const success = await sendNetworkIdleMessage(requestsToSend);
+            if (success) {
+              requestData.clear();
+            }
+          }
+        } catch (error) {
+          console.error("Error in idle timeout handler:", error);
         }
-      }, 500);
-      // }
+      }, 800);
     }
 
     const debuggerListener = async (
@@ -337,31 +430,20 @@ async function attachDebugger(tabId: number): Promise<void> {
         case "Network.responseReceived": {
           const requestInfo = requestData.get(params.requestId);
           if (requestInfo && params.response) {
+            console.log(
+              `Response received for ${params.requestId}, URL: ${params.response.url}`
+            );
+
             requestInfo.response = params;
             requestInfo.headers = params.response.headers;
             requestInfo.status = params.response.status;
             requestInfo.statusText = params.response.statusText;
 
-            try {
-              // קבלת מידע על זמנים מהדפדפן
-              if (params.response.timing) {
-                requestInfo.duration =
-                  params.response.timing.receiveHeadersEnd -
-                  params.response.timing.sendStart;
-              }
-
-              // קבלת ה-body
-              const responseBody = (await chrome.debugger.sendCommand(
-                { tabId },
-                "Network.getResponseBody",
-                { requestId: params.requestId }
-              )) as { body: string; base64Encoded: boolean };
-
-              if (responseBody) {
-                requestInfo.body = responseBody;
-              }
-            } catch (error) {
-              console.error("Failed to get timing or response body:", error);
+            // חישוב זמנים - משאירים את זה כאן כי המידע כבר זמין
+            if (params.response.timing) {
+              requestInfo.duration =
+                params.response.timing.receiveHeadersEnd -
+                params.response.timing.sendStart;
             }
           }
           break;
@@ -400,7 +482,35 @@ async function attachDebugger(tabId: number): Promise<void> {
           const requestInfo = requestData.get(params.requestId);
           if (requestInfo) {
             requestInfo.timing = params.timestamp;
+            console.log(
+              `Loading finished for ${params.requestId}, URL: ${
+                requestInfo.request?.url || "unknown"
+              }`
+            );
+
+            // כעת מנסים לקבל את ה-body
+            try {
+              const responseBody = (await chrome.debugger.sendCommand(
+                { tabId },
+                "Network.getResponseBody",
+                { requestId: params.requestId }
+              )) as { body: string; base64Encoded: boolean };
+
+              if (responseBody) {
+                console.log(
+                  `Got body for ${params.requestId}, size: ${responseBody.body.length}`
+                );
+                requestInfo.body = responseBody;
+              } else {
+                console.log(`No body returned for ${params.requestId}`);
+              }
+            } catch (error: any) {
+              console.log(`Failed to get body for ${params.requestId}:`, error);
+              // שומרים מידע על שגיאת ה-body לצורך ניסיון מאוחר יותר
+              requestInfo.bodyError = error.toString();
+            }
           }
+
           idleCheckState.requestCount = Math.max(
             0,
             idleCheckState.requestCount - 1
@@ -436,9 +546,20 @@ async function attachDebugger(tabId: number): Promise<void> {
     };
 
     // Register all listeners
+    // רישום מאזינים עם בדיקות הגנה
     chrome.debugger.onEvent.addListener(debuggerListener);
     chrome.debugger.onDetach.addListener(detachListener);
-    chrome.webNavigation.onBeforeNavigate.addListener(navigationListener);
+
+    // בדיקת קיום האובייקט webNavigation לפני רישום מאזינים
+    if (chrome.webNavigation && chrome.webNavigation.onBeforeNavigate) {
+      chrome.webNavigation.onBeforeNavigate.addListener(navigationListener);
+    } else {
+      console.warn(
+        "webNavigation API not available, navigation events will not be tracked"
+      );
+    }
+
+    // רישום מאזין לסגירת טאב - תמיד זמין
     chrome.tabs.onRemoved.addListener((closedTabId: number) => {
       if (closedTabId === tabId) {
         cleanup();
@@ -453,9 +574,6 @@ async function attachDebugger(tabId: number): Promise<void> {
   }
 }
 
-// END NEW DEBUGGER => 12.2.2025
-
-// כשה-DevTools נפתחים
 chrome.runtime.onMessage.addListener(async (message, sender) => {
   console.log("Received message about the devtools opened:", message, sender);
   if (message.type === "DEVTOOLS_OPENED") {
@@ -467,36 +585,36 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
 });
 
 // מעקב אחרי תגובות רשת
-chrome.debugger.onEvent.addListener(async (source, method, params: any) => {
-  if (method === "Network.responseReceived") {
-    const { requestId } = params;
+// chrome.debugger.onEvent.addListener(async (source, method, params: any) => {
+//   if (method === "Network.responseReceived") {
+//     const { requestId } = params;
 
-    try {
-      // קבלת הבודי של התשובה
-      const responseBody = await chrome.debugger.sendCommand(
-        source,
-        "Network.getResponseBody",
-        { requestId }
-      );
+//     try {
+//       // קבלת הבודי של התשובה
+//       const responseBody = await chrome.debugger.sendCommand(
+//         source,
+//         "Network.getResponseBody",
+//         { requestId }
+//       );
 
-      // lets also send the url of the request
+//       // lets also send the url of the request
 
-      console.log("Response body:", responseBody);
-      chrome.runtime.sendMessage({
-        type: "NETWORK_RESPONSE",
-        data: responseBody,
-        url: params.response.url,
-      });
-    } catch (error) {
-      console.error("Error getting response body:", error);
-      chrome.runtime.sendMessage({
-        type: "NETWORK_RESPONSE",
-        data: { body: "Error getting response body" },
-        url: params.response.url,
-      });
-    }
-  }
-});
+//       console.log("Response body:", responseBody);
+//       chrome.runtime.sendMessage({
+//         type: "NETWORK_RESPONSE",
+//         data: responseBody,
+//         url: params.response.url,
+//       });
+//     } catch (error) {
+//       console.error("Error getting response body:", error);
+//       chrome.runtime.sendMessage({
+//         type: "NETWORK_RESPONSE",
+//         data: { body: "Error getting response body" },
+//         url: params.response.url,
+//       });
+//     }
+//   }
+// });
 
 // ניקוי כשטאב נסגר
 chrome.tabs.onRemoved.addListener((tabId) => {

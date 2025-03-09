@@ -1,4 +1,3 @@
-import path from "path";
 import { IndicatorData } from "../../types";
 import {
   getBorderByTiming,
@@ -24,7 +23,9 @@ export function loadIndicators() {
 
     console.log(storagePath, "storage path");
     console.log(pageIndicators, "page indicators");
-
+    if (currentPageIndicators.length === 0) {
+      return;
+    }
     currentPageIndicators?.forEach(createIndicatorFromData);
 
     // Make sure we have all indicators
@@ -54,7 +55,10 @@ export function loadIndicators() {
   // add a monitor here to update the indicators?!
 }
 
-export async function createIndicatorFromData(indicatorData: IndicatorData) {
+export async function createIndicatorFromData(
+  indicatorData: IndicatorData,
+  isAuto?: boolean
+) {
   const indicatorElement = document.getElementById(`indi-${indicatorData.id}`);
   if (indicatorElement) {
     return;
@@ -69,7 +73,7 @@ export async function createIndicatorFromData(indicatorData: IndicatorData) {
 
     indicatorData.updatedThisRound = false;
 
-    // lets update the current indicator in the storage
+    // lets update the current indicator with the updated uuid in the storage
     chrome.storage.local.get(["indicators"], (result) => {
       const indicators = result.indicators || {};
       const pathToUpdate = generateStoragePath(window.location.href);
@@ -88,27 +92,7 @@ export async function createIndicatorFromData(indicatorData: IndicatorData) {
   }
 
   console.log("indicators path", indicatorData.elementInfo.path);
-  let elementByPath = await waitForElement(indicatorData.elementInfo.path);
-  const isAutoIndicator = indicatorData.id.includes("auto");
-
-  if (isAutoIndicator) {
-    const elements = document.querySelectorAll("[data-indi]");
-    const elementsArray = Array.from(elements);
-
-    const matchingElement = elementsArray.find((element) => {
-      const indiData = JSON.parse(element.getAttribute("data-indi") || "{}");
-      return indiData.url === indicatorData.lastCall.url;
-    });
-
-    if (matchingElement) {
-      const existingIndicator = elementByPath?.previousElementSibling;
-      if (existingIndicator?.hasAttribute("data-indicator-id")) {
-        console.log("Indicator already exists for this element");
-        return;
-      }
-      elementByPath = matchingElement;
-    }
-  }
+  const elementByPath = await waitForElement(indicatorData.elementInfo.path);
 
   console.log({ indicatorData, elementByPath }, "element by path");
   const elementBefore = elementByPath?.previousElementSibling;
@@ -119,18 +103,6 @@ export async function createIndicatorFromData(indicatorData: IndicatorData) {
   } else {
     originalElementAndElementBeforeAreInline = false;
   }
-
-  const allNetworkCallsThatMatch = allNetworkCalls
-    .filter(
-      (call: any) =>
-        generateStoragePath(
-          call?.response?.url ?? call?.request?.request?.url
-        ) === generateStoragePath(indicatorData.lastCall.url)
-    )
-    .filter((el: any) => el?.request?.request?.method === indicatorData.method);
-  const lastNetworkCall =
-    allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1];
-  const autoIndicatorData = { ...indicatorData, ...lastNetworkCall };
 
   const indicator = document.createElement("div");
   indicator.className = "indicator";
@@ -143,8 +115,9 @@ export async function createIndicatorFromData(indicatorData: IndicatorData) {
     margin-left: 8px;
     border-radius: 50%;
     background-color: ${
-      indicatorData.lastCall.status === 200 || autoIndicatorData.status === 200
-        ? "rgba(25,200, 50, .75)"
+      indicatorData.lastCall.status === 200
+        ? // || autoIndicatorData?.status === 200
+          "rgba(25,200, 50, .75)"
         : "#f44336"
     };
     cursor: pointer;
@@ -165,9 +138,17 @@ export async function createIndicatorFromData(indicatorData: IndicatorData) {
       indicatorData?.offset?.left ? indicatorData.offset.left + "px" : "0"
     };
     border: ${getBorderByTiming(
-      indicatorData?.lastCall?.timing?.duration ?? autoIndicatorData?.duration
+      indicatorData?.lastCall?.timing?.duration
+      // ?? autoIndicatorData?.duration
     )};
   `;
+
+  if (isAuto) {
+    indicator.setAttribute(
+      "data-indicator-info",
+      JSON.stringify(indicatorData)
+    );
+  }
 
   addIndicatorEvents(indicator, indicatorData);
 
@@ -181,13 +162,12 @@ export async function createIndicatorFromData(indicatorData: IndicatorData) {
   elementByPath?.insertAdjacentElement("beforebegin", indicator);
 }
 
-function addIndicatorEvents(indicator: HTMLElement, data: any) {
+function addIndicatorEvents(
+  indicator: HTMLElement,
+  indicatorData: IndicatorData
+) {
   indicator.addEventListener("click", async () => {
-    const tooltipElement = document.getElementById("indicator-tooltip");
-    if (tooltipElement) {
-      tooltipElement.remove();
-    }
-
+    const dataFromAttr = indicator.getAttribute("data-indicator-info");
     // מוסיפים האזנה למקשים כשהטולטיפ פתוח
     let totalOffsetTop = parseInt(indicator.style.top) || 0;
     let totalOffsetLeft = parseInt(indicator.style.left) || 0;
@@ -234,31 +214,18 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
 
     document.addEventListener("keydown", moveHandler);
 
-    // const currentData = await getCurrentIndicatorData(data.id);
-
-    let currentData = pageIndicators.filter(
-      (el: IndicatorData) => el.id === data.id
+    const currentData = pageIndicators.filter(
+      (el: IndicatorData) => el.id === indicatorData.id
     )[0];
 
-    if (!currentData) {
-      const allNetworkCallsThatMatch = allNetworkCalls
-        .filter(
-          (call: any) =>
-            generateStoragePath(
-              call?.response?.url ?? call?.request?.request?.url
-            ) === generateStoragePath(data.lastCall.url)
-        )
-        .filter((el: any) => el?.request?.request?.method === data.method);
-      const lastNetworkCall =
-        allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1];
-      currentData = { ...data, ...lastNetworkCall };
-      indicator.setAttribute(
-        "data-indicator-info",
-        JSON.stringify(currentData)
-      );
-    }
+    const parsedDataFromAttr = dataFromAttr
+      ? JSON.parse(dataFromAttr)
+      : indicatorData;
+    console.log(
+      { parsedDataFromAttr },
+      "parsed data from attr - this is suppose to be the tooltip data"
+    );
 
-    console.log({ currentData }, "this is the current data for the indicator");
     const tooltip = document.createElement("div");
     tooltip.id = "indicator-tooltip";
     tooltip.style.cssText = `
@@ -278,41 +245,43 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
     `;
 
     const durationColor =
-      data.lastCall?.timing ||
-      data.lastCall?.timing?.duration ||
-      data?.duration < 300
-        ? "#4CAF50"
-        : data?.lastCall?.timing ||
-          data?.lastCall?.timing?.duration ||
-          data?.duration < 1000
-        ? "#FFC107"
-        : "#f44336";
+      parsedDataFromAttr.duration < 300 ? "#4CAF50" : "#f44336";
+    // data.lastCall?.timing ||
+    // data.lastCall?.timing?.duration ||
+    // data?.duration < 300
+    //   ? "#4CAF50"
+    //   : data?.lastCall?.timing ||
+    //     data?.lastCall?.timing?.duration ||
+    //     data?.duration < 1000
+    //   ? "#FFC107"
+    //   : "#f44336";
 
     tooltip.innerHTML = `
-    <div class='tooltip-header' style="background-color: rgb(207, 85, 108), width: 100%, height: 1rem"  /> 
+    <div 
+      class='tooltip-header' 
+      style="text-align: right; margin-bottom: 1rem; font-weight: bold; width: 100%; height: 1rem"
+      > DRAG ME
+    </div>
     <div style="display: flex; justify-content: space-between; align-items: center;">
-        <strong>${currentData?.method ?? data?.method}</strong>
+        <strong>${parsedDataFromAttr.method ?? currentData?.method}</strong>
         <span id='tooltip-duration' style="color: ${durationColor}; font-weight: bold;">
-          ${Math.floor(
-            currentData?.lastCall?.timing?.duration ??
-              currentData?.duration ??
-              data?.lastCall?.timing?.duration ??
-              0
-          )}ms
+          ${Math.floor(parsedDataFromAttr.duration ?? currentData?.duration)}ms
         </span>
       </div>
       <div class='indi-url' style="color: #666; word-break: break-all; margin: 8px 0;">
-        ${currentData?.lastCall?.url ?? data?.lastCall?.url}
+        ${
+          currentData?.lastCall?.url ??
+          parsedDataFromAttr?.request?.reqyest?.url
+        }
       </div>
       <div style="color: ${
-        currentData?.lastCall?.status === 200 || currentData?.status === 200
+        parsedDataFromAttr?.status === 200 ||
+        currentData?.lastCall?.status === 200
           ? "#4CAF50"
           : "#f44336"
       }">
         Status: ${
-          currentData?.status ??
-          currentData?.lastCall?.status ??
-          data.lastCall.status
+          parsedDataFromAttr?.status === 200 || currentData?.lastCall?.status
         }
       </div>
       <button class="create-jira-ticket" style="
@@ -350,7 +319,7 @@ function addIndicatorEvents(indicator: HTMLElement, data: any) {
 
     const cleanup = makeDraggable(tooltip, {
       handle: ".tooltip-header",
-      bounds: true,
+      bounds: false,
       onDragEnd: (position) => {
         // אפשר לשמור את המיקום האחרון
         console.log("Final position:", position);
@@ -716,6 +685,7 @@ interface DraggableOptions {
 }
 
 function makeDraggable(element: HTMLElement, options: DraggableOptions = {}) {
+  // problem here
   const { handle = null, bounds = true, onDragEnd = null } = options;
 
   let isDragging = false;
@@ -828,6 +798,15 @@ export function injectStyles() {
       position: fixed;
       z-index: 999999;
     }
+
+    .indi-url {
+      max-width: '50vw';
+    }
+    
+    .security-headers {
+      max-width: '50vw';
+    }
+      
 
     #api-mapper-modal-container .modal-content {
       pointer-events: auto;  // רק המודל עצמו יתפוס אירועים
