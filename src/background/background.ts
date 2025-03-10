@@ -584,38 +584,6 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
   }
 });
 
-// מעקב אחרי תגובות רשת
-// chrome.debugger.onEvent.addListener(async (source, method, params: any) => {
-//   if (method === "Network.responseReceived") {
-//     const { requestId } = params;
-
-//     try {
-//       // קבלת הבודי של התשובה
-//       const responseBody = await chrome.debugger.sendCommand(
-//         source,
-//         "Network.getResponseBody",
-//         { requestId }
-//       );
-
-//       // lets also send the url of the request
-
-//       console.log("Response body:", responseBody);
-//       chrome.runtime.sendMessage({
-//         type: "NETWORK_RESPONSE",
-//         data: responseBody,
-//         url: params.response.url,
-//       });
-//     } catch (error) {
-//       console.error("Error getting response body:", error);
-//       chrome.runtime.sendMessage({
-//         type: "NETWORK_RESPONSE",
-//         data: { body: "Error getting response body" },
-//         url: params.response.url,
-//       });
-//     }
-//   }
-// });
-
 // ניקוי כשטאב נסגר
 chrome.tabs.onRemoved.addListener((tabId) => {
   if (debuggerTabs.get(tabId)) {
