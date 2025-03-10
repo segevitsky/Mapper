@@ -1,10 +1,5 @@
 // background.ts
 
-interface NetworkIdleMessage {
-  type: "NETWORK_IDLE";
-  requests: NetworkRequestInfo[];
-}
-
 interface NetworkRequestInfo {
   request: any;
   response?: any;
