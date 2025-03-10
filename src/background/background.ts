@@ -569,12 +569,36 @@ async function attachDebugger(tabId: number): Promise<void> {
   }
 }
 
+// chrome.runtime.onMessage.addListener(async (message, sender) => {
+//   console.log("Received message about the devtools opened:", message, sender);
+//   if (message.type === "DEVTOOLS_OPENED") {
+//     // const tab = sender.tab;
+//     if (message?.tabId) {
+//       await attachDebugger(message.tabId);
+//     }
+//   }
+// });
+
 chrome.runtime.onMessage.addListener(async (message, sender) => {
-  console.log("Received message about the devtools opened:", message, sender);
+  console.log("Received message:", message, sender);
+
   if (message.type === "DEVTOOLS_OPENED") {
-    // const tab = sender.tab;
-    if (message?.tabId) {
-      await attachDebugger(message.tabId);
+    let tabId;
+
+    // אם ההודעה מגיעה מדף תוכן (content script)
+    if (sender.tab) {
+      tabId = sender.tab.id;
+    }
+    // אם ההודעה מגיעה מהדבטולס פאנל
+    else if (message.tabId) {
+      tabId = message.tabId;
+    }
+
+    if (tabId) {
+      console.log(`Attaching debugger to tab ${tabId}`);
+      await attachDebugger(tabId);
+    } else {
+      console.error("No tab ID found");
     }
   }
 });

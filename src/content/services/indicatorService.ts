@@ -11,6 +11,11 @@ import { allNetworkCalls } from "../content";
 export let pageIndicators: IndicatorData[] = [];
 
 export function loadIndicators() {
+  // send a message to attach our debugger
+  chrome.runtime.sendMessage({
+    type: "DEVTOOLS_OPENED",
+  });
+
   console.log({ allNetworkCalls }, "all network calls");
   const storagePath = generateStoragePath(window.location.href);
 

@@ -1,19 +1,9 @@
 import { JiraTicketData } from "../services/jiraService";
 import { IndicatorData, NetworkCall } from "../types";
-// import // waitForElement,
-// getBorderByTiming,
-// removeDuplicatedIndicatorElements,
-// "../utils/general";
 import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
-// import { URLChangeDetector } from "../utils/urlChangeDetector";
 import { generateStoragePath } from "../utils/storage";
-import {
-  // extractUUIDFromUrl,
-  identifyDynamicParams,
-  // updateUrlWithNewUUID,
-} from "../utils/urlUrils";
+import { identifyDynamicParams } from "../utils/urlUrils";
 import { IndicatorMonitor } from "./services/indicatorMonitor";
-// import { authenticatedLoadIndicators } from "./loginManager";
 import { IndicatorLoader } from "./services/indicatorLoader";
 import {
   getElementPath,
@@ -541,7 +531,6 @@ chrome.runtime.onMessage.addListener((message) => {
       const monitor = IndicatorMonitor.getInstance();
 
       allNetworkCalls.push(...message.requests);
-      console.log({ message }, "network idle message");
       monitor.checkIndicatorsUpdate(
         pageIndicators,
         allNetworkCalls,
@@ -589,7 +578,6 @@ chrome.runtime.onMessage.addListener((message) => {
 
       chrome.storage.local.get(["indicators"], (result) => {
         let indicators = result.indicators || {};
-        console.log({ indicators }, "our indicators before deleting");
         // lets delete all the indicators in storage
         indicators = {};
         chrome.storage.local.set({ indicators });
