@@ -12,7 +12,8 @@
     "tabs",
     "<all_urls>",
     "identity",
-    "background"
+    "background",
+    "desktopCapture"
   ],
   "host_permissions": [
     "<all_urls>",

@@ -1,6 +1,7 @@
 // loginManager.ts
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
+import { firebaseConfig, authConfig } from "../../env-config"; 
 
 // טיפוסים
 interface LoginResponse {
@@ -178,41 +179,115 @@ function createLoginModal() {
   return overlay;
 }
 
-// פונקציות בדיקה וניהול התחברות
-// function isUserLoggedIn(): boolean {
-//     // בדיקה אם יש טוקן תקף בסטורג'
-//     return chrome.storage.local.get(['authToken']).then(result => {
-//       return !!result.authToken;
-//     });
-//   }
-
 async function handleLogin(
   email: string,
   password: string
 ): Promise<LoginResponse> {
   try {
-    console.log({ email, password });
-    // התחברות מול Firebase
-    // שמירת הטוקן
-    return { success: true };
+    let app;
+    try {
+      app = initializeApp(firebaseConfig);
+    } catch (e) {
+      // אם האפליקציה כבר אותחלה, נקבל את הקיימת
+      app = initializeApp(firebaseConfig, "indi-mapper");
+    }
+    
+    // נקבל את אובייקט האימות
+    const auth = getAuth(app);
+    
+    // התחברות עם אימייל וסיסמה
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+    
+    // שמירת הטוקן בסטורג'
+    await chrome.storage.local.set({
+      authToken: await user.getIdToken(),
+      userId: user.uid,
+      userEmail: user.email,
+      lastLogin: Date.now()
+    });
+    
+    console.log("User logged in successfully:", user.uid);
+    // lets close the modal
+    const modal = document.querySelector(".indi-modal-overlay");
+    if (modal) {
+      modal.remove();
+    }
+    // refresh page
+    window.location.reload();
+    // Add this line to dispatch the event
+    window.dispatchEvent(new CustomEvent('indi-user-authenticated'));
+    
+    return { 
+      success: true 
+    };
   } catch (error) {
+    console.error("Login failed:", error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : "Login failed",
+      error: error instanceof Error ? error.message : "Login failed"
     };
   }
 }
 
+// נוסיף פונקציה לבדיקת תוקף הטוקן
+async function validateAuthToken(): Promise<boolean> {
+  try {
+    const { authToken, lastLogin } = await chrome.storage.local.get(['authToken', 'lastLogin']);
+    
+    if (!authToken) return false;
+    
+    // בדיקה אם הטוקן פג תוקף (למשל אחרי 24 שעות)
+    const tokenAge = Date.now() - (lastLogin || 0);
+    const tokenExpiryTime = authConfig.tokenExpiryTime;
+
+    
+    if (tokenAge > tokenExpiryTime) {
+      // הטוקן פג תוקף, ננקה את האחסון
+      await chrome.storage.local.remove(['authToken', 'userId', 'userEmail', 'lastLogin']);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error validating token:", error);
+    return false;
+  }
+}
+
+export async function isUserLoggedIn(): Promise<boolean> {
+  try {
+    return await validateAuthToken();
+  } catch (error) {
+    console.error("Error checking login status:", error);
+    return false;
+  }
+}
+
+// נוסיף פונקציית התנתקות
+export async function logout(): Promise<void> {
+  try {
+    const auth = getAuth();
+    await auth.signOut();
+    await chrome.storage.local.remove(['authToken', 'userId', 'userEmail', 'lastLogin']);
+    console.log("User logged out successfully");
+  } catch (error) {
+    console.error("Error during logout:", error);
+  }
+}
 // פונקציה ראשית שעוטפת את loadIndicators
 export async function authenticatedLoadIndicators(
   originalLoadFunction: () => void
 ) {
-  // const isLoggedIn = await isUserLoggedIn();
-  const isLoggedIn = false;
-
+  const isLoggedIn = await isUserLoggedIn();
   if (!isLoggedIn) {
     createLoginModal();
-    // ממתין להתחברות מוצלחת לפני המשך
+    
+    // Add this listener to run originalLoadFunction after login
+    window.addEventListener('indi-user-authenticated', () => {
+      originalLoadFunction();
+    }, { once: true }); // 'once: true' ensures the listener is removed after it runs once
+    
     return;
   }
 

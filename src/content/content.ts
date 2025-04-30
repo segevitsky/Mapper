@@ -10,6 +10,7 @@ import {
   injectStyles,
   pageIndicators,
 } from "./services/indicatorService";
+import { waitForIndicator } from "../utils/general";
 
 // content.ts
 let isInspectMode = false;
@@ -20,10 +21,14 @@ let modalContainer: HTMLElement;
 let innerModalContainer: HTMLElement;
 export const allNetworkCalls: NetworkCall[] = [];
 
-// אתחול בטעינת הדף
+
 createContainers();
 injectStyles();
 IndicatorLoader.getInstance();
+
+chrome.runtime.sendMessage({
+  type: "DEVTOOLS_OPENED",
+});
 
 // יצירת מיכל למודל ולאינדיקטורים
 function createContainers() {
@@ -544,12 +549,10 @@ chrome.runtime.onMessage.addListener((message) => {
           "data-indicator-info"
         );
         if (!indicatorIsUpdated) {
-          console.log("indicator did not update", indicator);
           failedIndicators.push(indicator);
-          console.log(
-            { failedIndicators, message },
-            "failed indicators and all network reqs"
-          );
+          if (failedIndicators.length > 0) {
+            monitor.checkIndicatorsUpdate(pageIndicators, allNetworkCalls);
+          }
           // chrome.runtime.sendMessage({
           //   type: "INDICATOR_FAILED",
           //   data: { failedIndicators, message },
@@ -584,17 +587,17 @@ chrome.runtime.onMessage.addListener((message) => {
       });
       break;
 
-    case "NETWORK_RESPONSE":
-      console.log("network response", message.data);
-      break;
+    // case "NETWORK_RESPONSE":
+    //   console.log("network response", message.data);
+    //   break;
 
     case "CLEAR_CURRENT_URL_INDICATORS":
       chrome.storage.local.get(["indicators"], (result) => {
         const indicators = result.indicators || {};
-        console.log(
-          indicators["Dashboard"],
-          "this is the data i want to delete"
-        );
+        // console.log(
+        //   indicators["Dashboard"],
+        //   "this is the data i want to delete"
+        // );
         delete indicators["Dashboard"];
         chrome.storage.local.set({ indicators });
       });
@@ -632,12 +635,12 @@ chrome.runtime.onMessage.addListener((message) => {
     }
 
     case "UPDATE_INDICATORS":
-      console.log("update indicators", message);
+      // console.log("update indicators", message);
       updateRelevantIndicators(message.data);
       break;
 
     case "NEW_NETWORK_CALL":
-      console.log("new network call", message.data);
+      // console.log("new network call", message.data);
       updateRelevantIndicators(message.data);
       break;
   }
@@ -649,31 +652,31 @@ function updateRelevantIndicators(newCall: NetworkCall) {
   const currentPageIndicators = pageIndicators || [];
 
   let hasUpdates = false;
-  currentPageIndicators?.forEach((indicator: IndicatorData) => {
+  currentPageIndicators?.forEach(async (indicator: IndicatorData) => {
     try {
       const indicatorUrl = new URL(indicator?.lastCall?.url);
       const newCallUrl = new URL(newCall.url);
 
-      console.log("Comparing URLs:", {
-        indicator: indicatorUrl.pathname,
-        newCall: newCallUrl.pathname,
-      });
+      // console.log("Comparing URLs:", {
+      //   indicator: indicatorUrl.pathname,
+      //   newCall: newCallUrl.pathname,
+      // });
 
-      if (indicator.lastCall.url.includes("screening")) {
-        console.log("screening indicator", indicator);
-      }
+      // if (indicator.lastCall.url.includes("screening")) {
+      //   console.log("screening indicator", indicator);
+      // }
 
       if (
         indicator?.method === newCall.method &&
         generateStoragePath(indicator?.lastCall?.url) ===
           generateStoragePath(newCall.url)
       ) {
-        console.log("Found matching indicator:", indicator);
-        console.log(
-          "comparison paths",
-          generateStoragePath(indicator?.lastCall?.url),
-          generateStoragePath(newCall.url)
-        );
+        // console.log("Found matching indicator:", indicator);
+        // console.log(
+        //   "comparison paths",
+        //   generateStoragePath(indicator?.lastCall?.url),
+        //   generateStoragePath(newCall.url)
+        // );
 
         // עדכון המידע
         indicator.lastCall = {
@@ -690,11 +693,13 @@ function updateRelevantIndicators(newCall: NetworkCall) {
           indicator.calls = [newCall];
         }
 
-        const indicatorElement = document.getElementById(
-          `indi-${indicator.id}`
-        );
+        // const indicatorElement = document.getElementById(
+        //   `indi-${indicator.id}`
+        // );
 
-        console.log("Found indicator element:", indicatorElement);
+        const indicatorElement = await waitForIndicator(indicator.id);
+        if (!indicatorElement) return;
+        // console.log("Found indicator element:", indicatorElement);
 
         if (indicatorElement) {
           indicatorElement.classList.add("indicator-updating");
@@ -711,7 +716,7 @@ function updateRelevantIndicators(newCall: NetworkCall) {
             lastUpdated: Date.now(),
           };
 
-          console.log("Updated data in update relevant field:", updatedData);
+          // console.log("Updated data in update relevant field:", updatedData);
 
           indicatorElement.setAttribute(
             "data-indicator-info",
@@ -724,10 +729,10 @@ function updateRelevantIndicators(newCall: NetworkCall) {
             updateTooltipContent(openTooltip, updatedData);
           }
 
-          console.log(
-            { currentPageIndicators },
-            "Current page indicators after update"
-          );
+          // console.log(
+          //   { currentPageIndicators },
+          //   "Current page indicators after update"
+          // );
 
           // אנימציה
           (indicatorElement as HTMLElement).style.transform = "scale(1.2)";
@@ -737,14 +742,14 @@ function updateRelevantIndicators(newCall: NetworkCall) {
 
           hasUpdates = true;
         } else {
-          console.log("Indicator element not found:", indicator);
+          // console.log("Indicator element not found:", indicator);
           const indicatorSecondAttempt = document.getElementById(
             `indi-${indicator.id}`
           );
-          console.log(
-            "Indicator element second attempt:",
-            !!indicatorSecondAttempt
-          );
+          // console.log(
+          //   "Indicator element second attempt:",
+          //   !!indicatorSecondAttempt
+          // );
         }
       }
     } catch (error) {
@@ -752,13 +757,13 @@ function updateRelevantIndicators(newCall: NetworkCall) {
     }
   });
 
-  console.log("Has updates:", hasUpdates);
-  console.log("Indicators after update:", currentPageIndicators);
+  // console.log("Has updates:", hasUpdates);
+  // console.log("Indicators after update:", currentPageIndicators);
 }
 
 // פונקציה חדשה לעדכון תוכן הטולטיפ
 function updateTooltipContent(tooltip: HTMLElement, data: IndicatorData) {
-  console.log("lets update our indicator", data);
+  // console.log("lets update our indicator", data);
   const durationColor =
     data.lastCall.timing.duration < 300
       ? "#4CAF50"
@@ -795,7 +800,6 @@ function createHighlighter() {
 }
 
 function enableInspectMode() {
-  console.log("Inspect mode enabled");
   isInspectMode = true;
   document.body.style.cursor = "crosshair";
   createHighlighter();
