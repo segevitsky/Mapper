@@ -167,88 +167,94 @@ class FloatingRecorderButton {
   }
 
   private makeDraggable(button: HTMLElement): () => void {
-    if (!button) {
-      console.error("Button to make draggable is undefined");
-      return () => {};
-    }
-
+    if (!button) return () => {};
+  
+    // וודא שהכפתור נמצא בפוזיציה הנכונה עם גודל מוחלט
+    const computedStyle = window.getComputedStyle(button);
+    const rect = button.getBoundingClientRect();
+    
+    // הגדר את הפוזיציה, הגודל והמיקום ההתחלתי
+    button.style.position = 'absolute'; // או 'fixed' אם צריך
+    button.style.width = rect.width + 'px';
+    button.style.height = rect.height + 'px';
+    // button.style.left = rect.left + 'px';
+    // button.style.top = rect.top + 'px';
+    button.style.margin = '0'; // חשוב - ביטול שוליים שיכולים להשפיע
+    
+    console.log("Initial button size/position:", {
+      width: rect.width,
+      height: rect.height,
+      left: rect.left,
+      top: rect.top
+    });
+  
+    // משתנים למעקב אחר הגרירה
     let isDragging = false;
-    let startX = 0;
-    let startY = 0;
-    let currentX = 0;
-    let currentY = 0;
-
-    // קבל את המיקום הנוכחי או השתמש ב-0 אם לא מוגדר עדיין
-    const currentTransform = window.getComputedStyle(button).transform;
-
-    // אם כבר יש טרנספורם, נסה לשלוף את הערכים
-    if (currentTransform && currentTransform !== "none") {
-      const matrix = new DOMMatrix(currentTransform);
-      currentX = matrix.e;
-      currentY = matrix.f;
-    }
-
-    console.log("Making button draggable:", button);
-    console.log("Initial position:", { currentX, currentY });
-
+    let offsetX = 0;
+    let offsetY = 0;
+  
     const onMouseDown = (e: MouseEvent) => {
-      // חשוב: נעצור התנהגות ברירת מחדל כדי למנוע בעיות
       e.preventDefault();
-
-      console.log("Mouse down on draggable button");
+      
       isDragging = true;
-
-      // חישוב הדלתא בין מיקום העכבר למיקום הנוכחי של הכפתור
-      startX = e.clientX - currentX;
-      startY = e.clientY - currentY;
-
-      // מנע ברירה של טקסט בזמן גרירה
-      button.style.userSelect = "none";
-      document.body.style.cursor = "move";
+      
+      // חישוב אופסט בין נקודת הלחיצה לפינה של הכפתור
+      const buttonRect = button.getBoundingClientRect();
+      offsetX = e.clientX - buttonRect.left;
+      offsetY = e.clientY - buttonRect.top;
+      
+      console.log("Mouse down at:", {
+        mouseX: e.clientX,
+        mouseY: e.clientY,
+        buttonLeft: buttonRect.left,
+        buttonTop: buttonRect.top,
+        offsetX,
+        offsetY
+      });
+      
+      button.style.cursor = 'grabbing';
     };
-
+  
     const onMouseMove = (e: MouseEvent) => {
       if (!isDragging) return;
-
+      
       e.preventDefault();
-
+      
       // חישוב המיקום החדש
-      currentX = e.clientX - startX;
-      currentY = e.clientY - startY;
-
-      // הגבלת תזוזה לתוך החלון
-      const maxX = window.innerWidth - button.offsetWidth;
-      const maxY = window.innerHeight - button.offsetHeight;
-
-      currentX = Math.max(0, Math.min(currentX, maxX));
-      currentY = Math.max(0, Math.min(currentY, maxY));
-
-      console.log("Dragging to:", { currentX, currentY });
-      button.style.transform = `translate(${currentX}px, ${currentY}px)`;
+      const newLeft = e.clientX - offsetX;
+      const newTop = e.clientY - offsetY;
+      
+      // שינוי המיקום בלבד, לא הגודל
+      button.style.left = newLeft + 'px';
+      button.style.top = newTop + 'px';
+      
+      console.log("Moving to:", { left: newLeft, top: newTop });
     };
-
+  
     const onMouseUp = () => {
       if (!isDragging) return;
-
-      console.log("Drag ended at:", { currentX, currentY });
+      
       isDragging = false;
-      button.style.userSelect = "";
-      document.body.style.cursor = "";
+      button.style.cursor = 'grab';
     };
-
-    // הוסף מאזינים ישירות לכפתור
+  
+    // הוספת מאזינים
     button.addEventListener("mousedown", onMouseDown);
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
-
-    // החזר פונקציית ניקוי שמסירה את כל המאזינים
+    
+    // סגנון התחלתי
+    button.style.cursor = 'grab';
+    button.style.boxSizing = 'border-box'; // חשוב - מונע שינוי גודל מפתיע בגלל padding
+    
+    // החזרת פונקציית ניקוי
     return () => {
       button.removeEventListener("mousedown", onMouseDown);
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
-      console.log("Draggable cleanup complete");
     };
   }
+
 }
 
 // יצירת הכפתור

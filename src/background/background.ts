@@ -484,6 +484,8 @@ async function attachDebugger(tabId: number): Promise<void> {
               }`
             );
 
+
+
             // כעת מנסים לקבל את ה-body
             try {
               const responseBody = (await chrome.debugger.sendCommand(
@@ -494,8 +496,10 @@ async function attachDebugger(tabId: number): Promise<void> {
 
               if (responseBody) {
                 console.log(
-                  `Got body for ${params.requestId}, size: ${responseBody.body.length}`
+                  `Got body for ${params.requestId}, size: ${responseBody.body.length} and this is the base64Encoded: ${responseBody.base64Encoded} and the body is: ${responseBody.body}`
                 );
+                console.log(params, 'this is the response when loading finished');
+
                 requestInfo.body = responseBody;
               } else {
                 console.log(`No body returned for ${params.requestId}`);

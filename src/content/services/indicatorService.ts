@@ -819,6 +819,7 @@ export function getElementPath(element: Element): string {
 export function injectStyles() {
   const style = document.createElement("style");
   style.textContent = `
+
     #api-mapper-modal-container {
       pointer-events: none;  // חשוב! מאפשר קליקים לעבור דרכו
       position: fixed;
@@ -974,10 +975,10 @@ export function injectStyles() {
 }
 
 
-.indi-floating-button {
+      .indi-floating-button {
         position: fixed;
-        bottom: 20px;
-        right: 20px;
+        bottom: 1.5rem;
+        right: 7.5rem !important;
         background: white;
         border-radius: 50px;
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
@@ -987,6 +988,7 @@ export function injectStyles() {
         align-items: center;
         cursor: move;
         user-select: none;
+        
       }
       
       .indi-record-button {
@@ -997,6 +999,10 @@ export function injectStyles() {
         align-items: center;
         gap: 8px;
         color: #cf556c;
+        border: 1px solid;
+        box-shadow: 2px 3px 5px;
+        margin-left: 1rem;
+        background: #fff;
       }
       
       .indi-record-button.recording {
