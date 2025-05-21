@@ -100,22 +100,58 @@ export class IndicatorMonitor {
       }, 200);
     } else {
       console.log("Indicator element not found:", indicator);
-      const indicatorSecondAttempt = document.getElementById(
-        `indi-${indicator.id}`
-      );
+      // const indicatorSecondAttempt = document.getElementById(
+      //   `indi-${indicator.id}`
+      // );
+      const indicatorSecondAttempt = await waitForIndicator(indicator.id);
       console.log(
         "Indicator element second attempt:",
         !!indicatorSecondAttempt
       );
+      if (!indicatorSecondAttempt) return;
+      indicatorSecondAttempt.classList.add("indicator-updating");
+      setTimeout(() => {
+        indicatorSecondAttempt.classList.remove("indicator-updating");
+      }, 500);
+
+      (indicatorSecondAttempt as HTMLElement).style.backgroundColor =
+        newCall.response?.response?.status === 200
+          ? "rgba(25,200, 50, .75)"
+          : "#f44336";
+
+      // שמירת המידע המעודכן על האלמנט
+      const updatedData = {
+        ...indicator,
+        lastUpdated: Date.now(),
+      };
+
+      console.log("Updated data indicator monitor:", updatedData);
+
+      indicatorSecondAttempt.setAttribute(
+        "data-indicator-info",
+        JSON.stringify(updatedData)
+      );
+
+      // עדכון הטולטיפ אם הוא פתוח
+      const openTooltip = document.getElementById("indicator-tooltip");
+      if (openTooltip) {
+        this.updateTooltipContent(openTooltip, updatedData);
+      }
+
+      // אנימציה
+      (indicatorSecondAttempt as HTMLElement).style.transform = "scale(1.2)";
+      setTimeout(() => {
+        (indicatorSecondAttempt as HTMLElement).style.transform = "scale(1)";
+      }, 200);
     }
   }
 
   private updateTooltipContent(tooltip: HTMLElement, data: IndicatorData) {
     console.log("lets update our indicator", data);
     const durationColor =
-      data.lastCall?.timing.duration < 300
+      data.lastCall?.timing?.duration < 300
         ? "#4CAF50"
-        : data.lastCall?.timing.duration < 1000
+        : data.lastCall?.timing?.duration < 1000
         ? "#FFC107"
         : "#f44336";
 
@@ -123,7 +159,7 @@ export class IndicatorMonitor {
     const durationSpan = tooltip.querySelector("span");
     if (durationSpan) {
       durationSpan.textContent = `${Math.floor(
-        data.lastCall?.timing.duration
+        data.lastCall?.timing?.duration
       )}ms`;
       durationSpan.style.color = durationColor;
     }
@@ -234,9 +270,7 @@ export class IndicatorMonitor {
           );
           this.updateIndicatorContent(
             indicator,
-            allNetworkCallsThatMatchTest[
-              allNetworkCallsThatMatchTest.length - 1
-            ] ??
+            allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1] ??
               networkCallWithBody ??
               networkCall
           );

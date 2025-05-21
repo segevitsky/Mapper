@@ -1,6 +1,9 @@
 import { debounce } from "../../utils/general";
 import { URLChangeDetector } from "../../utils/urlChangeDetector";
 import { loadIndicators } from "./indicatorService";
+import { isUserLoggedIn, authenticatedLoadIndicators } from "./loginManager";
+
+
 
 export class IndicatorLoader {
   private static instance: IndicatorLoader;
@@ -21,14 +24,31 @@ export class IndicatorLoader {
     return IndicatorLoader.instance;
   }
 
-  private handleIndicatorLoad = () => {
-    if (!this.initialLoadDone) {
-      loadIndicators();
-      this.initialLoadDone = true;
+  private handleIndicatorLoad = async () => {
+    // Check if user is logged in
+    const loggedIn = await isUserLoggedIn();
+    
+    if (!loggedIn) {
+      // Show login modal and wait for authentication
+      authenticatedLoadIndicators(() => {
+        if (!this.initialLoadDone) {
+          loadIndicators();
+          this.initialLoadDone = true;
+        } else {
+          this.debouncedLoadIndicators();
+        }
+        this.removeDuplicatedIndicatorElements();
+      });
     } else {
-      this.debouncedLoadIndicators();
+      // User is already logged in, proceed normally
+      if (!this.initialLoadDone) {
+        loadIndicators();
+        this.initialLoadDone = true;
+      } else {
+        this.debouncedLoadIndicators();
+      }
+      this.removeDuplicatedIndicatorElements();
     }
-    this.removeDuplicatedIndicatorElements();
   };
 
   private setupEventListeners() {

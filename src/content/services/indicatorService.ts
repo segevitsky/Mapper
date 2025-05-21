@@ -7,22 +7,41 @@ import {
 import { generateStoragePath } from "../../utils/storage";
 import { extractUUIDFromUrl, updateUrlWithNewUUID } from "../../utils/urlUrils";
 import { allNetworkCalls } from "../content";
+import initFloatingButton from "../floatingRecorderButton";
 
 export let pageIndicators: IndicatorData[] = [];
 
-export function loadIndicators() {
-  // send a message to attach our debugger
-  chrome.runtime.sendMessage({
-    type: "DEVTOOLS_OPENED",
-  });
+type Domain = {
+  value: string;
+  isValid: boolean;
+  id: string
+}
 
+export function loadIndicators() {
   console.log({ allNetworkCalls }, "all network calls");
   const storagePath = generateStoragePath(window.location.href);
+  
+  chrome.storage.local.get(["indicators", 'userData', 'limits', 'role'], (result) => {
+    console.log('all results', result);
+    const { userData, limits, role, indicators } = result;
+    const { domains, status } = userData || {};
+    // lets see if our current location is included in the domains
+    const currentLocationHost = window.location.host;
+    const domainIsAllowed = currentLocationHost.includes('localhost') || domains?.find((d: Domain) => d.value.includes(currentLocationHost));
+    if (!domainIsAllowed) {
+      console.log('this domain is not allowed', currentLocationHost, domains);
+      // also lets send a message to the panel to show a message that the domain is not allowed
+      chrome.runtime.sendMessage({
+        type: "DOMAIN_NOT_ALLOWED",
+        data: {
+          message: `This domain is not allowed. Please contact your administrator.`,
+          status: 403,
+        },
+      });
+      return;
+    }
+    
 
-  chrome.storage.local.get(["indicators"], (result) => {
-    console.log("All saved indicators:", result.indicators);
-
-    const indicators = result.indicators || {};
     const currentPageIndicators = indicators[storagePath] || [];
     pageIndicators = currentPageIndicators.slice();
 
@@ -41,7 +60,7 @@ export function loadIndicators() {
         console.log({ indicator }, "Indicator not found - retrying load");
         setTimeout(() => {
           createIndicatorFromData(indicator);
-        }, 5000);
+        }, 1000);
       }
     });
 
@@ -57,7 +76,7 @@ export function loadIndicators() {
     });
   });
 
-  // add a monitor here to update the indicators?!
+  initFloatingButton();
 }
 
 export async function createIndicatorFromData(
@@ -120,7 +139,7 @@ export async function createIndicatorFromData(
     margin-left: 8px;
     border-radius: 50%;
     background-color: ${
-      indicatorData.lastCall.status === 200
+      indicatorData.lastCall.status === 200 || indicatorData?.status === 200
         ? // || autoIndicatorData?.status === 200
           "rgba(25,200, 50, .75)"
         : "#f44336"
@@ -164,7 +183,29 @@ export async function createIndicatorFromData(
   ) {
     return;
   }
-  elementByPath?.insertAdjacentElement("beforebegin", indicator);
+  if (isAuto) {
+    const elementsToBeInsertedBefore = document.querySelectorAll("[data-indi]");
+    if (elementsToBeInsertedBefore.length === 1) {
+      elementsToBeInsertedBefore[0]?.insertAdjacentElement(
+        "beforebegin",
+        indicator
+      );
+    } else {
+      const arrayOfTheseGuy = Array.from(elementsToBeInsertedBefore);
+      const suitedElement = arrayOfTheseGuy.find((el) => {
+        const elPath = el.getAttribute("data-indi");
+        if (elPath === null) return;
+        const parsedElPath = JSON.parse(elPath);
+        const url = parsedElPath.url;
+        return url === indicatorData.lastCall.url;
+      });
+      if (suitedElement) {
+        suitedElement?.insertAdjacentElement("beforebegin", indicator);
+      }
+    }
+  } else {
+    elementByPath?.insertAdjacentElement("beforebegin", indicator);
+  }
 }
 
 function addIndicatorEvents(
@@ -250,7 +291,7 @@ function addIndicatorEvents(
     `;
 
     const durationColor =
-      parsedDataFromAttr.duration < 300 ? "#4CAF50" : "#f44336";
+      parsedDataFromAttr?.duration < 300 ? "#4CAF50" : "#f44336";
     // data.lastCall?.timing ||
     // data.lastCall?.timing?.duration ||
     // data?.duration < 300
@@ -270,13 +311,13 @@ function addIndicatorEvents(
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <strong>${parsedDataFromAttr.method ?? currentData?.method}</strong>
         <span id='tooltip-duration' style="color: ${durationColor}; font-weight: bold;">
-          ${Math.floor(parsedDataFromAttr.duration ?? currentData?.duration)}ms
+          ${Math.floor(parsedDataFromAttr?.duration ?? currentData?.duration)}ms
         </span>
       </div>
       <div class='indi-url' style="color: #666; word-break: break-all; margin: 8px 0;">
         ${
           currentData?.lastCall?.url ??
-          parsedDataFromAttr?.request?.reqyest?.url
+          parsedDataFromAttr?.request?.request?.url
         }
       </div>
       <div style="color: ${
@@ -285,9 +326,7 @@ function addIndicatorEvents(
           ? "#4CAF50"
           : "#f44336"
       }">
-        Status: ${
-          parsedDataFromAttr?.status === 200 || currentData?.lastCall?.status
-        }
+        Status: ${parsedDataFromAttr?.status || currentData?.lastCall?.status}
       </div>
       <button class="create-jira-ticket" style="
         margin-top: 8px;
@@ -401,7 +440,7 @@ function addIndicatorEvents(
             if (tooltipDurationElement) {
               tooltipDurationElement.innerHTML = `${Math.floor(
                 indicatorDataFromStorage?.duration ??
-                  indicatorDataFromStorage?.lastCal.timinig.duration ??
+                  indicatorDataFromStorage?.lastCal.timing.duration ??
                   0
               )}ms`;
             }
@@ -798,6 +837,7 @@ export function getElementPath(element: Element): string {
 export function injectStyles() {
   const style = document.createElement("style");
   style.textContent = `
+
     #api-mapper-modal-container {
       pointer-events: none;  // חשוב! מאפשר קליקים לעבור דרכו
       position: fixed;
@@ -951,6 +991,46 @@ export function injectStyles() {
 .json-null {
   color: #757575;
 }
+
+
+      .indi-floating-button {
+        position: fixed;
+        bottom: 1.5rem;
+        right: 7.5rem !important;
+        background: white;
+        border-radius: 50px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        z-index: 999999;
+        padding: 10px;
+        display: flex;
+        align-items: center;
+        cursor: move;
+        user-select: none;
+        
+      }
+      
+      .indi-record-button {
+        background: none;
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #cf556c;
+        border: 1px solid;
+        box-shadow: 2px 3px 5px;
+        margin-left: 1rem;
+        background: #fff;
+      }
+      
+      .indi-record-button.recording {
+        color: #f44336;
+      }
+      
+      .indi-timer {
+        margin-left: 10px;
+        font-family: monospace;
+      }
 
  
   `;

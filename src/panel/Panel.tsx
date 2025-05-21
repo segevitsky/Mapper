@@ -107,15 +107,15 @@ export const Panel: React.FC = () => {
   }, []);
 
   // 4. שליחת הודעת DEVTOOLS_OPENED פעם אחת בלבד
-  useEffect(() => {
-    if (chrome.devtools) {
-      const tabId = chrome.devtools.inspectedWindow.tabId;
-      chrome.runtime.sendMessage({
-        type: "DEVTOOLS_OPENED",
-        tabId,
-      });
-    }
-  }, []);
+  // useEffect(() => {
+  //   if (chrome.devtools) {
+  //     const tabId = chrome.devtools.inspectedWindow.tabId;
+  //     chrome.runtime.sendMessage({
+  //       type: "DEVTOOLS_OPENED",
+  //       tabId,
+  //     });
+  //   }
+  // }, []);
 
   const toggleIndiators = () => {
     setShowIndicators(!showIndicators);

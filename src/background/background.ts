@@ -56,8 +56,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function createJiraTicket(data: any) {
-  const host = "";
-  const email = "";
+  const host = "https://itamar-medical.atlassian.net/";
+  const email = "seyal@itamar-medical.com";
+  const projectKey = 'Sleeply';
 
   // add the api token back when you are ready to test
   const apiToken = null;
@@ -71,7 +72,7 @@ async function createJiraTicket(data: any) {
     },
     body: {
       fields: {
-        project: { key: "CCS" },
+        project: { key: projectKey },
         summary: data.summary,
         description: data.description,
         issuetype: { name: data.issueType || "Bug" },
@@ -483,6 +484,8 @@ async function attachDebugger(tabId: number): Promise<void> {
               }`
             );
 
+
+
             // כעת מנסים לקבל את ה-body
             try {
               const responseBody = (await chrome.debugger.sendCommand(
@@ -493,8 +496,10 @@ async function attachDebugger(tabId: number): Promise<void> {
 
               if (responseBody) {
                 console.log(
-                  `Got body for ${params.requestId}, size: ${responseBody.body.length}`
+                  `Got body for ${params.requestId}, size: ${responseBody.body.length} and this is the base64Encoded: ${responseBody.base64Encoded} and the body is: ${responseBody.body}`
                 );
+                console.log(params, 'this is the response when loading finished');
+
                 requestInfo.body = responseBody;
               } else {
                 console.log(`No body returned for ${params.requestId}`);
@@ -562,10 +567,21 @@ async function attachDebugger(tabId: number): Promise<void> {
     });
 
     debuggerTabs.set(tabId, true);
-  } catch (err) {
-    console.error("Failed to attach debugger:", err);
-    debuggerTabs.delete(tabId);
-    throw err;
+  } catch (err: any) {
+    // If debugger is already attached, just continue
+    if (
+      err.message &&
+      err.message.includes("Another debugger is already attached")
+    ) {
+      console.log("Debugger already attached, continuing with execution");
+      debuggerTabs.set(tabId, true);
+      // Continue with normal flow, considering debugger as attached
+    } else {
+      // For other errors, log and rethrow
+      console.error("Failed to attach debugger:", err);
+      debuggerTabs.delete(tabId);
+      throw err;
+    }
   }
 }
 
