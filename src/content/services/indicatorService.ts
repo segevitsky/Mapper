@@ -11,19 +11,37 @@ import initFloatingButton from "../floatingRecorderButton";
 
 export let pageIndicators: IndicatorData[] = [];
 
-export function loadIndicators() {
-  // send a message to attach our debugger
-  // chrome.runtime.sendMessage({
-  //   type: "DEVTOOLS_OPENED",
-  // });
+type Domain = {
+  value: string;
+  isValid: boolean;
+  id: string
+}
 
+export function loadIndicators() {
   console.log({ allNetworkCalls }, "all network calls");
   const storagePath = generateStoragePath(window.location.href);
+  
+  chrome.storage.local.get(["indicators", 'userData', 'limits', 'role'], (result) => {
+    console.log('all results', result);
+    const { userData, limits, role, indicators } = result;
+    const { domains, status } = userData || {};
+    // lets see if our current location is included in the domains
+    const currentLocationHost = window.location.host;
+    const domainIsAllowed = currentLocationHost.includes('localhost') || domains?.find((d: Domain) => d.value.includes(currentLocationHost));
+    if (!domainIsAllowed) {
+      console.log('this domain is not allowed', currentLocationHost, domains);
+      // also lets send a message to the panel to show a message that the domain is not allowed
+      chrome.runtime.sendMessage({
+        type: "DOMAIN_NOT_ALLOWED",
+        data: {
+          message: `This domain is not allowed. Please contact your administrator.`,
+          status: 403,
+        },
+      });
+      return;
+    }
+    
 
-  chrome.storage.local.get(["indicators"], (result) => {
-    console.log("All saved indicators:", result.indicators);
-
-    const indicators = result.indicators || {};
     const currentPageIndicators = indicators[storagePath] || [];
     pageIndicators = currentPageIndicators.slice();
 

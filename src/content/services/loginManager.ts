@@ -1,6 +1,7 @@
 // loginManager.ts
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
+import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { firebaseConfig, authConfig } from "../../env-config"; 
 
 // טיפוסים
@@ -197,14 +198,30 @@ async function handleLogin(
     
     // התחברות עם אימייל וסיסמה
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    console.log("userCredential", userCredential);
     const user = userCredential.user;
+
+    // lets fetch all the user's data from firestore
+    const db = getFirestore(app);
+    const userDocRef = doc(db, "users", user.uid);
+    const userDoc = await getDoc(userDocRef);
+    const userData = userDoc.exists() ? userDoc.data() : {};
+    
+    console.log("Full user data:", userData);
     
     // שמירת הטוקן בסטורג'
     await chrome.storage.local.set({
       authToken: await user.getIdToken(),
       userId: user.uid,
       userEmail: user.email,
-      lastLogin: Date.now()
+      lastLogin: Date.now(),
+      userData: userData,
+      limits: userData.limits || {},
+      domains: userData.domains || [],
+      role: userData.role || "",
+      plan: userData.plan || "free",
+      status: userData.status || "",
+      jiraConfig: userData.jiraConfig || {}
     });
     
     console.log("User logged in successfully:", user.uid);

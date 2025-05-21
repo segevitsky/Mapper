@@ -110,9 +110,6 @@ export class ScreenRecorderService {
     }
   }
 
-  /**
-   * עוצר את ההקלטה הפעילה
-   */
   public async stopRecording(): Promise<{
     videoBlob: Blob;
     metadata: RecordingMetadata;

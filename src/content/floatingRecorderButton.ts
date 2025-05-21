@@ -1,5 +1,6 @@
-// src/content/floatingRecorderButton.ts
 import { ScreenRecorderService } from "./services/screenRecorderService";
+import Swal from 'sweetalert2';
+
 
 class FloatingRecorderButton {
   private container: HTMLElement | null = null;
@@ -154,16 +155,94 @@ class FloatingRecorderButton {
     }
   }
 
+  // פונקציה להמרת משך זמן ממילישניות לפורמט קריא
+  private formatDuration(milliseconds: number): string {
+    const seconds = Math.floor((milliseconds / 1000) % 60);
+    const minutes = Math.floor((milliseconds / (1000 * 60)) % 60);
+    const hours = Math.floor(milliseconds / (1000 * 60 * 60));
+    
+    if (hours > 0) {
+      return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  }
+
+  // פונקציה להמרת גודל קובץ לפורמט קריא
+  private formatFileSize(bytes: number): string {
+    if (bytes === 0) return '0 B';
+    
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  }
+
+    // פתיחת צפיין ההקלטה המלא
+    private openRecordingViewer(recordingData: { videoBlob: Blob; metadata: any }): void {
+      // שמירת ההקלטה בזיכרון זמני או שליחה למרכיב הצפיין
+      console.log('פותח צפיין עם הנתונים:', recordingData);
+      
+      // כאן תבוא קריאה לפונקציה שפותחת את הצפיין המלא
+      // לדוגמה:
+      // this.router.navigate(['/recording-viewer'], { state: { recordingData } });
+      // או
+      // this.showRecordingViewerComponent(recordingData);
+    }
+
+    // פתיחת טופס יצירת טיקט
+    private openTicketCreation(recordingData: { videoBlob: Blob; metadata: any }): void {
+      console.log('פותח טופס יצירת טיקט עם הנתונים:', recordingData);
+      
+      // כאן תבוא קריאה לפונקציה שפותחת את טופס יצירת הטיקט
+      // Send a message to the background with the right details and data      
+    }
+
+
+
   private showRecordingPopup(recordingData: {
     videoBlob: Blob;
     metadata: any;
   }): void {
-    // כאן נציג את הפופאפ עם ההקלטה והקריאות
-    // נממש את זה בהמשך
-    console.log("הקלטה הושלמה, מציג פופאפ...", recordingData);
-
-    // בינתיים נאפשר הורדה ישירה
-    this.recorderService.downloadRecording(recordingData.videoBlob);
+    console.log({ recordingData });
+    const duration = this.formatDuration(recordingData.metadata.endTime - recordingData.metadata.startTime);
+    console.log(recordingData?.metadata?.networkCalls);
+    const requestCount = recordingData?.metadata?.networkCalls?.length || 0;
+    const fileSize = this.formatFileSize(recordingData.videoBlob.size);
+    
+    // אפשר ליצור תמונה ממוזערת מהווידאו, או להשתמש באייקון כללי
+    const videoIcon = '<i class="fas fa-video" style="font-size: 48px; color: #cf556c;"></i>';
+  
+    Swal.fire({
+      title: 'Recording Completed',
+      html: `
+        <div class="recording-preview">
+          ${videoIcon}
+        </div>
+        <div class="recording-info">
+          <p><strong>Duration:</strong> ${duration}</p>
+          <p><strong>Network Calls:</strong> ${requestCount}</p>
+          <p><strong>File Size:</strong> ${fileSize}</p>
+        </div>
+      `,
+      showDenyButton: true,
+      showCloseButton: true,
+      showCancelButton: true,
+      confirmButtonText: 'Download File',
+      denyButtonText: 'Create Ticket',
+      confirmButtonColor: '#cf556c',
+      denyButtonColor: '#0052CC',
+      cancelButtonColor: 'rgba(200, 50, 50, 0.5)',
+      reverseButtons: true,
+      focusConfirm: true,
+      allowOutsideClick: false,
+    }).then((result) => {
+      if (result.isConfirmed) {
+        this.recorderService.downloadRecording(recordingData.videoBlob);
+      } else if (result.isDenied) {
+        this.openTicketCreation(recordingData);
+      }
+    });
   }
 
   private makeDraggable(button: HTMLElement): () => void {
