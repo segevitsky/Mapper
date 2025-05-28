@@ -17,6 +17,12 @@ type Domain = {
   id: string
 }
 
+type TooltipContent = {
+  label1: string;
+  label2: string;
+  description: string;
+};
+
 export function loadIndicators() {
   console.log({ allNetworkCalls }, "all network calls");
   const storagePath = generateStoragePath(window.location.href);
@@ -174,6 +180,8 @@ export async function createIndicatorFromData(
     );
   }
 
+  // add a tooltip to the indicator showing its name and description
+
   addIndicatorEvents(indicator, indicatorData);
 
   // only insert the indicator if no indicator is already attached to the element to avoid network idling for a couple of times
@@ -183,6 +191,7 @@ export async function createIndicatorFromData(
   ) {
     return;
   }
+  
   if (isAuto) {
     const elementsToBeInsertedBefore = document.querySelectorAll("[data-indi]");
     if (elementsToBeInsertedBefore.length === 1) {
@@ -212,6 +221,84 @@ function addIndicatorEvents(
   indicator: HTMLElement,
   indicatorData: IndicatorData
 ) {
+  indicator.addEventListener('mouseenter', () => {
+    const dataAttribute = indicator.getAttribute('data-indicator-info');
+    if (!dataAttribute) {
+        throw new Error("data-indicator-info attribute is missing");
+    }
+    const data = JSON.parse(dataAttribute);
+    const { duration, name, description } = data;
+    
+    // יוצרים style element רק אם עוד לא קיים
+    if (!document.getElementById('tooltip-styles')) {
+        const style = document.createElement('style');
+        style.id = 'tooltip-styles';
+        style.textContent = `
+            [data-tooltip] {
+                position: relative;
+            }
+            
+            [data-tooltip]::before {
+                content: attr(data-tooltip);
+                position: absolute;
+                bottom: 100%;
+                left: 50%;
+                transform: translateX(-50%) translateY(10px);
+                background: linear-gradient(to right, rgb(255, 129, 119) 0%, rgb(255, 134, 122) 0%, rgb(255, 140, 127) 21%, rgb(249, 145, 133) 52%, rgb(207, 85, 108) 78%, rgb(177, 42, 91) 100%);
+                color: white;
+                padding: 12px 20px;
+                border-radius: 10px;
+                max-width: 200px;
+                text-align: center;
+                line-height: 1.4;
+                margin-bottom: 8px;
+                font-size: 14px;
+                font-weight: 600;
+                z-index: 10000;
+                opacity: 0;
+                transition: all 0.3s ease;
+                pointer-events: none;
+                box-shadow: 0 4px 15px rgba(177, 42, 91, 0.3);
+                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+                white-space: normal;
+                word-wrap: break-word;
+            }
+            
+            [data-tooltip]:hover::before {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+            
+            /* חץ קטן בתחתית */
+            [data-tooltip]::after {
+                content: '';
+                position: absolute;
+                bottom: 100%;
+                left: 50%;
+                transform: translateX(-50%) translateY(10px);
+                border: 6px solid transparent;
+                border-top-color: rgb(249, 145, 133);
+                margin-bottom: -4px;
+                opacity: 0;
+                transition: all 0.3s ease;
+            }
+            
+            [data-tooltip]:hover::after {
+                opacity: 1;
+                transform: translateX(-50%) translateY(0);
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // מוסיפים את המידע כ-attribute - אפשר להוסיף עוד מידע אם יש
+    indicator.setAttribute('data-tooltip', `Duration: ${duration} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`);
+    // מסירים את ה-tooltip כשיוצאים
+    indicator.addEventListener('mouseleave', () => {
+        indicator.removeAttribute('data-tooltip');
+    }, { once: true });
+});
+
   indicator.addEventListener("click", async () => {
     const dataFromAttr = indicator.getAttribute("data-indicator-info");
     // מוסיפים האזנה למקשים כשהטולטיפ פתוח
@@ -314,6 +401,8 @@ function addIndicatorEvents(
           ${Math.floor(parsedDataFromAttr?.duration ?? currentData?.duration)}ms
         </span>
       </div>
+        <div style="color: rgb(255, 134, 122);"> <strong> Name: </strong> ${currentData?.name || parsedDataFromAttr?.name || "-"} </div>
+        <div style="color: rgb(255, 134, 122);"> <strong> Description: </strong> ${currentData.description || parsedDataFromAttr?.description || '-' } </div>
       <div class='indi-url' style="color: #666; word-break: break-all; margin: 8px 0;">
         ${
           currentData?.lastCall?.url ??

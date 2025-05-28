@@ -236,7 +236,7 @@ class FloatingRecorderButton {
       reverseButtons: true,
       focusConfirm: true,
       allowOutsideClick: false,
-    }).then((result) => {
+    }).then((result: any) => {
       if (result.isConfirmed) {
         this.recorderService.downloadRecording(recordingData.videoBlob);
       } else if (result.isDenied) {

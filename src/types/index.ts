@@ -64,6 +64,8 @@ export interface IndicatorData {
   updatedThisRound?: boolean;
   duration?: number;
   status?: number;
+  name?: string;
+  description?: string;
 }
 
 export type MovementObject = {
