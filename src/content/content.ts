@@ -11,6 +11,7 @@ import {
   pageIndicators,
 } from "./services/indicatorService";
 import { waitForIndicator } from "../utils/general";
+import Swal from "sweetalert2";
 
 // content.ts
 let isInspectMode = false;
@@ -53,7 +54,7 @@ function createContainers() {
   document.body.appendChild(modalContainer);
 }
 
-function createIndicator(data: any, item: any, element: any) {
+function createIndicator(data: any, item: any, element: any, name: string, description: string) {
   const callId = item.getAttribute("data-call-id");
   const selectedCall = data.networkCalls.find(
     (call: any) => call.id === callId
@@ -92,6 +93,8 @@ function createIndicator(data: any, item: any, element: any) {
     },
     calls: [selectedCall],
     hisDaddyElement: item,
+    name: name || "API Indicator",
+    description: description || "No description provided",
   };
 
   if (pattern !== null && pattern !== undefined) {
@@ -433,7 +436,34 @@ function showModal(
             (call) => call.id === callId
           );
           if (selectedCall) {
-            createIndicator(data, item, element);
+            // add a dialouge to ask for name and description use sweetalert2 modal
+            // create a sweetalert2 modal
+            Swal.fire({
+              title: "Create Indicator",
+              html: `
+              <input type="text" id="indicator-name" class="swal2-input" placeholder="Indicator Name">
+              <textarea id="indicator-description" class="swal2-textarea" placeholder="Indicator Description"></textarea>
+              `,
+              focusConfirm: false,
+              preConfirm: () => {
+                const name = (document.getElementById(
+                  "indicator-name"
+                ) as HTMLInputElement).value;
+                const description = (document.getElementById(
+                  "indicator-description"
+                ) as HTMLTextAreaElement).value;
+                if (!name || !description) {
+                  Swal.showValidationMessage("Please enter both name and description");
+                  return false;
+                }
+                return { name, description };
+              },
+            }).then((result) => {
+          if (result.isConfirmed) {
+            const { name, description } = result.value;
+            createIndicator(data, item, element, name, description);
+          }})
+
             modalContent.remove(); // סגירת המודל אחרי בחירת קריאה
           }
         });
@@ -456,7 +486,33 @@ function showModal(
       const callId = item.getAttribute("data-call-id");
       const selectedCall = data.networkCalls.find((call) => call.id === callId);
       if (selectedCall) {
-        createIndicator(data, item, element);
+        // add a dialouge to ask for name and description use sweetalert2 modal
+        // create a sweetalert2 modal
+        Swal.fire({
+          title: "Create Indicator",
+          html: `
+          <input type="text" id="indicator-name" class="swal2-input" placeholder="Indicator Name">
+          <textarea id="indicator-description" class="swal2-textarea" placeholder="Indicator Description"></textarea>
+          `,
+          focusConfirm: false,
+          preConfirm: () => {
+            const name = (document.getElementById(
+              "indicator-name"
+            ) as HTMLInputElement).value;
+            const description = (document.getElementById(
+              "indicator-description"
+            ) as HTMLTextAreaElement).value;
+            if (!name || !description) {
+              Swal.showValidationMessage("Please enter both name and description");
+              return false;
+            }
+            return { name, description };
+          },
+        }).then((result) => {
+      if (result.isConfirmed) {
+        const { name, description } = result.value;
+        createIndicator(data, item, element, name, description);
+      }})
         modalContent.remove(); // סגירת המודל אחרי בחירת קריאה
       }
     });
