@@ -856,13 +856,35 @@ function createHighlighter() {
 }
 
 function enableInspectMode() {
-  isInspectMode = true;
-  document.body.style.cursor = "crosshair";
-  createHighlighter();
-
-  document.addEventListener("mouseover", handleMouseOver);
-  document.addEventListener("mouseout", handleMouseOut);
-  document.addEventListener("click", handleClick, true);
+  chrome.storage.local.get(["userData"], (data) => {
+    const user = data.userData;
+    const location = window.location.host;
+    const allowerdDomains = user?.domains || [];
+    const isAllowedDomain = allowerdDomains.some((domain: { id: number, isValid: boolean, value: string }) =>
+      domain.value.includes(location)
+    );
+    if (isAllowedDomain) {
+      isInspectMode = true;
+      document.body.style.cursor = "crosshair";
+      createHighlighter();
+    
+      document.addEventListener("mouseover", handleMouseOver);
+      document.addEventListener("mouseout", handleMouseOut);
+      document.addEventListener("click", handleClick, true);
+    } else {
+      Swal.fire({
+        title: "Inspect Mode Disabled",
+        text: "This domain is not allowed in your current license.",
+        icon: "error",
+        confirmButtonText: "Upgrade License",
+        showCancelButton: true,
+      }).then((result) => {
+        if (result.isConfirmed) {
+          window.location.href = "https://indi-web.vercel.app/#pricing"; // Redirect to indi.dev
+        }
+      });
+    }
+  });
 }
 
 function handleMouseOver(e: MouseEvent) {
