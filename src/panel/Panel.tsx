@@ -142,18 +142,6 @@ export const Panel: React.FC = () => {
     });
   };
 
-  // Remove this function after cleaning the unneeded indi's data
-  // const clearCurrentUrlIndi = () => {
-  //   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-  //     if (tabs[0]?.id) {
-  //       chrome.tabs.sendMessage(tabs[0].id, {
-  //         type: "CLEAR_CURRENT_URL_INDICATORS",
-  //         data: "_tab_",
-  //       });
-  //     }
-  //   });
-  // };
-
   return (
     <div
       style={{

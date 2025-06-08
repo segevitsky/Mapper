@@ -30,16 +30,7 @@ interface IdleCheckState {
 }
 
 const pendingRequests = new Map();
-const envsArray: string[] = [
-  "https://pre-prod-sleep.itamar-online.com",
-  "https://staging-sleep.itamar-online.com",
-  "http://localhost:3000",
-  "https://localhost:3000",
-  "https://integration-sleep.itamar-online.com/",
-  "https://cloudpat.itamar-medical.com/",
-  "https://cloudpat-uk.itamar-medical.com/",
-  "https://cloudpat-au.itamar-medical.com/",
-];
+let envsArray: string[] = [];
 
 //JIRA START
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -53,6 +44,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       );
     return true; // חשוב בשביל sendResponse אסינכרוני
   }
+
+  if (message.type === 'USER_AUTHENTICATED') {
+    const allowedDomains = message.data.domains.map((el: any) => el.value) || [];
+    envsArray = [...envsArray, ...allowedDomains];
+    envsArray = Array.from(new Set(envsArray)); // להסיר כפילויות
+    console.log("Updated envsArray with authenticated user domains:", envsArray);
+    return true; // חשוב בשביל sendResponse אסינכרוני
+  }
+
 });
 
 async function createJiraTicket(data: any) {
@@ -181,10 +181,12 @@ chrome.webRequest.onCompleted.addListener(
   (details) => {
     console.log("Request completed:", details);
     console.log("initiator", details.initiator);
+    const initiatorExistsInEnvs = envsArray.some((env) =>
+      details.initiator && env.includes(details.initiator)
+    );
     if (
       details.type === "xmlhttprequest" &&
-      !!details.initiator &&
-      envsArray.includes(details.initiator)
+      initiatorExistsInEnvs
     ) {
       const request = pendingRequests.get(details.requestId);
       if (request) {

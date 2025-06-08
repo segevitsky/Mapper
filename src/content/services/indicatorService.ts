@@ -269,7 +269,6 @@ function addIndicatorEvents(
                 transform: translateX(-50%) translateY(0);
             }
             
-            /* חץ קטן בתחתית */
             [data-tooltip]::after {
                 content: '';
                 position: absolute;
@@ -292,8 +291,14 @@ function addIndicatorEvents(
     }
     
     // מוסיפים את המידע כ-attribute - אפשר להוסיף עוד מידע אם יש
-    indicator.setAttribute('data-tooltip', `Duration: ${duration} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`);
-    // מסירים את ה-tooltip כשיוצאים
+    const schemaStatus = indicator.getAttribute('data-schema-status');
+    let tooltipContent = `Duration: ${Math.floor(duration)} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`;
+    if (schemaStatus) {
+        tooltipContent += `\nSchema Status: ${schemaStatus}`;
+    }
+    indicator.setAttribute('data-tooltip', tooltipContent);
+
+    // remove when mouse leaves
     indicator.addEventListener('mouseleave', () => {
         indicator.removeAttribute('data-tooltip');
     }, { once: true });
@@ -379,15 +384,6 @@ function addIndicatorEvents(
 
     const durationColor =
       parsedDataFromAttr?.duration < 300 ? "#4CAF50" : "#f44336";
-    // data.lastCall?.timing ||
-    // data.lastCall?.timing?.duration ||
-    // data?.duration < 300
-    //   ? "#4CAF50"
-    //   : data?.lastCall?.timing ||
-    //     data?.lastCall?.timing?.duration ||
-    //     data?.duration < 1000
-    //   ? "#FFC107"
-    //   : "#f44336";
 
     tooltip.innerHTML = `
     <div 
@@ -398,7 +394,7 @@ function addIndicatorEvents(
     <div style="display: flex; justify-content: space-between; align-items: center;">
         <strong>${parsedDataFromAttr.method ?? currentData?.method}</strong>
         <span id='tooltip-duration' style="color: ${durationColor}; font-weight: bold;">
-          ${Math.floor(parsedDataFromAttr?.duration ?? currentData?.duration)}ms
+          ${Math.floor(parsedDataFromAttr?.lastCall?.timing?.duration ?? parsedDataFromAttr?.duration ?? currentData?.duration)}ms
         </span>
       </div>
         <div style="color: rgb(255, 134, 122);"> <strong> Name: </strong> ${currentData?.name || parsedDataFromAttr?.name || "-"} </div>
@@ -675,9 +671,9 @@ function generateSecurityContent(data: any) {
 
 function generatePerformanceContent(data: any) {
   const timing =
+    data.lastCall?.timing?.duration ??
     data.duration ??
     data?.lastCall?.timing ??
-    data.lastCall?.timing?.duration ??
     data?.timing;
 
   return `
@@ -926,6 +922,32 @@ export function getElementPath(element: Element): string {
 export function injectStyles() {
   const style = document.createElement("style");
   style.textContent = `
+    .schema-valid {
+      border: 2px solid #4caf50 !important;
+      box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+    }
+
+    .schema-success-pulse {
+      animation: successPulse 0.5s ease-in-out;
+    }
+
+    @keyframes successPulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); box-shadow: 0 0 10px rgba(76, 175, 80, 0.8); }
+      100% { transform: scale(1); }
+    }
+
+
+  
+    .schema-error {
+      background-color: #ff4444 !important;
+      color: white !important;
+      border: 2px solid #cc0000;
+    }
+
+    .schema-error:hover {
+      background-color: #cc0000 !important;
+    }
 
     #api-mapper-modal-container {
       pointer-events: none;  // חשוב! מאפשר קליקים לעבור דרכו

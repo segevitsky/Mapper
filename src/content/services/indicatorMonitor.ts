@@ -5,6 +5,7 @@ import {
   generateStoragePath,
 } from "../../utils/storage";
 import { AutoIndicatorService } from "./autoIndicatorService";
+import SchemaValidationService from "./schemaValidationService";
 
 // src/content/services/indicatorMonitor.ts
 export class IndicatorMonitor {
@@ -17,20 +18,24 @@ export class IndicatorMonitor {
     return this._instance;
   }
 
+  // New function to update indicator content including schema validation
   private async updateIndicatorContent(
     indicator: IndicatorData,
     newCall: NetworkRequest
   ) {
-    const duration =
-      newCall?.duration ||
-      (newCall?.response?.response?.timing?.receiveHeadersEnd ?? 1000) -
-        (newCall?.response?.response?.timing?.sendStart ?? 1000);
-    console.log("indicatorUrl", indicator.lastCall.url);
+    const schemaService = new SchemaValidationService();
+    
+    // First lets calculate the duration
+    const duration = newCall?.response?.response?.timing?.receiveHeadersEnd ?? newCall?.duration;
+
+
     console.log(
       { duration, indicator, newCall },
       "this is the updated duration in the indicators monitor screen"
     );
-
+  
+  
+    // Second lets update the lastCall object with the new data
     indicator.lastCall = {
       ...indicator.lastCall,
       status: newCall?.failed
@@ -42,109 +47,159 @@ export class IndicatorMonitor {
         duration,
       },
       timestamp: Date.now(),
-      url: newCall?.response?.url ?? indicator.lastCall.url, // שומרים את ה-URL המלא החדש,
+      url: newCall?.response?.url ?? indicator.lastCall.url,
       updatedInThisRound: true,
     };
+    
     indicator = { ...indicator, ...newCall };
     if (!newCall?.body) {
       delete indicator.body;
     }
-
-    // const indicatorElement = document.getElementById(`indi-${indicator.id}`);
+  
+    // Lets find the element in the DOM
     const indicatorElement = await waitForIndicator(indicator.id);
-
     console.log("Found indicator element:", indicatorElement);
     console.log("indicator after update", indicator);
+  
+    // Lets remove any duplicated indicators
     if (indicatorElement) {
-      const repeatedIndicators = document.querySelectorAll(
-        `#indi-${indicator.id}`
-      );
+      const repeatedIndicators = document.querySelectorAll(`#indi-${indicator.id}`);
       if (repeatedIndicators.length > 1) {
         repeatedIndicators.forEach((el, index) => {
           if (index !== 0) el.remove();
         });
       }
-      indicatorElement.classList.add("indicator-updating");
-      setTimeout(() => {
-        indicatorElement.classList.remove("indicator-updating");
-      }, 500);
-
-      (indicatorElement as HTMLElement).style.backgroundColor =
-        newCall.response?.response?.status === 200
-          ? "rgba(25,200, 50, .75)"
-          : "#f44336";
-
-      // שמירת המידע המעודכן על האלמנט
-      const updatedData = {
-        ...indicator,
-        lastUpdated: Date.now(),
-      };
-
-      console.log("Updated data indicator monitor:", updatedData);
-
-      indicatorElement.setAttribute(
-        "data-indicator-info",
-        JSON.stringify(updatedData)
+    }
+  
+    // Lets prepare for schema validation
+    let validationResult = null;
+    let backgroundColor = "#f44336"; // ברירת מחדל - אדום
+  
+    // Lets check if we have a schema and body to validate
+    if (indicator.body && !indicator.schema) {
+      // יצירת סכמה חדשה - בדיוק כמו בקוד המקורי
+      const typeDefinition = schemaService.generateTypeDefinition(
+        indicator.body?.body, 
+        'PatientResponse', 
+        { format: 'inline' }
       );
-
-      // עדכון הטולטיפ אם הוא פתוח
-      const openTooltip = document.getElementById("indicator-tooltip");
-      if (openTooltip) {
-        this.updateTooltipContent(openTooltip, updatedData);
-      }
-
-      // אנימציה
-      (indicatorElement as HTMLElement).style.transform = "scale(1.2)";
-      setTimeout(() => {
-        (indicatorElement as HTMLElement).style.transform = "scale(1)";
-      }, 200);
-    } else {
-      console.log("Indicator element not found:", indicator);
-      // const indicatorSecondAttempt = document.getElementById(
-      //   `indi-${indicator.id}`
-      // );
-      const indicatorSecondAttempt = await waitForIndicator(indicator.id);
+      console.log({ typeDefinition }, "typeDefinition for indicator body");
+      indicator.schema = typeDefinition;
+      
+    } else if (indicator.schema && indicator.body && newCall?.body) {
+      const validation = schemaService.validateResponse(
+        newCall?.body?.body,  
+        indicator.body?.body
+      );
+      
       console.log(
-        "Indicator element second attempt:",
-        !!indicatorSecondAttempt
+        { validation, indicator, newCall }, 
+        'validation schema for indicator body'
       );
-      if (!indicatorSecondAttempt) return;
-      indicatorSecondAttempt.classList.add("indicator-updating");
+  
+      validationResult = validation;
+    }
+  
+    // Set the background color based on the validation result and status code
+    const statusCode = newCall.response?.response?.status;
+    if (statusCode === 200) {
+      if (!validationResult || validationResult.isValid) {
+        backgroundColor = "rgba(25, 200, 50, .75)"; // ירוק - הכל תקין
+      } else {
+        backgroundColor = "#ff9800"; // כתום - סטטוס תקין אבל סכמה שגויה
+      }
+    } else {
+      backgroundColor = "#f44336"; // אדום - שגיאת סטטוס
+    }
+  
+    // Update the indicator element in the DOM
+    const elementToUpdate = indicatorElement || await waitForIndicator(indicator.id);
+    
+    if (elementToUpdate) {
+      elementToUpdate.classList.add("indicator-updating");
       setTimeout(() => {
-        indicatorSecondAttempt.classList.remove("indicator-updating");
+        elementToUpdate.classList.remove("indicator-updating");
       }, 500);
+  
+      (elementToUpdate as HTMLElement).style.backgroundColor = backgroundColor;
+  
+      if (validationResult && !validationResult.isValid) {
+        elementToUpdate.classList.add('schema-error');
+        const firstError = validationResult.errors[0];
+        const shortMessage = `Schema Error (${validationResult.errors.length} issues): ${firstError.path} - expected ${firstError.expected}, got ${firstError.actual}`;
+        elementToUpdate.setAttribute('data-schema-status', shortMessage);
+        elementToUpdate.setAttribute('data-validation-errors', JSON.stringify(validationResult.errors));
+      } else {
+        elementToUpdate.classList.remove('schema-error'); 
+        // If the schema is valid, we can add a success class and tooltip
+        if (validationResult && validationResult.isValid) {
+          elementToUpdate.classList.add('schema-valid');
+          const successMessage = `✅ Schema validated successfully!`;
+          elementToUpdate.setAttribute('data-schema-status', successMessage);
+          elementToUpdate.classList.add('schema-success-pulse');
+          
+          setTimeout(() => {
+            elementToUpdate.classList.remove('schema-success-pulse');
+          }, 1000);
 
-      (indicatorSecondAttempt as HTMLElement).style.backgroundColor =
-        newCall.response?.response?.status === 200
-          ? "rgba(25,200, 50, .75)"
-          : "#f44336";
+        } else if (elementToUpdate.hasAttribute('data-validation-errors')) {
+          // אם לא הייתה בדיקה, פשוט נקה את השגיאות הקודמות
+          elementToUpdate.removeAttribute('data-validation-errors');
+          elementToUpdate.removeAttribute('data-schema-status');
+        }
+      }
 
-      // שמירת המידע המעודכן על האלמנט
+      
+  
+     // preare the updated data for storage and tooltip
       const updatedData = {
         ...indicator,
         lastUpdated: Date.now(),
       };
-
+  
+      // Saving the updated data to the element
       console.log("Updated data indicator monitor:", updatedData);
-
-      indicatorSecondAttempt.setAttribute(
+      elementToUpdate.setAttribute(
         "data-indicator-info",
         JSON.stringify(updatedData)
       );
-
-      // עדכון הטולטיפ אם הוא פתוח
+  
+      // updating the tooltip if it is open
       const openTooltip = document.getElementById("indicator-tooltip");
       if (openTooltip) {
         this.updateTooltipContent(openTooltip, updatedData);
       }
-
-      // אנימציה
-      (indicatorSecondAttempt as HTMLElement).style.transform = "scale(1.2)";
+  
+      (elementToUpdate as HTMLElement).style.transform = "scale(1.2)";
       setTimeout(() => {
-        (indicatorSecondAttempt as HTMLElement).style.transform = "scale(1)";
+        (elementToUpdate as HTMLElement).style.transform = "scale(1)";
       }, 200);
     }
+  
+    // Finally update the indicator in storage
+    chrome.storage.local.get(["indicators"], (result) => {
+      const indies = result.indicators as { [key: string]: IndicatorData[] };
+      if (!indies) return;
+      
+      const currentPath = generateStoragePath(window.location.href);
+      if (!indies[currentPath]) {
+        indies[currentPath] = [];
+      }
+      
+      const index = indies[currentPath].findIndex(
+        (el) => el.id === indicator.id
+      );
+      
+      if (index !== -1) {
+        indies[currentPath][index] = indicator;
+      } else {
+        indies[currentPath].push(indicator);
+      }
+      
+      chrome.storage.local.set({ indicators: indies });
+    });
   }
+
 
   private updateTooltipContent(tooltip: HTMLElement, data: IndicatorData) {
     console.log("lets update our indicator", data);

@@ -66,6 +66,7 @@ export interface IndicatorData {
   status?: number;
   name?: string;
   description?: string;
+  schema?: string;
 }
 
 export type MovementObject = {
