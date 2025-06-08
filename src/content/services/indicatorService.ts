@@ -1,3 +1,4 @@
+import Swal from "sweetalert2";
 import { IndicatorData } from "../../types";
 import {
   getBorderByTiming,
@@ -6,7 +7,7 @@ import {
 } from "../../utils/general";
 import { generateStoragePath } from "../../utils/storage";
 import { extractUUIDFromUrl, updateUrlWithNewUUID } from "../../utils/urlUrils";
-import { allNetworkCalls } from "../content";
+import { allNetworkCalls, createJiraTicketFromIndicator } from "../content";
 import initFloatingButton from "../floatingRecorderButton";
 
 export let pageIndicators: IndicatorData[] = [];
@@ -221,6 +222,8 @@ function addIndicatorEvents(
   indicator: HTMLElement,
   indicatorData: IndicatorData
 ) {
+
+
   indicator.addEventListener('mouseenter', () => {
     const dataAttribute = indicator.getAttribute('data-indicator-info');
     if (!dataAttribute) {
@@ -450,7 +453,7 @@ function addIndicatorEvents(
       handle: ".tooltip-header",
       bounds: false,
       onDragEnd: (position) => {
-        // אפשר לשמור את המיקום האחרון
+        // Think about an option to save the position in storage
         console.log("Final position:", position);
       },
     });
@@ -583,12 +586,251 @@ function addIndicatorEvents(
     });
 
     // הוספת האזנה לכפתור החדש
-    tooltip
-      .querySelector(".create-jira-ticket")
-      ?.addEventListener("click", () => {
-        console.log("lets create a jira ticket with this data", currentData);
-        // createJiraTicketFromIndicator(currentData);
-      });
+      tooltip
+  .querySelector(".create-jira-ticket")
+  ?.addEventListener("click", () => {
+    console.log("lets create a jira ticket with this data", currentData);
+    tooltip.remove();
+    Swal.fire({
+      title: '<span style="color: #cf556c;">Create Jira Ticket</span>',
+      html: `
+        <style>
+          .jira-form-container {
+            text-align: left;
+            padding: 20px;
+          }
+          .jira-form-group {
+            margin-bottom: 20px;
+          }
+          .jira-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #333;
+            font-size: 14px;
+          }
+          .jira-input, .jira-textarea, .jira-select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            box-sizing: border-box;
+          }
+          .jira-input:focus, .jira-textarea:focus, .jira-select:focus {
+            outline: none;
+            border-color: #cf556c;
+            box-shadow: 0 0 0 3px rgba(207, 85, 108, 0.1);
+          }
+          .jira-textarea {
+            min-height: 150px;
+            resize: vertical;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+          }
+          .jira-select {
+            cursor: pointer;
+            background-color: white;
+          }
+          .jira-priority-high {
+            color: #e74c3c;
+          }
+          .jira-priority-medium {
+            color: #f39c12;
+          }
+          .jira-priority-low {
+            color: #27ae60;
+          }
+          .jira-checkbox-group {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            background: linear-gradient(135deg, rgba(255, 129, 119, 0.1) 0%, rgba(207, 85, 108, 0.1) 100%);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+          }
+          .jira-checkbox-group:hover {
+            background: linear-gradient(135deg, rgba(255, 129, 119, 0.15) 0%, rgba(207, 85, 108, 0.15) 100%);
+          }
+          .jira-checkbox {
+            width: 20px;
+            height: 20px;
+            margin-right: 10px;
+            cursor: pointer;
+            accent-color: #cf556c;
+          }
+          .jira-info-badge {
+            background: linear-gradient(to right, rgb(255, 129, 119) 0%, rgb(255, 134, 122) 0%, rgb(255, 140, 127) 21%, rgb(249, 145, 133) 52%, rgb(207, 85, 108) 78%, rgb(177, 42, 91) 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            display: inline-block;
+            margin-bottom: 15px;
+          }
+          .swal2-popup {
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+          }
+          .swal2-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 10px;
+          }
+          .swal2-confirm {
+            background: linear-gradient(to right, rgb(255, 129, 119) 0%, rgb(255, 134, 122) 0%, rgb(255, 140, 127) 21%, rgb(249, 145, 133) 52%, rgb(207, 85, 108) 78%, rgb(177, 42, 91) 100%);
+            border: none;
+            font-weight: 600;
+            padding: 12px 30px;
+            font-size: 16px;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+          }
+          .swal2-confirm:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(207, 85, 108, 0.3);
+          }
+          .swal2-cancel {
+            background: #f5f5f5;
+            color: #666;
+            border: none;
+            font-weight: 600;
+            padding: 12px 30px;
+            font-size: 16px;
+            border-radius: 8px;
+          }
+          .api-details {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 12px;
+            color: #666;
+          }
+        </style>
+        
+        <div class="jira-form-container">
+          <div class="jira-info-badge">
+            ${currentData.method} • ${currentData.lastCall.status} • ms
+          </div>
+          
+          <div class="jira-form-group">
+            <label class="jira-label">Summary *</label>
+            <input id="swal-summary" class="jira-input" placeholder="Brief description of the issue" 
+              value="API Issue: ${currentData.method} ${new URL(currentData.lastCall.url).pathname}">
+          </div>
+          
+          <div class="jira-form-group">
+            <label class="jira-label">Description *</label>
+            <textarea id="swal-description" class="jira-textarea" placeholder="Detailed description">API Call Details:
+              ================
+              Method: ${currentData.method}
+              URL: ${currentData.lastCall.url}
+              Status: ${currentData.lastCall.status}
+              Response Time: ${currentData.lastCall?.timing?.duration || currentData.duration}ms
+              Timestamp: ${new Date(currentData.lastCall.timestamp).toLocaleString()}
+
+              Element Path: ${currentData.elementInfo.path}
+              Page URL: ${currentData.baseUrl}
+
+              ${currentData.body ? `Response Preview:
+              ${JSON.stringify(JSON.parse(currentData.body.body), null, 2).substring(0, 300)}...` : ''}</textarea>
+          </div>
+          
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div class="jira-form-group">
+              <label class="jira-label">Priority</label>
+              <select id="swal-priority" class="jira-select">
+                <option value="Low" class="jira-priority-low">🟢 Low</option>
+                <option value="Medium" class="jira-priority-medium" ${currentData.lastCall.status !== 200 ? '' : 'selected'}>🟡 Medium</option>
+                <option value="High" class="jira-priority-high" ${currentData.lastCall.status !== 200 ? 'selected' : ''}>🔴 High</option>
+                <option value="Critical" class="jira-priority-high">🚨 Critical</option>
+              </select>
+            </div>
+            
+            <div class="jira-form-group">
+              <label class="jira-label">Issue Type</label>
+              <select id="swal-issue-type" class="jira-select">
+                <option value="Bug">🐛 Bug</option>
+                <option value="Task">📋 Task</option>
+                <option value="Story">📖 Story</option>
+                <option value="Improvement">✨ Improvement</option>
+              </select>
+            </div>
+          </div>
+          
+          <div class="jira-checkbox-group">
+            <input type="checkbox" id="swal-screenshot" class="jira-checkbox">
+            <label for="swal-screenshot" style="cursor: pointer; user-select: none;">
+              📸 Include screenshot of current page
+            </label>
+          </div>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Create Ticket',
+      cancelButtonText: 'Cancel',
+      width: '650px',
+      customClass: {
+        popup: 'jira-popup',
+        confirmButton: 'jira-confirm-btn',
+        cancelButton: 'jira-cancel-btn'
+      },
+      preConfirm: () => {
+        const summary = (document.getElementById('swal-summary') as HTMLInputElement)?.value || '';
+        const description = (document.getElementById('swal-description') as HTMLTextAreaElement)?.value || '';
+        const priority = (document.getElementById('swal-priority') as HTMLSelectElement)?.value || 'Medium';
+        const issueType = (document.getElementById('swal-issue-type') as HTMLSelectElement)?.value || 'Bug';
+        const includeScreenshot = (document.getElementById('swal-screenshot') as HTMLInputElement)?.checked || false;
+        
+        if (!summary.trim() || !description.trim()) {
+          Swal.showValidationMessage('Please fill in all required fields');
+          return false;
+        }
+        
+        return {
+          summary,
+          description,
+          priority,
+          issueType,
+          includeScreenshot,
+          indicatorData: currentData
+        };
+      }
+    }).then((result) => {
+      if (result.isConfirmed) {
+        const ticketData = result.value;
+        
+        if (ticketData.includeScreenshot) {
+          chrome.runtime.sendMessage({
+            type: "CAPTURE_SCREENSHOT"
+          }, (screenshotUrl) => {
+            ticketData.screenshot = screenshotUrl;
+            createJiraTicketFromIndicator(ticketData);
+          });
+        } else {
+          createJiraTicketFromIndicator(ticketData);
+        }
+        
+        Swal.fire({
+          icon: 'success',
+          title: 'Ticket Created!',
+          text: 'Your Jira ticket is being processed...',
+          timer: 2000,
+          showConfirmButton: false,
+          customClass: {
+            popup: 'jira-popup'
+          }
+        });
+      }
+    });
+  });
+
+
 
     tooltip
       .querySelector(".close-indicator-tooltip")

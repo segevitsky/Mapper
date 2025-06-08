@@ -32,7 +32,7 @@ interface IdleCheckState {
 const pendingRequests = new Map();
 let envsArray: string[] = [];
 
-//JIRA START
+//JIRA START + MESSAGES LISTENER
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log({ message, sender }, "this is the message in background.ts");
   if (message.type === "CREATE_JIRA_TICKET") {
@@ -55,13 +55,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 });
 
-async function createJiraTicket(data: any) {
-  const host = "https://itamar-medical.atlassian.net/";
-  const email = "seyal@itamar-medical.com";
-  const projectKey = 'Sleeply';
-
-  // add the api token back when you are ready to test
-  const apiToken = null;
+async function createJiraTicket(messageData: any) {
+  const { userData, data } = messageData;
+  const { host, email, apiToken, projectKey } = userData.jiraConfig || {};
+  
+  return;
 
   console.log("About to make Jira API call with:", {
     url: `https://${host}/rest/api/3/issue`,

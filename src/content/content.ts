@@ -519,62 +519,31 @@ function showModal(
   });
 }
 
-async function createJiraTicketFromIndicator(data: any) {
-  const securityAnalysis = analyzeSecurityIssues(data); // נוסיף בהמשך
-
-  const ticketData: JiraTicketData = {
-    summary: `API Issue: ${data.method} ${new URL(data.lastCall.url).pathname}`,
-    description: `
-  API Call Details:
-  ----------------
-  Method: ${data.method}
-  URL: ${data.lastCall.url}
-  Status: ${data.lastCall.status}
-  Response Time: ${data.lastCall.timing?.duration}ms
-
-  Element Path: ${data.elementInfo.path}
-  Page URL: ${window.location.href}
-
-  ${
-    securityAnalysis
-      ? `
-  Security Analysis:
-  ----------------
-  Risk Level: ${securityAnalysis.riskLevel}
-  Potential Issues:
-  ${securityAnalysis.potentialIssues.join("\n")}
-
-  Recommendations:
-  ${securityAnalysis.recommendations.join("\n")}`
-      : ""
-  }
-      `,
-    issueType: "Bug",
-    priority: data.lastCall.status !== 200 ? "High" : "Medium",
-    labels: ["api-issue", "auto-generated", "element-mapper"],
-    securityInfo: securityAnalysis,
-  };
-
-  chrome.runtime.sendMessage(
-    {
-      type: "CREATE_JIRA_TICKET",
-      data: ticketData,
-    },
-    (response) => {
-      if (chrome.runtime.lastError) {
-        console.error("Runtime error:", chrome.runtime.lastError);
-        return;
+export async function createJiraTicketFromIndicator(data: any) {
+  console.log("Creating Jira ticket with data:", data);
+  chrome.storage.local.get(['userData'], (result: any) => { 
+    const userData = result.userData || {};
+    chrome.runtime.sendMessage(
+      {
+        type: "CREATE_JIRA_TICKET",
+        data: {userData, data},
+      },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          console.error("Runtime error:", chrome.runtime.lastError);
+          return;
+        }
+        if (response?.success) {
+          console.log("Ticket created:", response.data);
+          // REPLACE THIS ALERT WITH A NICE MODAL
+          alert(`Ticket created successfully! ID: ${response.data.key}`);
+        } else {
+          console.error("Error creating ticket:", response?.error);
+          alert(`Failed to create ticket: ${response?.error}`);
+        }
       }
-      if (response?.success) {
-        console.log("Ticket created:", response.data);
-        // REPLACE THIS ALERT WITH A NICE MODAL
-        alert(`Ticket created successfully! ID: ${response.data.key}`);
-      } else {
-        console.error("Error creating ticket:", response?.error);
-        alert(`Failed to create ticket: ${response?.error}`);
-      }
-    }
-  );
+    );
+  })
 }
 
 // האזנה להודעות מהפאנל
