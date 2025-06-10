@@ -9,6 +9,7 @@ import { generateStoragePath } from "../../utils/storage";
 import { extractUUIDFromUrl, updateUrlWithNewUUID } from "../../utils/urlUrils";
 import { allNetworkCalls, createJiraTicketFromIndicator } from "../content";
 import initFloatingButton from "../floatingRecorderButton";
+import SchemaValidationService from "./schemaValidationService";
 
 export let pageIndicators: IndicatorData[] = [];
 
@@ -429,6 +430,7 @@ function addIndicatorEvents(
         Create Jira Ticket
       </button>
       <button class="remove-indicator">Remove</button>
+      <button class='check-schema'> Check Schema </button> 
       <button class="show-response action-button"> Show Response </button>
       <button class="change-position change-indicator-position"> Stick </button>
       <button class="close-indicator-tooltip"> Close </button>
@@ -465,6 +467,49 @@ function addIndicatorEvents(
         tooltip.remove();
         removeIndicatorFromStorage(currentData.id);
       });
+
+    tooltip.querySelector(".check-schema")?.addEventListener("click", () => {
+      // in order to check the schema can compare the new body with the schema from our storage
+      // so we need to get the schema from the storage
+      const dataIndicatorInfo = JSON.parse(indicator.getAttribute("data-indicator-info") || "{}");
+      const {body} = dataIndicatorInfo?.body
+      if (body) {
+        chrome.storage.local.get(["indicators"], (result) => {
+          const indicators = result.indicators || {};
+          const pathToUpdate = generateStoragePath(window.location.href);
+          const currentPageIndicators = indicators[pathToUpdate] || [];
+          const ind = currentPageIndicators.find(
+            (i: IndicatorData) => i.id === indicator.dataset.indicatorId
+          );
+          if (ind && ind.body.body) {
+              const schemaService = new SchemaValidationService();
+              const schemaCheck = schemaService.validateResponse(body, ind.body.body);
+              const { isValid, errors } = schemaCheck;
+              tooltip.remove();
+              Swal.fire({
+              icon: isValid ? 'success' : 'error',
+              title: isValid ? 'Schema Valid' : 'Schema Invalid',
+              text: isValid ? 'The response matches the schema.' : 'The response does not match the schema.',
+              timer: 2000,
+              timerProgressBar: true,
+              showConfirmButton: false,
+              customClass: {
+                popup: 'jira-popup'
+              }
+            });
+            // lets update the styling of the indicator based on the schema validation
+            indicator.style.border = isValid
+              ? "2px solid #4CAF50"
+              : "2px solid #f44336";
+
+            // lets also update the schema in the indicator in storage
+
+          } else {
+            console.warn("No schema found for this indicator");
+          }
+        });
+      }
+    });
 
     tooltip
       .querySelector(".close-indicator-tooltip")
@@ -1238,6 +1283,17 @@ export function injectStyles() {
       border: none;
       border-radius: 4px;
       cursor: pointer;
+    }
+
+    .check-schema {
+      margin-top: 8px;
+      padding: 4px 8px;
+      background: #cf556c;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-left: .5rem;
     }
 
     .close-indicator-tooltip {
