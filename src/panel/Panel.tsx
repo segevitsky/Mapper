@@ -11,6 +11,7 @@ import { ImSpinner } from "react-icons/im";
 import { flexContStart } from "./styles";
 import ApiResponsePanel from "./components/ResponseModal";
 import FailedIndicatorsReport from "./components/FailedIndicatorsReport";
+import IndicatorsOverview from "./components/IndicatorsPanel";
 
 const MAX_NETWORK_RESPONSES = 50;
 
@@ -30,8 +31,19 @@ export const Panel: React.FC = () => {
     useState(false);
   const [failedIndicatorData, setFailedIndicatorData] = useState<any>();
   const [allNetworkCalls, setAllNetworkCalls] = useState<NetworkCall[]>([]);
+  const [showIndicatorsPanel, setShowIndicatorsPanel] = useState(false);
+  const [indicators, setIndicators] = useState<any[]>([]);
 
-  console.log({ networkResponses }, "our network responses");
+  useEffect(() => {
+    // lets get all the indicators from storage
+    chrome.storage.local.get(["indicators"], (result) => {
+      const indicators = result.indicators || [];
+      console.log("Indicators from storage:", indicators);
+      setIndicators(indicators);
+    }
+    );
+
+  }, []);
 
   // NEW USE-EFFECT
   useEffect(() => {
@@ -229,6 +241,12 @@ export const Panel: React.FC = () => {
             <span className="ml-1 text-1xl">Load Indicators</span>
           </div>
           <br />
+          <button
+            onClick={() => setShowIndicatorsPanel(true)}
+            className="flex-1 items-center justify-center border-radius-6 bg-gradient-to-r from-[#f857a6] to-[#ff5858] px-4 py-2 bg-[#ff5858] text-white rounded-full hover:bg-[#ff5858] transition-colors"
+          >
+            Show Indicators
+          </button>
           {/* <IndicatorsList currentUrl={currentUrl} /> */}
         </div>
       </div>
@@ -245,6 +263,28 @@ export const Panel: React.FC = () => {
           onDelete={(id) => console.log("Delete indicator with id:", id)}
         />
       )}
+
+      <IndicatorsOverview
+      isVisible={showIndicatorsPanel}
+      indicators={indicators} // המבנה מה-storage שלך
+      onClose={() => {
+        setShowIndicatorsPanel(false)
+      }}
+      onDeleteIndicator={(id) => {
+        // שליחת הודעה למחיקת אינדיקטור
+        // chrome.tabs.sendMessage(tabId, {
+        //   type: "DELETE_INDICATOR",
+        //   data: id
+        // });
+        console.log("Delete indicator with id:", id);
+      }}
+      onNavigateToIndicator={(indicator) => {
+        // ניווט לדף ואינדיקטור
+        // chrome.tabs.update(tabId, { url: indicator.baseUrl });
+        // setShowIndicators(false);
+        console.log("Navigate to indicator:", indicator);
+      }}
+    />
     </div>
   );
 };
