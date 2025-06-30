@@ -10,6 +10,7 @@ import { extractUUIDFromUrl, updateUrlWithNewUUID } from "../../utils/urlUrils";
 import { allNetworkCalls, createJiraTicketFromIndicator } from "../content";
 import initFloatingButton from "../floatingRecorderButton";
 import SchemaValidationService from "./schemaValidationService";
+import { createInteractiveJsonViewer, setupJsonViewerListeners, jsonViewerStyles } from "./components/jsonViewer";
 
 export let pageIndicators: IndicatorData[] = [];
 
@@ -588,27 +589,41 @@ function addIndicatorEvents(
         populatePanels(allIndicatorData);
       }
 
-      // Helper function to avoid code duplication
+
       function populatePanels(data: any) {
+        // Store the original data for the viewer
+        const viewerContainer = (responsePanel as HTMLElement).querySelector("#request");
+        if (viewerContainer && data.body) {
+          try {
+            const parsedBody = typeof data.body.body === 'string' 
+              ? JSON.parse(data.body.body) 
+              : data.body.body;
+            
+            // Store the parsed data as an attribute for later use
+            viewerContainer.setAttribute('data-json', JSON.stringify(parsedBody));
+          } catch (e) {
+            console.error('Failed to parse body:', e);
+          }
+        }
+      
         // Load Security Tab
-        const securityPane = (responsePanel as HTMLElement).querySelector(
-          "#security"
-        );
+        const securityPane = (responsePanel as HTMLElement).querySelector("#security");
         (securityPane as HTMLElement).innerHTML = generateSecurityContent(data);
-
+      
         // Load Performance Tab
-        const performancePane = (responsePanel as HTMLElement).querySelector(
-          "#performance"
-        );
-        (performancePane as HTMLElement).innerHTML =
-          generatePerformanceContent(data);
-
-        // Load Request/Response Tab
-        const requestPane = (responsePanel as HTMLElement).querySelector(
-          "#request"
-        );
+        const performancePane = (responsePanel as HTMLElement).querySelector("#performance");
+        (performancePane as HTMLElement).innerHTML = generatePerformanceContent(data);
+      
+        // Load Request/Response Tab with the new interactive viewer
+        const requestPane = (responsePanel as HTMLElement).querySelector("#request");
         (requestPane as HTMLElement).innerHTML = generateRequestContent(data);
+        
+        // Set up the JSON viewer listeners after content is loaded
+        setupJsonViewerListeners(tooltip);
       }
+
+
+
     });
 
     tooltip.querySelector(".indi-url")?.addEventListener("click", () => {
@@ -980,24 +995,37 @@ function generatePerformanceContent(data: any) {
 }
 
 function generateRequestContent(data: any) {
+  const viewerId = `viewer-${Date.now()}`;
+  
+  let bodyContent = '';
+  if (data.body) {
+    try {
+      const parsedBody = typeof data.body.body === 'string' 
+        ? JSON.parse(data.body.body) 
+        : data.body.body;
+      
+      bodyContent = `
+        <h4>Response Body</h4>
+        ${createInteractiveJsonViewer(parsedBody, viewerId)}
+      `;
+    } catch {
+      // Fallback to the original format if parsing fails
+      bodyContent = `
+        <h4>Response Body</h4>
+        <pre class="response-body">${formatBody(data.body.body)}</pre>
+      `;
+    }
+  }
+
   return `
     <div class="request-section">
       <h4>Request Details</h4>
       <div class="request-details">
-        <div>Method: ${data?.method}</div>
-        <div>URL: ${data?.lastCall?.url}</div>
+        <div><strong>Method:</strong> ${data?.method}</div>
+        <div><strong>URL:</strong> <span class="url-text">${data?.lastCall?.url}</span></div>
+        <div><strong>Status:</strong> <span class="${data?.lastCall?.status === 200 ? 'status-ok' : 'status-error'}">${data?.lastCall?.status}</span></div>
       </div>
-      
-      ${
-        data.body
-          ? `
-        <h4>Response Body</h4>
-        <pre style="max-width: 50vw" class="response-body">${formatBody(
-          data.body.body
-        )}</pre>
-      `
-          : ""
-      }
+      ${bodyContent}
     </div>
   `;
 }
@@ -1030,7 +1058,6 @@ function formatBody(body: string) {
 function syntaxHighlightJson(json: string) {
   if (!json) return "";
 
-  // החלפת תווים מיוחדים
   json = json
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -1057,27 +1084,6 @@ function syntaxHighlightJson(json: string) {
   );
 }
 
-// function sanitizeHTML(str: string) {
-//   return str.replace(
-//     /[&<>"']/g,
-//     (match) =>
-//       ({
-//         "&": "&amp;",
-//         "<": "&lt;",
-//         ">": "&gt;",
-//         '"': "&quot;",
-//         "'": "&#39;",
-//       }[match] || "")
-//   );
-// }
-
-// function formatBytes(bytes: number) {
-//   if (bytes === 0) return "0 Bytes";
-//   const k = 1024;
-//   const sizes = ["Bytes", "KB", "MB", "GB"];
-//   const i = Math.floor(Math.log(bytes) / Math.log(k));
-//   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-// }
 
 function handleTabClick(e: Event, responsePanel: HTMLElement) {
   const target = e.target as HTMLElement;
@@ -1100,8 +1106,8 @@ interface DraggableOptions {
   onDragEnd?: (position: { x: number; y: number }) => void; // Callback when drag ends
 }
 
+
 function makeDraggable(element: HTMLElement, options: DraggableOptions = {}) {
-  // problem here
   const { handle = null, bounds = true, onDragEnd = null } = options;
 
   let isDragging = false;
@@ -1109,6 +1115,8 @@ function makeDraggable(element: HTMLElement, options: DraggableOptions = {}) {
   let currentY: number;
   let initialX: number;
   let initialY: number;
+  let offsetX: number;
+  let offsetY: number;
 
   const handleElement = handle ? element.querySelector(handle) : element;
   if (!handleElement) return;
@@ -1120,11 +1128,18 @@ function makeDraggable(element: HTMLElement, options: DraggableOptions = {}) {
     isDragging = true;
 
     const rect = element.getBoundingClientRect();
-    initialX = e.clientX - rect.left;
-    initialY = e.clientY - rect.top;
+    
+    // חישוב המרחק בין נקודת הקליק לפינה השמאלית העליונה של האלמנט
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
 
-    element.style.transition = "none"; // Disable transitions while dragging
-    element.style.zIndex = "100000"; // Bring to front while dragging
+    // שמירת המיקום הראשוני
+    initialX = rect.left;
+    initialY = rect.top;
+
+    element.style.transition = "none";
+    element.style.zIndex = "100000";
+    element.style.position = "fixed"; // ודא שהאלמנט ממוקם באופן קבוע
   }
 
   function drag(e: MouseEvent) {
@@ -1132,20 +1147,31 @@ function makeDraggable(element: HTMLElement, options: DraggableOptions = {}) {
 
     e.preventDefault();
 
-    currentX = e.clientX - initialX;
-    currentY = e.clientY - initialY;
+    // חישוב המיקום החדש בהתבסס על מיקום העכבר פחות הקיזוז
+    let newX = e.clientX - offsetX;
+    let newY = e.clientY - offsetY;
 
-    // Constrain to window bounds if enabled
+    // הגבלת התנועה לגבולות המסך
     if (bounds) {
       const rect = element.getBoundingClientRect();
-      const maxX = window.innerWidth - rect.width;
-      const maxY = window.innerHeight - rect.height;
+      const elementWidth = rect.width;
+      const elementHeight = rect.height;
+      
+      // חישוב הגבולות המקסימליים והמינימליים
+      const minX = 0;
+      const minY = 0;
+      const maxX = window.innerWidth - elementWidth;
+      const maxY = window.innerHeight - elementHeight;
 
-      currentX = Math.min(Math.max(0, currentX), maxX);
-      currentY = Math.min(Math.max(0, currentY), maxY);
+      // הגבלת המיקום לגבולות
+      newX = Math.min(Math.max(minX, newX), maxX);
+      newY = Math.min(Math.max(minY, newY), maxY);
     }
 
-    // Apply smooth movement
+    currentX = newX;
+    currentY = newY;
+
+    // החלת התנועה
     requestAnimationFrame(() => {
       element.style.left = `${currentX}px`;
       element.style.top = `${currentY}px`;
@@ -1156,28 +1182,37 @@ function makeDraggable(element: HTMLElement, options: DraggableOptions = {}) {
     if (!isDragging) return;
 
     isDragging = false;
-    element.style.transition = "box-shadow 0.3s ease"; // Restore transitions
+    element.style.transition = "box-shadow 0.3s ease";
     element.style.zIndex = "99999";
 
-    // Save final position if callback provided
+    // קריאה לקולבק עם המיקום הסופי
     if (onDragEnd) {
       onDragEnd({ x: currentX, y: currentY });
     }
   }
 
-  // Add event listeners
+  // הוספת מאזינים
   (handleElement as HTMLElement).addEventListener("mousedown", startDragging);
   document.addEventListener("mousemove", drag);
   document.addEventListener("mouseup", stopDragging);
 
-  // Return cleanup function
+  // מניעת בחירת טקסט בזמן גרירה
+  document.addEventListener("selectstart", (e) => {
+    if (isDragging) {
+      e.preventDefault();
+    }
+  });
+
+  // פונקציית ניקוי
   return () => {
-    (handleElement as HTMLElement).removeEventListener(
-      "mousedown",
-      startDragging
-    );
+    (handleElement as HTMLElement).removeEventListener("mousedown", startDragging);
     document.removeEventListener("mousemove", drag);
     document.removeEventListener("mouseup", stopDragging);
+    document.removeEventListener("selectstart", (e) => {
+      if (isDragging) {
+        e.preventDefault();
+      }
+    });
   };
 }
 
@@ -1209,6 +1244,11 @@ export function getElementPath(element: Element): string {
 export function injectStyles() {
   const style = document.createElement("style");
   style.textContent = `
+
+
+   ${jsonViewerStyles}
+
+
     .schema-valid {
       border: 2px solid #4caf50 !important;
       box-shadow: 0 0 5px rgba(76, 175, 80, 0.5);

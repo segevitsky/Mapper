@@ -11,6 +11,7 @@ import { ImSpinner } from "react-icons/im";
 import { flexContStart } from "./styles";
 import ApiResponsePanel from "./components/ResponseModal";
 import FailedIndicatorsReport from "./components/FailedIndicatorsReport";
+import IndicatorsOverview from "./components/IndicatorsOverview";
 
 const MAX_NETWORK_RESPONSES = 50;
 
@@ -30,8 +31,19 @@ export const Panel: React.FC = () => {
     useState(false);
   const [failedIndicatorData, setFailedIndicatorData] = useState<any>();
   const [allNetworkCalls, setAllNetworkCalls] = useState<NetworkCall[]>([]);
+  const [showOverview, setShowOverview] = useState(false);
+  const [indicators, setIndicators] = useState({});
 
-  console.log({ networkResponses }, "our network responses");
+  useEffect(() => {
+    // lets fetch the indicators from storage
+    chrome.storage.local.get(["indicators"], (result) => {
+      if (result.indicators) {
+        setIndicators(result.indicators);
+      }
+    }); 
+  }, []);
+
+
 
   // NEW USE-EFFECT
   useEffect(() => {
@@ -180,9 +192,9 @@ export const Panel: React.FC = () => {
 
           <NetworkList
             calls={networkCalls}
-            onSelectCall={() =>
+            onSelectCall={(call: any) =>
               console.log(
-                "we need to add here something that would show the data of the selected network call"
+                "we need to add here something that would show the data of the selected network call", call
               )
             }
           />
@@ -221,13 +233,14 @@ export const Panel: React.FC = () => {
             <span className="ml-1 text-1xl">Clear Indicators</span>
           </div>
           <br />
-          <div className={flexContStart}>
-            <ImSpinner
-              className="text-1xl mt-[.25rem] text-white"
-              onClick={handleIndicatorsLoad}
-            />
-            <span className="ml-1 text-1xl">Load Indicators</span>
-          </div>
+          <button 
+            className="flex-1 items-center justify-center border-radius-6 bg-gradient-to-r from-[#f857a6] to-[#ff5858] px-4 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
+            onClick={() => setShowOverview(true)}
+          >
+            Show All Indicators
+          </button>
+
+
           <br />
           {/* <IndicatorsList currentUrl={currentUrl} /> */}
         </div>
@@ -245,6 +258,26 @@ export const Panel: React.FC = () => {
           onDelete={(id) => console.log("Delete indicator with id:", id)}
         />
       )}
+
+      <IndicatorsOverview
+        isVisible={showOverview}
+        indicators={indicators} // המבנה מה-storage שלך
+        onClose={() => setShowOverview(false)}
+        onDeleteIndicator={(id) => {
+          console.log({ id })
+          // שליחת הודעה למחיקת אינדיקטור
+          // chrome.tabs.sendMessage(tabId, {
+          //   type: "DELETE_INDICATOR",
+          //   data: id
+          // });
+        }}
+        onNavigateToIndicator={(indicator) => {
+          console.log("Navigating to indicator:", indicator);
+          // ניווט לדף ואינדיקטור
+          // chrome.tabs.update(tabId, { url: indicator.baseUrl });
+          setShowOverview(false);
+        }}
+      />
     </div>
   );
 };

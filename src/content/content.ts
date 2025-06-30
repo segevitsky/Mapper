@@ -599,17 +599,33 @@ chrome.runtime.onMessage.addListener((message) => {
     case "CLEAR_INDICATORS":
       // This here depends on my current url! so I need to get the current url and delete the indicators according to it
       // according to wheather it is a full path or a path like DASHBOAR, ACCESS, etc...
-      document.querySelectorAll(".indicator")?.forEach((indicator) => {
-        indicator.remove();
-      });
-      // lets check if the url has a uuid in it
+      Swal.fire({
+        title: "Clear All Indicators",
+        text: "Are you sure you want to clear all indicators? This action cannot be undone.",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Yes, clear them",
+        cancelButtonText: "No, keep them",
+      }).then((result) => {
+        if (result.isConfirmed) {
+          clearAllIndicators();
+        }
+      }
+      );
 
-      chrome.storage.local.get(["indicators"], (result) => {
-        let indicators = result.indicators || {};
-        // lets delete all the indicators in storage
-        indicators = {};
-        chrome.storage.local.set({ indicators });
-      });
+      function clearAllIndicators() {
+        document.querySelectorAll(".indicator")?.forEach((indicator) => {
+          indicator.remove();
+        });
+        // lets check if the url has a uuid in it
+  
+        chrome.storage.local.get(["indicators"], (result) => {
+          let indicators = result.indicators || {};
+          // lets delete all the indicators in storage
+          indicators = {};
+          chrome.storage.local.set({ indicators });
+        });
+      }
       break;
 
     // case "NETWORK_RESPONSE":
