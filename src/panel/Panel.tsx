@@ -22,6 +22,7 @@ export const Panel: React.FC = () => {
   const [networkResponses, setNetworkResponses] = useState<any[]>([]);
 
   const [showIndicators, setShowIndicators] = useState(true);
+  const [showRecordButton, setShowRecordButton] = useState(true);
   const [currentUrl, setCurrentUrl] = useState(window.location.href);
   const [selectedNetworkResponse, setSelectedNetworkResponse] = useState<any>();
 
@@ -138,6 +139,15 @@ export const Panel: React.FC = () => {
     });
   };
 
+  const toggleRecordButton = () => {
+    setShowRecordButton(!showRecordButton);
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: "TOGGLE_RECORD_BUTTON" });
+      }
+    });
+  }
+
   const clearIndicator = () => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]?.id) {
@@ -224,6 +234,23 @@ export const Panel: React.FC = () => {
             )}
           </div>
           <br />
+
+          <div
+            onClick={toggleRecordButton}
+            className="flex justify-start align-middle" style={{ cursor: "pointer" }}> 
+            {!showRecordButton ? (
+              <LuToggleLeft
+                className="mt-1 text-1xl text-white"
+              />
+            ) : (
+              <LuToggleRight
+                className="mt-1 text-1xl text-white"
+              />
+            )}
+            <span className="ml-1 text-1xl"> Toggle Record button  </span>
+          </div>
+          <br />
+
           <div className="flex justify-start align-middle">
             {" "}
             <GrClear

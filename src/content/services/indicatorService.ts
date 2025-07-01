@@ -484,6 +484,7 @@ function addIndicatorEvents(
           );
           if (ind && ind.body.body) {
               const schemaService = new SchemaValidationService();
+              // This doesn't work as intended!
               const schemaCheck = schemaService.validateResponse(body, ind.body.body);
               const { isValid, errors } = schemaCheck;
               tooltip.remove();

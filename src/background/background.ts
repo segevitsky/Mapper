@@ -174,7 +174,6 @@ chrome.webRequest.onBeforeRequest.addListener(
   ["requestBody"]
 );
 
-// This is for the payload of the body of the request
 chrome.webRequest.onCompleted.addListener(
   (details) => {
     console.log("Request completed:", details);
@@ -183,7 +182,8 @@ chrome.webRequest.onCompleted.addListener(
       details.initiator && env.includes(details.initiator)
     );
     if (
-      details.type === "xmlhttprequest" &&
+      details.type === "xmlhttprequest"
+       &&
       initiatorExistsInEnvs
     ) {
       const request = pendingRequests.get(details.requestId);

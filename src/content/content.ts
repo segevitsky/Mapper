@@ -654,6 +654,19 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
     }
 
+    case "TOGGLE_RECORD_BUTTON": {
+      // console.log("toggle record button", message.data);
+      const recordButton = document.getElementById("indi-recorder-button");
+      if (recordButton) {
+        // lets toggle the style display
+        recordButton.style.display =
+          recordButton.style.display === "none" ? "block" : "none";
+      } else {
+        console.error("Record button not found in the DOM.");
+      }
+      break;
+    }
+
     case "DELETE_INDICATOR": {
       // lets remove the indicator from storage
       const indicatorId = message.data;
@@ -844,7 +857,7 @@ function enableInspectMode() {
   chrome.storage.local.get(["userData"], (data) => {
     const user = data.userData;
     const location = window.location.host;
-    const allowerdDomains = user?.domains || [];
+    const allowerdDomains = user?.domains ? [...user?.domains, { id: '0', isValid: true, value: 'localhost:3000' }] : [];
     const isAllowedDomain = allowerdDomains.some((domain: { id: number, isValid: boolean, value: string }) =>
       domain.value.includes(location)
     );
