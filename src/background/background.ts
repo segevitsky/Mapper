@@ -183,8 +183,8 @@ chrome.webRequest.onCompleted.addListener(
     );
     if (
       details.type === "xmlhttprequest"
-       &&
-      initiatorExistsInEnvs
+      //  &&
+      // initiatorExistsInEnvs
     ) {
       const request = pendingRequests.get(details.requestId);
       if (request) {

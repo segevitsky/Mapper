@@ -452,8 +452,8 @@ function showModal(
                 const description = (document.getElementById(
                   "indicator-description"
                 ) as HTMLTextAreaElement).value;
-                if (!name || !description) {
-                  Swal.showValidationMessage("Please enter both name and description");
+                if (!name) {
+                  Swal.showValidationMessage("Name is required");
                   return false;
                 }
                 return { name, description };
