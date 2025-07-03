@@ -36,7 +36,7 @@ interface IndicatorsOverviewProps {
   isVisible: boolean;
   indicators?: Record<string, IndicatorData[]>;
   onClose: () => void;
-  onDeleteIndicator: (indicatorId: string) => void;
+  onDeleteIndicator: (indicatorId: string, indicators: any) => void;
   onNavigateToIndicator: (indicator: IndicatorData) => void;
 }
 
@@ -350,7 +350,7 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
                               <Eye className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => onDeleteIndicator(indicator.id)}
+                              onClick={() => onDeleteIndicator(indicator.id, indicators)}
                               className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="Delete indicator"
                             >

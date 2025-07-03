@@ -12,6 +12,7 @@ import { flexContStart } from "./styles";
 import ApiResponsePanel from "./components/ResponseModal";
 import FailedIndicatorsReport from "./components/FailedIndicatorsReport";
 import IndicatorsOverview from "./components/IndicatorsOverview";
+import { findKeyById } from "./utils";
 
 const MAX_NETWORK_RESPONSES = 50;
 
@@ -33,7 +34,7 @@ export const Panel: React.FC = () => {
   const [failedIndicatorData, setFailedIndicatorData] = useState<any>();
   const [allNetworkCalls, setAllNetworkCalls] = useState<NetworkCall[]>([]);
   const [showOverview, setShowOverview] = useState(false);
-  const [indicators, setIndicators] = useState({});
+  const [indicators, setIndicators] = useState<Record<string, any>>({});
 
   useEffect(() => {
     // lets fetch the indicators from storage
@@ -102,13 +103,17 @@ export const Panel: React.FC = () => {
           });
           break;
 
-        case "REFRESH_PANEL":
-          setCurrentUrl(message.url);
-          break;
+        // case "REFRESH_PANEL":
+        //   setCurrentUrl(message.url);
+        //   break;
 
         case "INDICATOR_FAILED":
           // טיפול באינדיקטורים שנכשלו
           break;
+
+        case "URL_CHANGED" : {
+          setCurrentUrl(message.url);
+        }
       }
     };
 
@@ -290,11 +295,29 @@ export const Panel: React.FC = () => {
         isVisible={showOverview}
         indicators={indicators} // המבנה מה-storage שלך
         onClose={() => setShowOverview(false)}
-        onDeleteIndicator={(id) => {
+        onDeleteIndicator={(id, indicators) => {
+          console.log({ id, indicators }, 'delete indicator');
+          console.log({ currentUrl }, 'current url we are in');
           chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
             if (tabs[0]?.id) {
               chrome.tabs.sendMessage(tabs[0].id, { type: "DELETE_INDICATOR", data: id });
             }
+          });
+          const itemsCategory = findKeyById(indicators, id);
+          console.log("Items category found:", itemsCategory);
+          if (!itemsCategory) {
+            console.warn("No category found for indicator with id:", id);
+            return;
+          }
+          setIndicators((prevIndicators) => {
+            const newIndicators = { ...prevIndicators };
+            const indicatorsArray = newIndicators[itemsCategory];
+            if (indicatorsArray) {
+              newIndicators[itemsCategory] = indicatorsArray.filter(
+                (indicator: any) => indicator.id !== id
+              );
+            };
+            return newIndicators;
           });
         }}
         onNavigateToIndicator={(indicator) => {

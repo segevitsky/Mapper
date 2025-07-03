@@ -1,3 +1,5 @@
+import { generateStoragePath } from "./storage";
+
 export class URLChangeDetector {
   private lastUrl: string;
   private observers: (() => void)[] = [];
@@ -34,7 +36,7 @@ export class URLChangeDetector {
     const currentUrl = window.location.href;
     if (this.lastUrl !== currentUrl) {
       this.lastUrl = currentUrl;
-
+      const currentPath = generateStoragePath(currentUrl);
       // הוספת בדיקת תקינות לפני שליחת ההודעה
       try {
         if (chrome.runtime?.id) {
@@ -42,7 +44,7 @@ export class URLChangeDetector {
           chrome.runtime
             .sendMessage({
               type: "URL_CHANGED",
-              url: currentUrl,
+              url: currentPath,
             })
             .catch((error) => {
               console.debug("Failed to send URL change message:", error);

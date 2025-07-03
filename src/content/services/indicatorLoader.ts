@@ -1,4 +1,5 @@
 import { debounce } from "../../utils/general";
+import { generateStoragePath } from "../../utils/storage";
 import { URLChangeDetector } from "../../utils/urlChangeDetector";
 import { loadIndicators } from "./indicatorService";
 import { isUserLoggedIn, authenticatedLoadIndicators } from "./loginManager";
@@ -27,6 +28,7 @@ export class IndicatorLoader {
   private handleIndicatorLoad = async () => {
     // Check if user is logged in
     const loggedIn = await isUserLoggedIn();
+
     
     if (!loggedIn) {
       // Show login modal and wait for authentication
@@ -51,6 +53,13 @@ export class IndicatorLoader {
         this.removeDuplicatedIndicatorElements();
       });
     } else {
+      const currentUrl = window.location.href;
+      const currentPath  = generateStoragePath(currentUrl);
+      chrome.runtime
+      .sendMessage({
+        type: "URL_CHANGED",
+        url: currentPath,
+      })
       // User is already logged in, proceed normally
       if (!this.initialLoadDone) {
         chrome.storage.local.get(["userData"], (res) => {
