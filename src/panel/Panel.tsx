@@ -291,12 +291,11 @@ export const Panel: React.FC = () => {
         indicators={indicators} // המבנה מה-storage שלך
         onClose={() => setShowOverview(false)}
         onDeleteIndicator={(id) => {
-          console.log({ id })
-          // שליחת הודעה למחיקת אינדיקטור
-          // chrome.tabs.sendMessage(tabId, {
-          //   type: "DELETE_INDICATOR",
-          //   data: id
-          // });
+          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]?.id) {
+              chrome.tabs.sendMessage(tabs[0].id, { type: "DELETE_INDICATOR", data: id });
+            }
+          });
         }}
         onNavigateToIndicator={(indicator) => {
           console.log("Navigating to indicator:", indicator);

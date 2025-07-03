@@ -466,7 +466,7 @@ function addIndicatorEvents(
       ?.addEventListener("click", () => {
         indicator.remove();
         tooltip.remove();
-        removeIndicatorFromStorage(currentData.id);
+        removeIndicatorFromStorage(currentData);
       });
 
     tooltip.querySelector(".check-schema")?.addEventListener("click", () => {
@@ -643,7 +643,7 @@ function addIndicatorEvents(
         },
       });
       tooltip.remove();
-      removeIndicatorFromStorage(currentData.id);
+      removeIndicatorFromStorage(currentData);
     });
 
     // הוספת האזנה לכפתור החדש
@@ -928,13 +928,14 @@ function addIndicatorEvents(
   });
 }
 
-function removeIndicatorFromStorage(indicatorId: string) {
+function removeIndicatorFromStorage(indicatorData: IndicatorData) {
   chrome.storage.local.get(["indicators"], (result) => {
     const indicators = result.indicators || {};
-    if (indicators[window.location.href]) {
-      indicators[window.location.href] = indicators[
-        window.location.href
-      ].filter((ind: IndicatorData) => ind.id !== indicatorId);
+    const pathToUpdate = generateStoragePath(window.location.href);
+    if (indicators[pathToUpdate]) {
+      indicators[pathToUpdate] = indicators[pathToUpdate].filter(
+        (ind: IndicatorData) => ind.id !== indicatorData.id
+      );
       chrome.storage.local.set({ indicators });
     }
   });

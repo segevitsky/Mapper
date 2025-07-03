@@ -191,7 +191,7 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="text-white hover:text-pink-200 text-2xl font-bold p-2 hover:bg-pink-600 rounded-lg transition-colors"
+            className="shadow-sm bg-none hover:text-pink-200 text-2xl font-bold p-2 hover:bg-pink-600 rounded-lg transition-colors "
           >
             ×
           </button>
