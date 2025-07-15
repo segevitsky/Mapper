@@ -547,12 +547,28 @@ export async function createJiraTicketFromIndicator(data: any) {
 }
 
 // האזנה להודעות מהפאנל
-chrome.runtime.onMessage.addListener((message) => {
+chrome.runtime.onMessage.addListener( async (message) => {
   switch (message.type) {
     case "START_INSPECT_MODE":
       enableInspectMode();
       break;
 
+    case "NAVIGATE_TO_INDICATOR":
+      const { data } = message;
+      window.location.href = window.location.origin + data.baseUrl;
+      const indicator = await waitForIndicator(data.id);
+      
+      // lets click the indicator to show the tooltip
+      if (indicator) {
+        (indicator as HTMLElement).click();
+      } else {
+        console.error("Indicator not found:", data.id);
+      }
+        
+
+      break;
+
+    
     case "NETWORK_IDLE": {
       console.log("network tab idle", message);
       if (message.requests.length === 0) {
