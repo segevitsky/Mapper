@@ -322,9 +322,18 @@ export const Panel: React.FC = () => {
         }}
         onNavigateToIndicator={(indicator) => {
           console.log("Navigating to indicator:", indicator);
-          // ניווט לדף ואינדיקטור
-          // chrome.tabs.update(tabId, { url: indicator.baseUrl });
-          setShowOverview(false);
+          const extractedUrl = new URL(indicator.baseUrl);
+          const urlToSend = extractedUrl.pathname + extractedUrl?.search;
+          // lets send the indicator base url to the content script
+          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+            if (tabs[0]?.id) {
+              chrome.tabs.sendMessage(tabs[0].id, {
+                type: "NAVIGATE_TO_INDICATOR",
+                data: { baseUrl: urlToSend, id: indicator.id },
+              });
+            }
+          });
+          
         }}
       />
     </div>

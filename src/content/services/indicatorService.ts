@@ -403,7 +403,7 @@ function addIndicatorEvents(
         </span>
       </div>
         <div style="color: rgb(255, 134, 122);"> <strong> Name: </strong> ${currentData?.name || parsedDataFromAttr?.name || "-"} </div>
-        <div style="color: rgb(255, 134, 122);"> <strong> Description: </strong> ${currentData.description || parsedDataFromAttr?.description || '-' } </div>
+        <div style="color: rgb(255, 134, 122);"> <strong> Description: </strong> ${currentData?.description || parsedDataFromAttr?.description || '-' } </div>
       <div class='indi-url' style="color: #666; word-break: break-all; margin: 8px 0;">
         ${
           currentData?.lastCall?.url ??
@@ -521,6 +521,7 @@ function addIndicatorEvents(
       });
 
     tooltip.querySelector(".show-response")?.addEventListener("click", () => {
+      
       const responsePanel = tooltip.querySelector(".response-container");
       if (!responsePanel) return;
 
@@ -529,99 +530,108 @@ function addIndicatorEvents(
         indicator.getAttribute("data-indicator-info") || "{}"
       );
 
-      // Toggle display of the panel regardless of data
-      const isHidden = (responsePanel as HTMLElement).style.display === "none";
-      (responsePanel as HTMLElement).style.display = isHidden
-        ? "block"
-        : "none";
-
-      // If we're hiding the panel, no need to load data
-      if (!isHidden) return;
-
-      // Set up tab click handlers
-      responsePanel.querySelectorAll(".tab-button").forEach(() => {
-        responsePanel.addEventListener("click", (e) => {
-          handleTabClick(e, responsePanel as HTMLElement);
-        });
-      });
-      const isAutoIndicator =
-        Object.keys(allIndicatorData)?.length > 0
-          ? allIndicatorData.id.includes("auto")
-          : false;
-
-      // Check if we need to get more data
-      if (
-        !allIndicatorData.body ||
-        !allIndicatorData.request ||
-        (!allIndicatorData.response && !isAutoIndicator)
-      ) {
-        // We need more data - get it from storage
-        chrome.storage.local.get(["indicators"], (result) => {
-          const indies = result.indicators || {};
-          const pathWereAt = generateStoragePath(window.location.href);
-          const relevantIndies = indies[pathWereAt] || [];
-          const indicatorsDataFromStorage = relevantIndies.filter(
-            (el: IndicatorData) => el.lastCall.url === currentData.lastCall.url
-          );
-          if (indicatorsDataFromStorage.length > 0) {
-            const indicatorDataFromStorage =
-              indicatorsDataFromStorage[indicatorsDataFromStorage.length - 1];
-            indicator.setAttribute(
-              "data-indicator-info",
-              JSON.stringify(indicatorDataFromStorage)
-            );
-            const tooltipDurationElement =
-              document.querySelector("#tooltip-duration");
-            if (tooltipDurationElement) {
-              tooltipDurationElement.innerHTML = `${Math.floor(
-                indicatorDataFromStorage?.duration ??
-                  indicatorDataFromStorage?.lastCal.timing.duration ??
-                  0
-              )}ms`;
-            }
-            populatePanels(indicatorDataFromStorage);
-          } else {
-            // Use whatever data we have
-            populatePanels(allIndicatorData);
-          }
-        });
-      } else {
-        // We already have all the data we need
-        populatePanels(allIndicatorData);
-      }
-
-
-      function populatePanels(data: any) {
-        // Store the original data for the viewer
-        const viewerContainer = (responsePanel as HTMLElement).querySelector("#request");
-        if (viewerContainer && data.body) {
-          try {
-            const parsedBody = typeof data.body.body === 'string' 
-              ? JSON.parse(data.body.body) 
-              : data.body.body;
-            
-            // Store the parsed data as an attribute for later use
-            viewerContainer.setAttribute('data-json', JSON.stringify(parsedBody));
-          } catch (e) {
-            console.error('Failed to parse body:', e);
-          }
+      chrome.runtime.sendMessage({
+        type: "OPEN_FLOATING_WINDOW",
+        data: {
+          indicatorData: allIndicatorData,
+          networkCall: allIndicatorData,
+          // כל המידע שאתה צריך
         }
+      });
+
+      // Toggle display of the panel regardless of data
+      // const isHidden = (responsePanel as HTMLElement).style.display === "none";
+      // (responsePanel as HTMLElement).style.display = isHidden
+      //   ? "block"
+      //   : "none";
+
+      // // If we're hiding the panel, no need to load data
+      // if (!isHidden) return;
+
+      // // Set up tab click handlers
+      // responsePanel.querySelectorAll(".tab-button").forEach(() => {
+      //   responsePanel.addEventListener("click", (e) => {
+      //     handleTabClick(e, responsePanel as HTMLElement);
+      //   });
+      // });
+      // const isAutoIndicator =
+      //   Object.keys(allIndicatorData)?.length > 0
+      //     ? allIndicatorData.id.includes("auto")
+      //     : false;
+
+      // // Check if we need to get more data
+      // if (
+      //   !allIndicatorData.body ||
+      //   !allIndicatorData.request ||
+      //   (!allIndicatorData.response && !isAutoIndicator)
+      // ) {
+      //   // We need more data - get it from storage
+      //   chrome.storage.local.get(["indicators"], (result) => {
+      //     const indies = result.indicators || {};
+      //     const pathWereAt = generateStoragePath(window.location.href);
+      //     const relevantIndies = indies[pathWereAt] || [];
+      //     const indicatorsDataFromStorage = relevantIndies.filter(
+      //       (el: IndicatorData) => el.lastCall.url === currentData.lastCall.url
+      //     );
+      //     if (indicatorsDataFromStorage.length > 0) {
+      //       const indicatorDataFromStorage =
+      //         indicatorsDataFromStorage[indicatorsDataFromStorage.length - 1];
+      //       indicator.setAttribute(
+      //         "data-indicator-info",
+      //         JSON.stringify(indicatorDataFromStorage)
+      //       );
+      //       const tooltipDurationElement =
+      //         document.querySelector("#tooltip-duration");
+      //       if (tooltipDurationElement) {
+      //         tooltipDurationElement.innerHTML = `${Math.floor(
+      //           indicatorDataFromStorage?.duration ??
+      //             indicatorDataFromStorage?.lastCal.timing.duration ??
+      //             0
+      //         )}ms`;
+      //       }
+      //       populatePanels(indicatorDataFromStorage);
+      //     } else {
+      //       // Use whatever data we have
+      //       populatePanels(allIndicatorData);
+      //     }
+      //   });
+      // } else {
+      //   // We already have all the data we need
+      //   populatePanels(allIndicatorData);
+      // }
+
+
+      // function populatePanels(data: any) {
+      //   // Store the original data for the viewer
+      //   const viewerContainer = (responsePanel as HTMLElement).querySelector("#request");
+      //   if (viewerContainer && data.body) {
+      //     try {
+      //       const parsedBody = typeof data.body.body === 'string' 
+      //         ? JSON.parse(data.body.body) 
+      //         : data.body.body;
+            
+      //       // Store the parsed data as an attribute for later use
+      //       viewerContainer.setAttribute('data-json', JSON.stringify(parsedBody));
+      //     } catch (e) {
+      //       console.error('Failed to parse body:', e);
+      //     }
+      //   }
       
-        // Load Security Tab
-        const securityPane = (responsePanel as HTMLElement).querySelector("#security");
-        (securityPane as HTMLElement).innerHTML = generateSecurityContent(data);
+      //   // Load Security Tab
+      //   const securityPane = (responsePanel as HTMLElement).querySelector("#security");
+      //   (securityPane as HTMLElement).innerHTML = generateSecurityContent(data);
       
-        // Load Performance Tab
-        const performancePane = (responsePanel as HTMLElement).querySelector("#performance");
-        (performancePane as HTMLElement).innerHTML = generatePerformanceContent(data);
+      //   // Load Performance Tab
+      //   const performancePane = (responsePanel as HTMLElement).querySelector("#performance");
+      //   (performancePane as HTMLElement).innerHTML = generatePerformanceContent(data);
       
-        // Load Request/Response Tab with the new interactive viewer
-        const requestPane = (responsePanel as HTMLElement).querySelector("#request");
-        (requestPane as HTMLElement).innerHTML = generateRequestContent(data);
+      //   // Load Request/Response Tab with the new interactive viewer
+      //   const requestPane = (responsePanel as HTMLElement).querySelector("#request");
+      //   (requestPane as HTMLElement).innerHTML = generateRequestContent(data);
         
-        // Set up the JSON viewer listeners after content is loaded
-        setupJsonViewerListeners(tooltip);
-      }
+      //   // Set up the JSON viewer listeners after content is loaded
+      //   setupJsonViewerListeners(tooltip);
+      // }
 
 
 

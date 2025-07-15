@@ -18,6 +18,8 @@ export default defineConfig({
         content: path.resolve(__dirname, "src/content/content.ts"),
         devtools: path.resolve(__dirname, "src/devtools/index.html"),
         panel: path.resolve(__dirname, "src/panel/index.html"),
+        floatingWindow: path.resolve(__dirname, "src/indicatorFloatingWindow/floating-window.html"),
+        indicatorFloatingWindow: path.resolve(__dirname, "src/indicatorFloatingWindow/floating-window.tsx"),
       },
       output: {
         entryFileNames: "[name].js",

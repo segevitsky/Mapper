@@ -585,27 +585,61 @@ async function attachDebugger(tabId: number): Promise<void> {
   }
 }
 
-// chrome.runtime.onMessage.addListener(async (message, sender) => {
-//   console.log("Received message about the devtools opened:", message, sender);
-//   if (message.type === "DEVTOOLS_OPENED") {
-//     // const tab = sender.tab;
-//     if (message?.tabId) {
-//       await attachDebugger(message.tabId);
-//     }
-//   }
-// });
+let floatingWindowId: number | null = null;
+
+function openOrUpdateFloatingWindow(data: unknown): void {
+  const encodedData = encodeURIComponent(JSON.stringify(data));
+  const newUrl = `src/indicatorFloatingWindow/floating-window.html?data=${encodedData}`;
+
+  if (floatingWindowId !== null) {
+    chrome.windows.get(floatingWindowId, { populate: true }, (existingWindow) => {
+      if (chrome.runtime.lastError || !existingWindow) {
+        createFloatingWindow(newUrl);
+      } else {
+        const tab = existingWindow.tabs?.[0];
+        if (tab?.id !== undefined) {
+          chrome.tabs.update(tab.id, { url: newUrl });
+        }
+
+        chrome.windows.update(floatingWindowId!, { focused: true });
+      }
+    });
+  } else {
+    createFloatingWindow(newUrl);
+  }
+}
+function createFloatingWindow(url: string): void {
+  chrome.windows.create(
+    {
+      url,
+      type: 'popup',
+      width: 1200,
+      height: 800,
+      focused: true,
+    },
+    (newWindow) => {
+      if (newWindow?.id !== undefined) {
+        floatingWindowId = newWindow.id;
+      }
+    }
+  );
+}
+
+chrome.windows.onRemoved.addListener((closedWindowId: number) => {
+  if (closedWindowId === floatingWindowId) {
+    floatingWindowId = null;
+  }
+});
+
 
 chrome.runtime.onMessage.addListener(async (message, sender) => {
   console.log("Received message:", message, sender);
 
   if (message.type === "DEVTOOLS_OPENED") {
     let tabId;
-
-    // אם ההודעה מגיעה מדף תוכן (content script)
     if (sender.tab) {
       tabId = sender.tab.id;
     }
-    // אם ההודעה מגיעה מהדבטולס פאנל
     else if (message.tabId) {
       tabId = message.tabId;
     }
@@ -617,6 +651,19 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
       console.error("No tab ID found");
     }
   }
+
+  if (message.type === "OPEN_FLOATING_WINDOW") {
+    openOrUpdateFloatingWindow(message.data);
+    // chrome.windows.create({
+    //   url: `src/indicatorFloatingWindow/floating-window.html?data=${encodeURIComponent(JSON.stringify(message.data))}`,
+    //   type: 'popup',
+    //   width: 1200,
+    //   height: 800,
+    //   focused: true,
+    //   // אפשרויות נוספות לחלון מרחף
+    //   // Removed unsupported property 'alwaysOnTop'
+    // });
+  }
 });
 
 // ניקוי כשטאב נסגר
@@ -626,3 +673,6 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     debuggerTabs.delete(tabId);
   }
 });
+
+
+
