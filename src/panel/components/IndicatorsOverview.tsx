@@ -30,6 +30,8 @@ interface IndicatorData {
     left: number;
   };
   updatedPosition?: string;
+  name?: string; // Added name field
+  description?: string; // Added description field
 }
 
 interface IndicatorsOverviewProps {
@@ -127,7 +129,7 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
     let filtered = allIndicators.filter(ind => 
       ind && 
       ind.lastCall && 
-      typeof ind.lastCall.status === 'number' && 
+      // typeof ind.lastCall.status === 'number' && 
       ind.lastCall.timing && 
       typeof ind.lastCall.timing.duration === 'number'
     );
@@ -261,7 +263,7 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
           <div className="space-y-6">
             {/* Group by page */}
             {Object.entries(
-              filteredIndicators.reduce((acc, indicator) => {
+              allIndicators.reduce((acc, indicator) => {
                 if (!acc[indicator.pagePath]) acc[indicator.pagePath] = [];
                 acc[indicator.pagePath].push(indicator);
                 return acc;
@@ -303,7 +305,7 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
                 {/* Page Indicators */}
                 {expandedPages.has(pagePath) && (
                   <div className="divide-y divide-gray-100">
-                    {pageIndicators.map((indicator) => (
+                    {pageIndicators.map((indicator, index: number) => (
                       <div
                         key={indicator.id}
                         className="p-4 hover:bg-gray-50 transition-colors"
@@ -311,6 +313,7 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
                             {/* Method and URL */}
+                            <div className='text-[#f43f5e] mb-2 font-bold'> { indicator?.name ?? `Indicator #${index}`  } </div>
                             <div className="flex items-center space-x-3 mb-2">
                               <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                 {indicator.method || 'GET'}

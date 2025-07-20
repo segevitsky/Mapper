@@ -1,18 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
 import { NetworkList } from "./components/NetworkList";
-import IndicatorsList from "./components/IndicatorsList";
 import { Toolbar } from "./components/Toolbar";
 import { useNetworkCalls } from "./hooks/useNetworkCalls";
 import "../index.css";
 import { NetworkCall } from "../types";
 import { GrClear } from "react-icons/gr";
 import { LuToggleLeft, LuToggleRight } from "react-icons/lu";
-import { ImSpinner } from "react-icons/im";
-import { flexContStart } from "./styles";
 import ApiResponsePanel from "./components/ResponseModal";
 import FailedIndicatorsReport from "./components/FailedIndicatorsReport";
 import IndicatorsOverview from "./components/IndicatorsOverview";
 import { findKeyById } from "./utils";
+import logoIcon from "../assets/bug.png";
 
 const MAX_NETWORK_RESPONSES = 50;
 
@@ -26,8 +24,7 @@ export const Panel: React.FC = () => {
   const [showRecordButton, setShowRecordButton] = useState(true);
   const [currentUrl, setCurrentUrl] = useState(window.location.href);
   const [selectedNetworkResponse, setSelectedNetworkResponse] = useState<any>();
-
-  // FAILED INDICATORS STATE
+  const [userDetails, setUserDetails] = useState<any>(null);
 
   const [showFailedIndicatorsReport, setShowFailedIndicatorsReport] =
     useState(false);
@@ -36,14 +33,54 @@ export const Panel: React.FC = () => {
   const [showOverview, setShowOverview] = useState(false);
   const [indicators, setIndicators] = useState<Record<string, any>>({});
 
+  // useEffect(() => {
+  //   // lets fetch the indicators from storage
+  //   chrome.storage.local.get(["indicators", "userData"], (result) => {
+  //     if (result.indicators) {
+  //       setIndicators(result.indicators);
+  //     }
+  //     console.log({ userData: result.userData }, 'user data from storage');
+  //     setUserDetails(result.userData);  
+  //   }); 
+  // }, []);
+
   useEffect(() => {
-    // lets fetch the indicators from storage
-    chrome.storage.local.get(["indicators"], (result) => {
-      if (result.indicators) {
-        setIndicators(result.indicators);
+  // Initial fetch of data from storage
+  chrome.storage.local.get(["indicators", "userData"], (result) => {
+    if (result.indicators) {
+      setIndicators(result.indicators);
+    }
+    console.log({ userData: result.userData }, 'user data from storage');
+    setUserDetails(result.userData);  
+  });
+
+  // Listen for changes in Chrome storage
+  const handleStorageChange = (changes: { [key: string]: chrome.storage.StorageChange }, areaName: string) => {
+    if (areaName === 'local') {
+      // Check if indicators changed
+      if (changes.indicators) {
+        setIndicators(changes.indicators.newValue);
       }
-    }); 
-  }, []);
+      
+      // Check if userData changed
+      if (changes.userData) {
+        console.log({ userData: changes.userData.newValue }, 'user data updated from storage');
+        setUserDetails(changes.userData.newValue);
+      }
+    }
+  };
+
+  // Add the storage listener
+  chrome.storage.onChanged.addListener(handleStorageChange);
+
+  // Cleanup: remove the listener when component unmounts
+  return () => {
+    chrome.storage.onChanged.removeListener(handleStorageChange);
+  };
+}, []);
+
+
+  
 
 
 
@@ -102,10 +139,6 @@ export const Panel: React.FC = () => {
             }
           });
           break;
-
-        // case "REFRESH_PANEL":
-        //   setCurrentUrl(message.url);
-        //   break;
 
         case "INDICATOR_FAILED":
           // טיפול באינדיקטורים שנכשלו
@@ -178,9 +211,17 @@ export const Panel: React.FC = () => {
       }}
       className="w-full min-h-[100dvh]  max-h-[100dvh] overflow-y-auto bg-gray-100"
     >
-      <h1 className="font-thin drop-shadow-lg text-center pt-6  text-white">
+      { userDetails?.displayName && <div className="text-center text-white font-bold text-2xl p-4">
+        Welcome, {userDetails.displayName}! 
+      </div> }
+      
+      
+    <div className="flex items-center justify-center gap-3 pt-6">
+      <img src={logoIcon} alt="Indi API" className="w-8 h-8 rounded drop-shadow-lg" />
+      <h1 className="font-thin drop-shadow-lg text-white text-2xl">
         INDI API
       </h1>
+    </div>
       <Toolbar />
       <div className="flex flex-1 overflow-hidden">
         <div className="w-[50vw] p-4 overflow-auto">

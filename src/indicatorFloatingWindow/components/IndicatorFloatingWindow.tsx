@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Globe, X, Clock, CheckCircle, XCircle } from 'lucide-react';
 import JsonViewer from './JsonViewer';
+import logoIcon from "../../assets/bug.png";
+
 
 interface IndicatorData {
   id: string;
@@ -129,7 +131,7 @@ const IndicatorFloatingWindow: React.FC = () => {
       <div className="bg-gradient-to-r from-pink-500 to-rose-500 text-white p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Globe className="w-8 h-8" />
+            <img src={logoIcon} alt="Indi API" className="w-8 h-8 rounded drop-shadow-lg" />
             <div>
               <h1 className="text-2xl font-bold">🎯 Indicator Details</h1>
               <p className="text-pink-100">

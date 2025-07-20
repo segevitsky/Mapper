@@ -10,7 +10,7 @@ import { extractUUIDFromUrl, updateUrlWithNewUUID } from "../../utils/urlUrils";
 import { allNetworkCalls, createJiraTicketFromIndicator } from "../content";
 import initFloatingButton from "../floatingRecorderButton";
 import SchemaValidationService from "./schemaValidationService";
-import { createInteractiveJsonViewer, setupJsonViewerListeners, jsonViewerStyles } from "./components/jsonViewer";
+import { createInteractiveJsonViewer, jsonViewerStyles } from "./components/jsonViewer";
 
 export let pageIndicators: IndicatorData[] = [];
 
@@ -85,8 +85,10 @@ export function loadIndicators() {
     });
   });
 
-  initFloatingButton();
+  // initFloatingButton();
 }
+
+
 
 export async function createIndicatorFromData(
   indicatorData: IndicatorData,
@@ -309,7 +311,15 @@ function addIndicatorEvents(
     }, { once: true });
 });
 
-  indicator.addEventListener("click", async () => {
+let clickTimeout: string | number | NodeJS.Timeout | undefined;
+indicator.addEventListener("click", async () => {
+    clearTimeout(clickTimeout);
+    clickTimeout = setTimeout(async () => {
+          const tooltipId = `indicator-tooltip-${indicatorData.id}`;
+    const tooltipInstance = document.getElementById(tooltipId);
+    if (tooltipInstance) {
+      return;
+    }
     const dataFromAttr = indicator.getAttribute("data-indicator-info");
     // מוסיפים האזנה למקשים כשהטולטיפ פתוח
     let totalOffsetTop = parseInt(indicator.style.top) || 0;
@@ -370,7 +380,7 @@ function addIndicatorEvents(
     );
 
     const tooltip = document.createElement("div");
-    tooltip.id = "indicator-tooltip";
+    tooltip.id = `indicator-tooltip-${indicatorData.id}`;
     tooltip.style.cssText = `
         position: fixed;
         top: 10rem;
@@ -387,70 +397,410 @@ function addIndicatorEvents(
         transform-origin: center;
     `;
 
-    const durationColor =
-      parsedDataFromAttr?.duration < 300 ? "#4CAF50" : "#f44336";
-
     tooltip.innerHTML = `
-    <div 
-      class='tooltip-header' 
-      style="text-align: right; margin-bottom: 1rem; font-weight: bold; width: 100%; height: 1rem"
-      > DRAG ME
+  <div 
+    class='tooltip-header' 
+    style="
+      background: linear-gradient(to right, #ff8177 0%, #ff867a 0%, #ff8c7f 21%, #f99185 52%, #cf556c 78%, #b12a5b 100%);
+      height: 6px;
+      width: calc(100% + 32px);
+      border-radius: 3px;
+      margin: -16px -16px 20px -16px;
+      cursor: grab;
+      position: relative;
+      box-shadow: 0 2px 8px rgba(255, 129, 119, 0.3);
+    "
+  >
+    <div style="
+      position: absolute;
+      right: 12px;
+      top: -6px;
+      color: rgba(255, 255, 255, 0.9);
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+    ">
+      DRAG ME
     </div>
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <strong>${parsedDataFromAttr.method ?? currentData?.method}</strong>
-        <span id='tooltip-duration' style="color: ${durationColor}; font-weight: bold;">
-          ${Math.floor(parsedDataFromAttr?.lastCall?.timing?.duration ?? parsedDataFromAttr?.duration ?? currentData?.duration)}ms
-        </span>
-      </div>
-        <div style="color: rgb(255, 134, 122);"> <strong> Name: </strong> ${currentData?.name || parsedDataFromAttr?.name || "-"} </div>
-        <div style="color: rgb(255, 134, 122);"> <strong> Description: </strong> ${currentData?.description || parsedDataFromAttr?.description || '-' } </div>
-      <div class='indi-url' style="color: #666; word-break: break-all; margin: 8px 0;">
-        ${
-          currentData?.lastCall?.url ??
-          parsedDataFromAttr?.request?.request?.url
-        }
-      </div>
-      <div style="color: ${
-        parsedDataFromAttr?.status === 200 ||
-        currentData?.lastCall?.status === 200
-          ? "#4CAF50"
-          : "#f44336"
-      }">
-        Status: ${parsedDataFromAttr?.status || currentData?.lastCall?.status}
-      </div>
-      <button class="create-jira-ticket" style="
-        margin-top: 8px;
-        padding: 4px 8px;
-        background: #0052CC;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        margin-right: 8px;
+  </div>
+
+  <div style="
+    display: flex; 
+    justify-content: space-between; 
+    align-items: center;
+    margin-bottom: 16px;
+  ">
+    <strong style="
+      font-weight: 700;
+      font-size: 18px;
+      background: linear-gradient(to right, #ff8177, #cf556c);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: pulse 3s ease-in-out infinite;
+    ">
+      ${parsedDataFromAttr.method ?? currentData?.method}
+    </strong>
+    <span id='tooltip-duration' style="
+      background: linear-gradient(135deg, #f99185, #cf556c);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(255, 129, 119, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      position: relative;
+      overflow: hidden;
+    ">
+      ${Math.floor(parsedDataFromAttr?.lastCall?.timing?.duration ?? parsedDataFromAttr?.duration ?? currentData?.duration)}ms
+      <div style="
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+        animation: shimmer 2s infinite;
+      "></div>
+    </span>
+  </div>
+
+  <div style="margin-bottom: 16px;">
+    <div style="margin-bottom: 12px;">
+      <div style="
+        font-size: 12px;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 4px;
+        background: linear-gradient(to right, #ff8177, #cf556c);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
       ">
-        Create Jira Ticket
+        Name:
+      </div>
+      <div style="
+        font-size: 14px;
+        color: ${currentData?.name || parsedDataFromAttr?.name ? '#374151' : '#9ca3af'};
+        font-weight: 500;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.6);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 129, 119, 0.1);
+        ${!currentData?.name && !parsedDataFromAttr?.name ? 'font-style: italic;' : ''}
+      ">
+        ${currentData?.name || parsedDataFromAttr?.name || "-"}
+      </div>
+    </div>
+    <div style="margin-bottom: 12px;">
+      <div style="
+        font-size: 12px;
+        font-weight: 600;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 4px;
+        background: linear-gradient(to right, #ff8177, #cf556c);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      ">
+        Description:
+      </div>
+      <div style="
+        font-size: 14px;
+        color: ${currentData?.description || parsedDataFromAttr?.description ? '#374151' : '#9ca3af'};
+        font-weight: 500;
+        padding: 8px 12px;
+        background: rgba(255, 255, 255, 0.6);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 129, 119, 0.1);
+        ${!currentData?.description && !parsedDataFromAttr?.description ? 'font-style: italic;' : ''}
+      ">
+        ${currentData?.description || parsedDataFromAttr?.description || '-'}
+      </div>
+    </div>
+  </div>
+
+  <div class='indi-url' style="
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(10px);
+    padding: 14px;
+    border-radius: 12px;
+    color: #374151;
+    font-size: 13px;
+    word-break: break-all;
+    margin: 8px 0 16px 0;
+    border: 1px solid rgba(255, 129, 119, 0.2);
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  ">
+    ${currentData?.lastCall?.url ?? parsedDataFromAttr?.request?.request?.url}
+  </div>
+
+  <div style="
+    color: ${
+      parsedDataFromAttr?.status === 200 || currentData?.lastCall?.status === 200
+        ? "#059669"
+        : "#dc2626"
+    };
+    margin-bottom: 20px;
+    font-weight: 600;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  ">
+    <span>Status: ${parsedDataFromAttr?.status || currentData?.lastCall?.status}</span>
+    <span>✨</span>
+  </div>
+
+  <div style="
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+  ">
+    <button class="create-jira-ticket btn-primary" style="
+      padding: 10px 14px;
+      background: linear-gradient(135deg, #ff8177, #cf556c);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 15px rgba(255, 129, 119, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      position: relative;
+      overflow: hidden;
+    ">
+      🎫 Jira Ticket
+    </button>
+    <button class="remove-indicator btn-danger" style="
+      padding: 10px 14px;
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      position: relative;
+      overflow: hidden;
+    ">
+      🗑️ Remove
+    </button>
+  </div>
+
+  <div style="
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+  ">
+    <button class='check-schema btn-secondary' style="
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(10px);
+      color: #374151;
+      border: 1px solid rgba(255, 129, 119, 0.2);
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      position: relative;
+      overflow: hidden;
+    ">
+      🔍 Schema
+    </button>
+    <button class="show-response btn-info" style="
+      padding: 10px 14px;
+      background: linear-gradient(135deg, #0ea5e9, #0284c7);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 15px rgba(14, 165, 233, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      position: relative;
+      overflow: hidden;
+    ">
+      📊 Response
+    </button>
+    <button class="change-position btn-warning" style="
+      padding: 10px 14px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      position: relative;
+      overflow: hidden;
+    ">
+      📌 Stick
+    </button>
+  </div>
+
+  <div style="
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+  ">
+    <button class="close-indicator-tooltip btn-secondary" style="
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(10px);
+      color: #374151;
+      border: 1px solid rgba(255, 129, 119, 0.2);
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      position: relative;
+      overflow: hidden;
+      flex: 1;
+    ">
+      ✨ Close
+    </button>
+  </div>
+
+  <div style="
+    color: #6b7280;
+    font-size: 11px;
+    text-align: center;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 129, 119, 0.1);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  ">
+    ← ↑ ↓ → Use arrow keys to fine tune your indi's position
+  </div>
+
+  <div class="response-container" style="display: none;">
+    <div class="response-tabs" style="
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      margin-top: 16px;
+    ">
+      <button class="tab-button active" data-tab="security" style="
+        padding: 6px 12px;
+        border: none;
+        border-radius: 8px;
+        background: linear-gradient(135deg, #ff8177, #cf556c);
+        color: white;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        box-shadow: 0 2px 8px rgba(255, 129, 119, 0.3);
+      ">
+        Security
       </button>
-      <button class="remove-indicator">Remove</button>
-      <button class='check-schema'> Check Schema </button> 
-      <button class="show-response action-button"> Show Response </button>
-      <button class="change-position change-indicator-position"> Stick </button>
-      <button class="close-indicator-tooltip"> Close </button>
-      <div style="margin-top: 8px; font-size: 12px; color: #666;">
-        Use arrow keys to fine tune your indi's position
-      </div>
-      <div class="response-container" style="display: none;">
-         <div class="response-tabs">
-             <button class="tab-button active" data-tab="security">Security</button>
-             <button class="tab-button" data-tab="performance">Performance</button>
-             <button class="tab-button" data-tab="request">Request/Response</button>
-         </div>
-         <div class="tab-content">
-             <div id="security" class="tab-pane active"></div>
-             <div id="performance" class="tab-pane"></div>
-             <div id="request" class="tab-pane"></div>
-         </div>
-      </div>
-    `;
+      <button class="tab-button" data-tab="performance" style="
+        padding: 6px 12px;
+        border: none;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.8);
+        color: #374151;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border: 1px solid rgba(255, 129, 119, 0.2);
+      ">
+        Performance
+      </button>
+      <button class="tab-button" data-tab="request" style="
+        padding: 6px 12px;
+        border: none;
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.8);
+        color: #374151;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        border: 1px solid rgba(255, 129, 119, 0.2);
+      ">
+        Request/Response
+      </button>
+    </div>
+    <div class="tab-content">
+      <div id="security" class="tab-pane active"></div>
+      <div id="performance" class="tab-pane"></div>
+      <div id="request" class="tab-pane"></div>
+    </div>
+  </div>
+
+  <style>
+    @keyframes shimmer {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.8; }
+    }
+    
+    .btn-primary:hover, .btn-danger:hover, .btn-info:hover, .btn-warning:hover {
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+    }
+    
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.95);
+      border-color: rgba(255, 129, 119, 0.3);
+      transform: translateY(-2px) scale(1.02);
+    }
+    
+    .indi-url:hover {
+      background: rgba(255, 255, 255, 0.9);
+      border-color: rgba(255, 129, 119, 0.4);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 25px rgba(255, 129, 119, 0.15);
+    }
+    
+    .tab-button.active {
+      background: linear-gradient(135deg, #ff8177, #cf556c) !important;
+      color: white !important;
+    }
+  </style>
+`;
 
     const cleanup = makeDraggable(tooltip, {
       handle: ".tooltip-header",
@@ -461,9 +811,7 @@ function addIndicatorEvents(
       },
     });
 
-    tooltip
-      .querySelector(".remove-indicator")
-      ?.addEventListener("click", () => {
+    tooltip.querySelector(".remove-indicator")?.addEventListener("click", () => {
         indicator.remove();
         tooltip.remove();
         removeIndicatorFromStorage(currentData);
@@ -513,9 +861,7 @@ function addIndicatorEvents(
       }
     });
 
-    tooltip
-      .querySelector(".close-indicator-tooltip")
-      ?.addEventListener("click", () => {
+    tooltip.querySelector(".close-indicator-tooltip")?.addEventListener("click", () => {
         if (cleanup) cleanup(); // מנקה את כל ה-event listeners
         tooltip.remove();
       });
@@ -535,7 +881,6 @@ function addIndicatorEvents(
         data: {
           indicatorData: allIndicatorData,
           networkCall: allIndicatorData,
-          // כל המידע שאתה צריך
         }
       });
 
@@ -657,9 +1002,7 @@ function addIndicatorEvents(
     });
 
     // הוספת האזנה לכפתור החדש
-      tooltip
-  .querySelector(".create-jira-ticket")
-  ?.addEventListener("click", () => {
+    tooltip.querySelector(".create-jira-ticket")?.addEventListener("click", () => {
     console.log("lets create a jira ticket with this data", currentData);
     tooltip.remove();
     Swal.fire({
@@ -901,10 +1244,7 @@ function addIndicatorEvents(
     });
   });
 
-
-
-    tooltip
-      .querySelector(".close-indicator-tooltip")
+    tooltip.querySelector(".close-indicator-tooltip")
       ?.addEventListener("click", () => {
         document.removeEventListener("keydown", moveHandler);
         tooltip.remove();
@@ -935,7 +1275,49 @@ function addIndicatorEvents(
     });
 
     document.body.appendChild(tooltip);
+    
+    }, 300);
   });
+
+  indicator.addEventListener('dblclick', () => {
+    clearTimeout(clickTimeout); // ביטול ה-single click
+    // lets send a message to the background script to open the floating window
+    const dataAttribute = indicator.getAttribute('data-indicator-info');
+    if (!dataAttribute) {
+        const allNetworkCallsThatMatch = allNetworkCalls
+          .filter(
+            (call: any) =>
+              generateStoragePath(
+                call?.response?.url ?? call?.request?.request?.url
+              ) === generateStoragePath(indicatorData.lastCall?.url)
+          )
+          .filter(
+            (el: any) => el?.request?.request?.method === indicatorData.method
+          );
+        console.log({ allNetworkCalls, indicatorData, allNetworkCallsThatMatch });
+        if (allNetworkCallsThatMatch.length > 0) {
+          const allIndicatorData = allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1];
+          // lets send the message to the background script to open the floating window
+        chrome.runtime.sendMessage({
+        type: "OPEN_FLOATING_WINDOW",
+        data: {
+          indicatorData: allIndicatorData,
+          networkCall: allIndicatorData,
+            }
+          });
+        }
+        return;
+    }
+    
+    const allIndicatorData = JSON.parse(dataAttribute);
+        chrome.runtime.sendMessage({
+        type: "OPEN_FLOATING_WINDOW",
+        data: {
+          indicatorData: allIndicatorData,
+          networkCall: allIndicatorData,
+        }
+      });
+  })
 }
 
 function removeIndicatorFromStorage(indicatorData: IndicatorData) {
@@ -1259,6 +1641,16 @@ export function injectStyles() {
 
 
    ${jsonViewerStyles}
+
+      @keyframes shimmer {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.8; }
+    }
 
 
     .schema-valid {
