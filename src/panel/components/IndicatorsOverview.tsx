@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Clock, Shield, AlertTriangle, CheckCircle, XCircle, Eye, Trash2, Search } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ChevronDown, ChevronRight, Clock, Shield, AlertTriangle, CheckCircle, XCircle, Eye, Trash2, Search, ArrowRight, Check, X } from 'lucide-react';
 
 interface IndicatorData {
   id: string;
@@ -30,31 +30,99 @@ interface IndicatorData {
     left: number;
   };
   updatedPosition?: string;
-  name?: string; // Added name field
-  description?: string; // Added description field
+  name?: string;
+  description?: string;
 }
 
 interface IndicatorsOverviewProps {
   isVisible: boolean;
   indicators?: Record<string, IndicatorData[]>;
   onClose: () => void;
-  onDeleteIndicator: (indicatorId: string, indicators: any) => void;
   onNavigateToIndicator: (indicator: IndicatorData) => void;
+}
+
+// Move Dropdown Component
+const MoveDropdown = ({ 
+  indicator, 
+  currentCategory, 
+  availableCategories, 
+  onMove, 
+  isOpen, 
+  onClose 
+}: { 
+  indicator: IndicatorData, 
+  currentCategory: string, 
+  availableCategories: string[], 
+  onMove: (indicatorId: string, fromCategory: string, toCategory: string) => void, 
+  isOpen: boolean, 
+  onClose: () => void 
+}) => {
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: any) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div 
+      ref={dropdownRef}
+      className="absolute right-0 top-8 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[200px]"
+    >
+      <div className="p-2">
+        <div className="text-xs font-medium text-gray-500 mb-2 px-2">
+          Move to category:
+        </div>
+        {availableCategories
+          .filter(category => category !== currentCategory)
+          .map(category => (
+            <button
+              key={category}
+              onClick={() => onMove(indicator.id, currentCategory, category)}
+              className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-gray-100 flex items-center justify-between group transition-colors"
+            >
+              <span className='group-hover:text-pink-500'>{splitSmart(category)}</span>
+              <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-pink-500" />
+            </button>
+          ))}
+      </div>
+    </div>
+  );
+};
+
+function splitSmart(input: string): string {
+  return input
+    .split(/[-_.]/)
+    .flatMap(part =>
+      part.split(/(?=[A-Z])/)
+    )
+    .filter(Boolean).join(" ");
 }
 
 const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
   isVisible,
   indicators,
   onClose,
-  onDeleteIndicator,
   onNavigateToIndicator
 }) => {
   const [expandedPages, setExpandedPages] = useState<Set<string>>(new Set());
   const [selectedTab, setSelectedTab] = useState<'all' | 'errors' | 'slow'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'timestamp' | 'duration' | 'status'>('timestamp');
-
-  // Animation state
+  const [openMoveDropdown, setOpenMoveDropdown] = useState<string | null>(null);
   const [isAnimating, setIsAnimating] = useState(false);
 
   useEffect(() => {
@@ -71,6 +139,63 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
       newExpanded.add(pagePath);
     }
     setExpandedPages(newExpanded);
+  };
+
+const handleDeleteIndicator = (indicatorId: string, fromCategory: string) => {
+  if (!indicators || !indicators[fromCategory]) return;
+
+  const updatedIndicators = { ...indicators };
+  
+  updatedIndicators[fromCategory] = updatedIndicators[fromCategory].filter(
+    ind => ind.id !== indicatorId
+  );
+
+  if (updatedIndicators[fromCategory].length === 0) {
+    delete updatedIndicators[fromCategory];
+  }
+
+  chrome.storage.local.set({ indicators: updatedIndicators }, () => {
+    console.log(`Indicator ${indicatorId} deleted from ${fromCategory}`);
+  });
+};
+
+
+  // Move indicator between categories
+  const handleMoveIndicator = (indicatorId: string, fromCategory: string, toCategory: string) => {
+    if (!indicators) return;
+
+    const indicatorToMove = indicators[fromCategory]?.find(ind => ind.id === indicatorId);
+    if (!indicatorToMove) return;
+
+    const updatedIndicators = { ...indicators };
+    
+    // הסרה מהקטגוריה הישנה
+    updatedIndicators[fromCategory] = updatedIndicators[fromCategory].filter(
+      ind => ind.id !== indicatorId
+    );
+
+    // הוספה לקטגוריה החדשה
+    if (!updatedIndicators[toCategory]) {
+      updatedIndicators[toCategory] = [];
+    }
+    
+    // עדכון baseUrl של האינדיקטור לקטגוריה החדשה
+    const movedIndicator = {
+      ...indicatorToMove,
+      baseUrl: toCategory
+    };
+    
+    updatedIndicators[toCategory].push(movedIndicator);
+
+    // עדכון ה-storage
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.local.set({ indicators: updatedIndicators }, () => {
+        console.log(`Indicator ${indicatorId} moved from ${fromCategory} to ${toCategory}`);
+      });
+    }
+
+    // סגירת הדרופדאון
+    setOpenMoveDropdown(null);
   };
 
   const getStatusColor = (status: number) => {
@@ -129,19 +254,16 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
     let filtered = allIndicators.filter(ind => 
       ind && 
       ind.lastCall && 
-      // typeof ind.lastCall.status === 'number' && 
       ind.lastCall.timing && 
       typeof ind.lastCall.timing.duration === 'number'
     );
 
-    // Filter by tab
     if (selectedTab === 'errors') {
       filtered = filtered.filter(ind => ind.lastCall.status >= 400);
     } else if (selectedTab === 'slow') {
       filtered = filtered.filter(ind => ind.lastCall.timing.duration > 1000);
     }
 
-    // Filter by search term
     if (searchTerm) {
       filtered = filtered.filter(ind => 
         (ind.lastCall.url && ind.lastCall.url.toLowerCase().includes(searchTerm.toLowerCase())) ||
@@ -150,7 +272,6 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
       );
     }
 
-    // Sort
     filtered.sort((a, b) => {
       switch (sortBy) {
         case 'duration':
@@ -165,11 +286,23 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
     return filtered;
   };
 
+  const deleteCategory = (pagePath: string) => {
+    if (!indicators || !indicators[pagePath]) return;
+    const updatedIndicators = { ...indicators };
+    delete updatedIndicators[pagePath];
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.local.set({ indicators: updatedIndicators }, () => {
+        console.log(`Category ${pagePath} deleted successfully.`);
+      });
+    }
+  };
+
   const allIndicators = getAllIndicators();
   const filteredIndicators = filterIndicators(allIndicators);
   const totalIndicators = allIndicators.length;
   const errorCount = allIndicators.filter(ind => ind?.lastCall?.status >= 400).length;
   const slowCount = allIndicators.filter(ind => ind?.lastCall?.timing?.duration > 1000).length;
+  const availableCategories = indicators ? Object.keys(indicators) : [];
 
   if (!isVisible) return null;
 
@@ -224,7 +357,6 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
       {/* Controls */}
       <div className="p-4 bg-gray-50 border-b border-gray-200 flex-shrink-0">
         <div className="flex flex-wrap gap-4 items-center">
-          {/* Search */}
           <div className="flex-1 min-w-64">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
@@ -238,7 +370,6 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
             </div>
           </div>
 
-          {/* Sort */}
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as any)}
@@ -261,7 +392,6 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Group by page */}
             {Object.entries(
               allIndicators.reduce((acc, indicator) => {
                 if (!acc[indicator.pagePath]) acc[indicator.pagePath] = [];
@@ -283,7 +413,19 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
                         <ChevronRight className="w-5 h-5 text-gray-600" />
                       )}
                       <div>
-                        <h3 className="font-semibold text-gray-900">{pagePath}</h3>
+                        <div className='flex justify-between items-center text-gray-600 w-[80vw]'> 
+                          <h3 className="font-semibold text-gray-900">{splitSmart(pagePath)}</h3>
+                          <div 
+                            className='flex items-center hover:text-red-600 cursor-pointer' 
+                            onClick={(e: any) => {
+                              e.stopPropagation();
+                              deleteCategory(pagePath);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            <p>Delete Category</p>
+                          </div>
+                        </div>
                         <p className="text-sm text-gray-600">{pageIndicators.length} indicators</p>
                       </div>
                     </div>
@@ -308,12 +450,13 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
                     {pageIndicators.map((indicator, index: number) => (
                       <div
                         key={indicator.id}
-                        className="p-4 hover:bg-gray-50 transition-colors"
+                        className="p-4 hover:bg-gray-50 transition-colors relative"
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
-                            {/* Method and URL */}
-                            <div className='text-[#f43f5e] mb-2 font-bold'> { indicator?.name ?? `Indicator #${index}`  } </div>
+                            <div className='text-[#f43f5e] mb-2 font-bold'>
+                              {indicator?.name ?? `Indicator #${index}`}
+                            </div>
                             <div className="flex items-center space-x-3 mb-2">
                               <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800">
                                 {indicator.method || 'GET'}
@@ -328,7 +471,6 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
                               {indicator.lastCall?.url || 'No URL'}
                             </p>
 
-                            {/* Metrics */}
                             <div className="flex items-center space-x-4 text-sm text-gray-600">
                               <div className="flex items-center space-x-1">
                                 <Clock className="w-4 h-4" />
@@ -345,6 +487,30 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
 
                           {/* Actions */}
                           <div className="flex items-center space-x-2 ml-4">
+                            {/* Move Button */}
+                            {availableCategories.length > 1 && (
+                              <div className="relative">
+                                <button
+                                  onClick={() => setOpenMoveDropdown(
+                                    openMoveDropdown === indicator.id ? null : indicator.id
+                                  )}
+                                  className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                  title="Move to another category"
+                                >
+                                  <ArrowRight className="w-4 h-4" />
+                                </button>
+                                
+                                <MoveDropdown
+                                  indicator={indicator}
+                                  currentCategory={pagePath}
+                                  availableCategories={availableCategories}
+                                  onMove={handleMoveIndicator}
+                                  isOpen={openMoveDropdown === indicator.id}
+                                  onClose={() => setOpenMoveDropdown(null)}
+                                />
+                              </div>
+                            )}
+
                             <button
                               onClick={() => onNavigateToIndicator(indicator)}
                               className="p-2 text-gray-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-colors"
@@ -353,7 +519,7 @@ const IndicatorsOverview: React.FC<IndicatorsOverviewProps> = ({
                               <Eye className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => onDeleteIndicator(indicator.id, indicators)}
+                              onClick={() => handleDeleteIndicator(indicator.id, pagePath)}
                               className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                               title="Delete indicator"
                             >

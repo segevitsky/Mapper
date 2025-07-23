@@ -11,6 +11,7 @@ import FailedIndicatorsReport from "./components/FailedIndicatorsReport";
 import IndicatorsOverview from "./components/IndicatorsOverview";
 import { findKeyById } from "./utils";
 import logoIcon from "../assets/bug.png";
+import CleanHeaderDemo from "./Header";
 
 const MAX_NETWORK_RESPONSES = 50;
 
@@ -211,18 +212,9 @@ export const Panel: React.FC = () => {
       }}
       className="w-full min-h-[100dvh]  max-h-[100dvh] overflow-y-auto bg-gray-100"
     >
-      { userDetails?.displayName && <div className="text-center text-white font-bold text-2xl p-4">
-        Welcome, {userDetails.displayName}! 
-      </div> }
-      
-      
-    <div className="flex items-center justify-center gap-3 pt-6">
-      <img src={logoIcon} alt="Indi API" className="w-8 h-8 rounded drop-shadow-lg" />
-      <h1 className="font-thin drop-shadow-lg text-white text-2xl">
-        INDI API
-      </h1>
-    </div>
-      <Toolbar />
+    <CleanHeaderDemo userDetails={userDetails} />
+
+    <Toolbar />
       <div className="flex flex-1 overflow-hidden">
         <div className="w-[50vw] p-4 overflow-auto">
           <div className="text-white flex flex-1 justify-between items-center">
@@ -336,31 +328,6 @@ export const Panel: React.FC = () => {
         isVisible={showOverview}
         indicators={indicators} // המבנה מה-storage שלך
         onClose={() => setShowOverview(false)}
-        onDeleteIndicator={(id, indicators) => {
-          console.log({ id, indicators }, 'delete indicator');
-          console.log({ currentUrl }, 'current url we are in');
-          chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            if (tabs[0]?.id) {
-              chrome.tabs.sendMessage(tabs[0].id, { type: "DELETE_INDICATOR", data: id });
-            }
-          });
-          const itemsCategory = findKeyById(indicators, id);
-          console.log("Items category found:", itemsCategory);
-          if (!itemsCategory) {
-            console.warn("No category found for indicator with id:", id);
-            return;
-          }
-          setIndicators((prevIndicators) => {
-            const newIndicators = { ...prevIndicators };
-            const indicatorsArray = newIndicators[itemsCategory];
-            if (indicatorsArray) {
-              newIndicators[itemsCategory] = indicatorsArray.filter(
-                (indicator: any) => indicator.id !== id
-              );
-            };
-            return newIndicators;
-          });
-        }}
         onNavigateToIndicator={(indicator) => {
           console.log("Navigating to indicator:", indicator);
           const extractedUrl = new URL(indicator.baseUrl);

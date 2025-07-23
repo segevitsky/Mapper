@@ -224,7 +224,9 @@ const ApiResponsePanel: React.FC<ApiResponsePanelProps> = ({
       }
 
       if (activeTab === "schema") {
-        const schema = generateTypeScriptInterface(parsedData);
+        // @ts-ignore
+        const schema = response.data.restOfData.schema
+        generateTypeScriptInterface(parsedData);
         return (
           <div className="relative">
             <pre className="text-sm whitespace-pre-wrap bg-gray-50 p-4 rounded-lg overflow-x-auto font-mono">
@@ -302,7 +304,7 @@ const ApiResponsePanel: React.FC<ApiResponsePanelProps> = ({
           transform transition-all duration-300 ease-in-out
           ${isExpanded ? "w-[90vw] max-w-4xl shadow-xl" : "w-80 shadow-lg"}
           ${isExpanded ? "max-h-[90vh]" : "max-h-24"}
-          overflow-hidden
+          overflow-hidden text-pink-500
         `}
       >
         {/* Header */}

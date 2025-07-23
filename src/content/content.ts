@@ -298,226 +298,554 @@ function showModal(
 ) {
   if (!modalContainer) createContainers();
 
-  // ניקוי התוכן הקודם של innerModalContainer
+  // Clear previous content
   innerModalContainer.innerHTML = "";
 
+  // Create modal overlay
+  const modalOverlay = document.createElement("div");
+  modalOverlay.className = "api-modal-overlay";
+
+  // Create modal content
   const modalContent = document.createElement("div");
-  modalContent.className = "modal-content";
-  modalContent.style.cssText = `
-    position: fixed;
-    z-index: 999999;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    background: white;
-    padding: 16px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    border: 1px solid #e0e0e0;
-    max-width: 500px;
-    pointer-events: auto;
+  modalContent.className = "api-modal-content";
+
+  // Create header
+  const header = createModalHeader();
+  modalContent.appendChild(header);
+
+  // Create search section
+  const searchSection = createSearchSection(data.networkCalls);
+  modalContent.appendChild(searchSection);
+
+  // Create calls list
+  const callsList = createCallsList(data.networkCalls, element, data);
+  modalContent.appendChild(callsList);
+
+  // Create form section (initially hidden)
+  const formSection = createFormSection();
+  modalContent.appendChild(formSection);
+
+  modalOverlay.appendChild(modalContent);
+  innerModalContainer.appendChild(modalOverlay);
+
+  // Setup event listeners
+  setupModalEventListeners(modalOverlay, searchSection, callsList, formSection, data.networkCalls, element, data);
+}
+
+function createModalHeader(): HTMLElement {
+  const header = document.createElement("div");
+  header.className = "api-modal-header";
+
+  header.innerHTML = `
+    <div>
+      <h3 class="api-modal-title">Select API Call for Element</h3>
+      <p class="api-modal-subtitle">Choose which network request to associate with this element</p>
+    </div>
+    <button class="api-modal-close" id="close-modal">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
   `;
 
-  const callsList = data.networkCalls
-    .map(
-      (call) => `
-    <div 
-      class="api-call-item" 
-      style="
-        padding: 8px;
-        margin: 4px 0;
-        border: 1px solid #e0e0e0;
-        border-radius: 4px;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-      "
-      data-call-id="${call.id}"
-    >
-      <div style="
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        margin-right: 8px;
-        background-color: ${call.status === 200 ? "#4CAF50" : "#f44336"};
-      "></div>
-      <div>
-        <div style="font-weight: bold;">${call.method}</div>
-        <div style="font-size: 12px; color: #666;">${call.url}</div>
-      </div>
-    </div>
-  `
-    )
-    .join("");
+  return header;
+}
 
-  modalContent.innerHTML = `
-    <div style="float: right; cursor: pointer" id='close-modal'> X </div>
-    <h3 style="font-size: 18px; font-weight: bold; margin-bottom: 12px;">
-      Select API Call for Element
-    </h3>
-    <div style="margin-bottom: 12px;">
-      <div style="margin-bottom: 16px;">
+function createSearchSection(networkCalls: NetworkCall[]): HTMLElement {
+  const section = document.createElement("div");
+  section.className = "api-modal-search-section";
+
+  section.innerHTML = `
+    <div class="api-modal-search-container" id="search-container">
+      <svg class="api-modal-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="11" cy="11" r="8"></circle>
+        <path d="m21 21-4.35-4.35"></path>
+      </svg>
       <input 
         type="text" 
-        id="search-calls" 
+        class="api-modal-search-input" 
+        id="search-calls"
         placeholder="Search API calls..." 
-        style="
-          width: 100%;
-          padding: 8px;
-          border: 1px solid #e0e0e0;
-          border-radius: 4px;
-          font-size: 14px;
-          outline: none;
-        "
       />
     </div>
-    </div>
-    <div style="max-height: 300px; overflow-y: auto;">
-      ${callsList}
+    <div class="api-modal-results-count" id="results-count">
+      Showing ${networkCalls.length} of ${networkCalls.length} API calls
     </div>
   `;
 
-  // הוספת לוגיקת החיפוש
-  const searchInput = modalContent.querySelector("#search-calls");
+  return section;
+}
 
-  searchInput?.addEventListener("input", (e) => {
-    const searchTerm = (e.target as HTMLInputElement).value.toLowerCase();
+function createCallsList(networkCalls: NetworkCall[], element: any, data: any): HTMLElement {
+  console.log({ networkCalls, element, data });
+  const listContainer = document.createElement("div");
+  listContainer.className = "api-modal-calls-list";
+  listContainer.id = "calls-list";
 
-    // יצירת רשימה מסוננת
-    const filteredCallsList = data.networkCalls
-      .filter(
-        (call) =>
-          call.url.toLowerCase().includes(searchTerm) ||
-          call.method.toLowerCase().includes(searchTerm)
-      )
-      .map(
-        (call) => `
-      <div 
-        class="api-call-item" 
-        style="
-          padding: 8px;
-          margin: 4px 0;
-          border: 1px solid #e0e0e0;
-          border-radius: 4px;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-        "
-        data-call-id="${call.id}"
-      >
-        <div style="
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          margin-right: 8px;
-          background-color: ${call.status === 200 ? "#4CAF50" : "#f44336"};
-        "></div>
-        <div>
-          <div style="font-weight: bold;">${call.method}</div>
-          <div style="font-size: 12px; color: #666;">${call.url}</div>
-        </div>
+  if (networkCalls.length === 0) {
+    listContainer.innerHTML = `
+      <div class="api-modal-empty-state">
+        <svg class="api-modal-empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="2" y1="12" x2="22" y2="12"></line>
+          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+        </svg>
+        <p style="font-size: 18px; margin-bottom: 8px;">No API calls found</p>
+        <p style="font-size: 14px;">Try adjusting your search or filters</p>
       </div>
-    `
-      )
-      .join("");
+    `;
+  } else {
+    renderCallItems(listContainer, networkCalls);
+  }
 
-    // עדכון התצוגה
-    const listContainer = modalContent.querySelector(
-      'div[style*="overflow-y: auto"]'
-    );
-    if (listContainer) {
-      listContainer.innerHTML = filteredCallsList || "No matching calls found";
+  return listContainer;
+}
 
-      modalContent.querySelectorAll(".api-call-item")?.forEach((item) => {
-        item.addEventListener("click", () => {
-          // כל הלוגיקה של הקליק שכבר יש לנו
-          const callId = item.getAttribute("data-call-id");
-          const selectedCall = data.networkCalls.find(
-            (call) => call.id === callId
-          );
-          if (selectedCall) {
-            // add a dialouge to ask for name and description use sweetalert2 modal
-            // create a sweetalert2 modal
-            Swal.fire({
-              title: "Create Indicator",
-              html: `
-              <input type="text" id="indicator-name" class="swal2-input" placeholder="Indicator Name">
-              <textarea id="indicator-description" class="swal2-textarea" placeholder="Indicator Description"></textarea>
-              `,
-              focusConfirm: false,
-              preConfirm: () => {
-                const name = (document.getElementById(
-                  "indicator-name"
-                ) as HTMLInputElement).value;
-                const description = (document.getElementById(
-                  "indicator-description"
-                ) as HTMLTextAreaElement).value;
-                if (!name) {
-                  Swal.showValidationMessage("Name is required");
-                  return false;
+function renderCallItems(container: HTMLElement, calls: NetworkCall[]) {
+  container.innerHTML = calls.map(call => createCallItemHTML(call)).join('');
+}
+
+function createCallItemHTML(call: NetworkCall): string {
+  const isSuccess = call.status >= 200 && call.status < 300;
+  const methodClass = `api-call-badge-${call.method.toLowerCase()}`;
+  const statusClass = isSuccess ? 'api-call-badge-success' : 'api-call-badge-error';
+  const indicatorClass = isSuccess ? 'api-call-status-success' : 'api-call-status-error';
+  
+  const formatUrl = (url: string) => {
+    try {
+      const urlObj = new URL(url);
+      return urlObj.pathname + urlObj.search;
+    } catch {
+      return url;
+    }
+  };
+
+  return `
+    <div class="api-call-item" data-call-id="${call.id}">
+      <div class="api-call-content">
+        <div class="api-call-info">
+          <div class="api-call-badges">
+            <span class="api-call-badge ${methodClass}">${call.method}</span>
+            <span class="api-call-badge ${statusClass}">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                ${isSuccess 
+                  ? '<path d="M9 12l2 2 4-4"></path><circle cx="12" cy="12" r="10"></circle>'
+                  : '<circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line>'
                 }
-                return { name, description };
-              },
-            }).then((result) => {
-          if (result.isConfirmed) {
-            const { name, description } = result.value;
-            createIndicator(data, item, element, name, description);
-          }})
+              </svg>
+              ${call.status}
+            </span>
+          </div>
+          <div class="api-call-url-main">${formatUrl(call.url)}</div>
+          <div class="api-call-url-full">${call.url}</div>
+        </div>
+        <div class="api-call-status-indicator ${indicatorClass}"></div>
+      </div>
+    </div>
+  `;
+}
 
-            modalContent.remove(); // סגירת המודל אחרי בחירת קריאה
-          }
-        });
-      });
+function createFormSection(): HTMLElement {
+  const section = document.createElement("div");
+  section.className = "api-modal-form-section";
+  section.id = "form-section";
+
+  section.innerHTML = `
+    <input 
+      type="text" 
+      class="api-modal-form-input" 
+      id="indicator-name"
+      placeholder="Indicator Name *" 
+    />
+    <textarea 
+      class="api-modal-form-textarea" 
+      id="indicator-description"
+      placeholder="Indicator Description"
+    ></textarea>
+    <div class="api-modal-form-buttons">
+      <button class="api-modal-btn api-modal-btn-secondary" id="form-cancel">Cancel</button>
+      <button class="api-modal-btn api-modal-btn-primary" id="form-create">Create Indicator</button>
+    </div>
+  `;
+
+  return section;
+}
+
+// Setup event listeners
+function setupModalEventListeners(
+  modalOverlay: HTMLElement,
+  searchSection: HTMLElement, 
+  callsList: HTMLElement,
+  formSection: HTMLElement,
+  networkCalls: NetworkCall[],
+  element: any,
+  data: any
+) {
+  // Close modal
+  const closeBtn = modalOverlay.querySelector('#close-modal');
+  closeBtn?.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    modalOverlay.remove();
+  });
+
+  // Click outside to close - only on the overlay itself, not its children
+  modalOverlay.addEventListener('click', (e) => {
+    // Only close if clicking directly on the overlay (not bubbled from children)
+    if (e.target === modalOverlay) {
+      modalOverlay.remove();
     }
   });
 
-  // הוספת המודל ל-innerModalContainer
-  innerModalContainer.appendChild(modalContent);
-
-  // טיפול בסגירת המודל
-  const closeModal = modalContent.querySelector("#close-modal");
-  closeModal?.addEventListener("click", () => {
-    modalContent.remove(); // במקום לרוקן את כל ה-container
+  // Prevent clicks inside modal from closing it
+  const modalContent = modalOverlay.querySelector('.api-modal-content');
+  modalContent?.addEventListener('click', (e) => {
+    e.stopPropagation();
   });
 
-  // הוספת מאזינים לקליקים על הקריאות
-  modalContent.querySelectorAll(".api-call-item")?.forEach((item) => {
-    item.addEventListener("click", () => {
-      const callId = item.getAttribute("data-call-id");
-      const selectedCall = data.networkCalls.find((call) => call.id === callId);
+  // Search functionality
+  const searchInput = searchSection.querySelector('#search-calls') as HTMLInputElement;
+  const searchContainer = searchSection.querySelector('#search-container');
+  const resultsCount = searchSection.querySelector('#results-count');
+
+  searchInput?.addEventListener('focus', () => {
+    searchContainer?.classList.add('focused');
+  });
+
+  searchInput?.addEventListener('blur', () => {
+    searchContainer?.classList.remove('focused');
+  });
+
+  searchInput?.addEventListener('input', (e) => {
+    const searchTerm = (e.target as HTMLInputElement).value.toLowerCase();
+    const filteredCalls = networkCalls.filter(call =>
+      call.url.toLowerCase().includes(searchTerm) ||
+      call.method.toLowerCase().includes(searchTerm)
+    );
+
+    renderCallItems(callsList, filteredCalls);
+    if (resultsCount) {
+      resultsCount.textContent = `Showing ${filteredCalls.length} of ${networkCalls.length} API calls`;
+    }
+
+    // Re-attach click listeners to new items
+    attachCallItemListeners(callsList, networkCalls, formSection, element, data, modalOverlay);
+  });
+
+  // Initial call item listeners
+  attachCallItemListeners(callsList, networkCalls, formSection, element, data, modalOverlay);
+
+  // Form listeners
+  setupFormListeners(formSection, modalOverlay);
+}
+
+function attachCallItemListeners(
+  callsList: HTMLElement, 
+  networkCalls: NetworkCall[], 
+  formSection: HTMLElement,
+  element: any,
+  data: any,
+  modalOverlay: HTMLElement
+) {
+  const callItems = callsList.querySelectorAll('.api-call-item');
+  console.log({ modalOverlay })
+  callItems.forEach(item => {
+    item.addEventListener('click', () => {
+      const callId = item.getAttribute('data-call-id');
+      const selectedCall = networkCalls.find(call => call.id === callId);
+      
       if (selectedCall) {
-        // add a dialouge to ask for name and description use sweetalert2 modal
-        // create a sweetalert2 modal
-        Swal.fire({
-          title: "Create Indicator",
-          html: `
-          <input type="text" id="indicator-name" class="swal2-input" placeholder="Indicator Name">
-          <textarea id="indicator-description" class="swal2-textarea" placeholder="Indicator Description"></textarea>
-          `,
-          focusConfirm: false,
-          preConfirm: () => {
-            const name = (document.getElementById(
-              "indicator-name"
-            ) as HTMLInputElement).value;
-            const description = (document.getElementById(
-              "indicator-description"
-            ) as HTMLTextAreaElement).value;
-            if (!name || !description) {
-              Swal.showValidationMessage("Please enter both name and description");
-              return false;
-            }
-            return { name, description };
-          },
-        }).then((result) => {
-      if (result.isConfirmed) {
-        const { name, description } = result.value;
-        createIndicator(data, item, element, name, description);
-      }})
-        modalContent.remove(); // סגירת המודל אחרי בחירת קריאה
+        // Store selected call data for form submission
+        formSection.setAttribute('data-selected-call', JSON.stringify(selectedCall));
+        formSection.setAttribute('data-element', JSON.stringify(element));
+        formSection.setAttribute('data-data', JSON.stringify(data));
+        
+        // Show form section
+        formSection.classList.add('show');
+        
+        // Focus on name input
+        const nameInput = formSection.querySelector('#indicator-name') as HTMLInputElement;
+        setTimeout(() => nameInput?.focus(), 100);
       }
     });
   });
 }
+
+function setupFormListeners(formSection: HTMLElement, modalOverlay: HTMLElement) {
+  const cancelBtn = formSection.querySelector('#form-cancel');
+  const createBtn = formSection.querySelector('#form-create');
+  const nameInput = formSection.querySelector('#indicator-name') as HTMLInputElement;
+  const descInput = formSection.querySelector('#indicator-description') as HTMLTextAreaElement;
+
+  cancelBtn?.addEventListener('click', () => {
+    formSection.classList.remove('show');
+    nameInput.value = '';
+    descInput.value = '';
+  });
+
+  createBtn?.addEventListener('click', () => {
+    const name = nameInput.value.trim();
+    const description = descInput.value.trim();
+
+    if (!name) {
+      nameInput.style.borderColor = '#dc2626';
+      nameInput.focus();
+      return;
+    }
+
+    // Get stored data
+    const selectedCall = JSON.parse(formSection.getAttribute('data-selected-call') || '{}');
+    const element = JSON.parse(formSection.getAttribute('data-element') || '{}');
+    const data = JSON.parse(formSection.getAttribute('data-data') || '{}');
+
+    // Create indicator (your existing function)
+    createIndicator(data, { getAttribute: () => selectedCall.id }, element, name, description);
+
+    // Close modal
+    modalOverlay.remove();
+  });
+
+  // Enter key to submit
+  nameInput?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      (createBtn as HTMLElement)?.click();
+    }
+  });
+}
+
+// function showModal(
+//   element: {
+//     data: NetworkCall[];
+//     id: string;
+//     path: string;
+//     rect: any;
+//     tagName: string;
+//   },
+//   data: { networkCalls: NetworkCall[] }
+// ) {
+//   if (!modalContainer) createContainers();
+
+//   // ניקוי התוכן הקודם של innerModalContainer
+//   innerModalContainer.innerHTML = "";
+
+//   const modalContent = document.createElement("div");
+//   modalContent.className = "modal-content";
+//   modalContent.style.cssText = `
+//     position: fixed;
+//     z-index: 999999;
+//     top: 50%;
+//     left: 50%;
+//     transform: translate(-50%, -50%);
+//     background: white;
+//     padding: 16px;
+//     border-radius: 8px;
+//     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+//     border: 1px solid #e0e0e0;
+//     max-width: 500px;
+//     pointer-events: auto;
+//   `;
+
+//   const callsList = data.networkCalls
+//     .map(
+//       (call) => `
+//     <div 
+//       class="api-call-item" 
+//       style="
+//         padding: 8px;
+//         margin: 4px 0;
+//         border: 1px solid #e0e0e0;
+//         border-radius: 4px;
+//         cursor: pointer;
+//         display: flex;
+//         align-items: center;
+//       "
+//       data-call-id="${call.id}"
+//     >
+//       <div style="
+//         width: 8px;
+//         height: 8px;
+//         border-radius: 50%;
+//         margin-right: 8px;
+//         background-color: ${call.status === 200 ? "#4CAF50" : "#f44336"};
+//       "></div>
+//       <div>
+//         <div style="font-weight: bold;">${call.method}</div>
+//         <div style="font-size: 12px; color: #666;">${call.url}</div>
+//       </div>
+//     </div>
+//   `
+//     )
+//     .join("");
+
+//   modalContent.innerHTML = `
+//     <div style="float: right; cursor: pointer" id='close-modal'> X </div>
+//     <h3 style="font-size: 18px; font-weight: bold; margin-bottom: 12px;">
+//       Select API Call for Element
+//     </h3>
+//     <div style="margin-bottom: 12px;">
+//       <div style="margin-bottom: 16px;">
+//       <input 
+//         type="text" 
+//         id="search-calls" 
+//         placeholder="Search API calls..." 
+//         style="
+//           width: 100%;
+//           padding: 8px;
+//           border: 1px solid #e0e0e0;
+//           border-radius: 4px;
+//           font-size: 14px;
+//           outline: none;
+//         "
+//       />
+//     </div>
+//     </div>
+//     <div style="max-height: 300px; overflow-y: auto;">
+//       ${callsList}
+//     </div>
+//   `;
+
+//   // הוספת לוגיקת החיפוש
+//   const searchInput = modalContent.querySelector("#search-calls");
+
+//   searchInput?.addEventListener("input", (e) => {
+//     const searchTerm = (e.target as HTMLInputElement).value.toLowerCase();
+
+//     // יצירת רשימה מסוננת
+//     const filteredCallsList = data.networkCalls
+//       .filter(
+//         (call) =>
+//           call.url.toLowerCase().includes(searchTerm) ||
+//           call.method.toLowerCase().includes(searchTerm)
+//       )
+//       .map(
+//         (call) => `
+//       <div 
+//         class="api-call-item" 
+//         style="
+//           padding: 8px;
+//           margin: 4px 0;
+//           border: 1px solid #e0e0e0;
+//           border-radius: 4px;
+//           cursor: pointer;
+//           display: flex;
+//           align-items: center;
+//         "
+//         data-call-id="${call.id}"
+//       >
+//         <div style="
+//           width: 8px;
+//           height: 8px;
+//           border-radius: 50%;
+//           margin-right: 8px;
+//           background-color: ${call.status === 200 ? "#4CAF50" : "#f44336"};
+//         "></div>
+//         <div>
+//           <div style="font-weight: bold;">${call.method}</div>
+//           <div style="font-size: 12px; color: #666;">${call.url}</div>
+//         </div>
+//       </div>
+//     `
+//       )
+//       .join("");
+
+//     // עדכון התצוגה
+//     const listContainer = modalContent.querySelector(
+//       'div[style*="overflow-y: auto"]'
+//     );
+//     if (listContainer) {
+//       listContainer.innerHTML = filteredCallsList || "No matching calls found";
+
+//       modalContent.querySelectorAll(".api-call-item")?.forEach((item) => {
+//         item.addEventListener("click", () => {
+//           // כל הלוגיקה של הקליק שכבר יש לנו
+//           const callId = item.getAttribute("data-call-id");
+//           const selectedCall = data.networkCalls.find(
+//             (call) => call.id === callId
+//           );
+//           if (selectedCall) {
+//             // add a dialouge to ask for name and description use sweetalert2 modal
+//             // create a sweetalert2 modal
+//             Swal.fire({
+//               title: "Create Indicator",
+//               html: `
+//               <input type="text" id="indicator-name" class="swal2-input" placeholder="Indicator Name">
+//               <textarea id="indicator-description" class="swal2-textarea" placeholder="Indicator Description"></textarea>
+//               `,
+//               focusConfirm: false,
+//               preConfirm: () => {
+//                 const name = (document.getElementById(
+//                   "indicator-name"
+//                 ) as HTMLInputElement).value;
+//                 const description = (document.getElementById(
+//                   "indicator-description"
+//                 ) as HTMLTextAreaElement).value;
+//                 if (!name) {
+//                   Swal.showValidationMessage("Name is required");
+//                   return false;
+//                 }
+//                 return { name, description };
+//               },
+//             }).then((result) => {
+//           if (result.isConfirmed) {
+//             const { name, description } = result.value;
+//             createIndicator(data, item, element, name, description);
+//           }})
+
+//             modalContent.remove(); // סגירת המודל אחרי בחירת קריאה
+//           }
+//         });
+//       });
+//     }
+//   });
+
+//   // הוספת המודל ל-innerModalContainer
+//   innerModalContainer.appendChild(modalContent);
+
+//   // טיפול בסגירת המודל
+//   const closeModal = modalContent.querySelector("#close-modal");
+//   closeModal?.addEventListener("click", () => {
+//     modalContent.remove(); // במקום לרוקן את כל ה-container
+//   });
+
+//   // הוספת מאזינים לקליקים על הקריאות
+//   modalContent.querySelectorAll(".api-call-item")?.forEach((item) => {
+//     item.addEventListener("click", () => {
+//       const callId = item.getAttribute("data-call-id");
+//       const selectedCall = data.networkCalls.find((call) => call.id === callId);
+//       if (selectedCall) {
+//         // add a dialouge to ask for name and description use sweetalert2 modal
+//         // create a sweetalert2 modal
+//         Swal.fire({
+//           title: "Create Indicator",
+//           html: `
+//           <input type="text" id="indicator-name" class="swal2-input" placeholder="Indicator Name">
+//           <textarea id="indicator-description" class="swal2-textarea" placeholder="Indicator Description"></textarea>
+//           `,
+//           focusConfirm: false,
+//           preConfirm: () => {
+//             const name = (document.getElementById(
+//               "indicator-name"
+//             ) as HTMLInputElement).value;
+//             const description = (document.getElementById(
+//               "indicator-description"
+//             ) as HTMLTextAreaElement).value;
+//             if (!name || !description) {
+//               Swal.showValidationMessage("Please enter both name and description");
+//               return false;
+//             }
+//             return { name, description };
+//           },
+//         }).then((result) => {
+//       if (result.isConfirmed) {
+//         const { name, description } = result.value;
+//         createIndicator(data, item, element, name, description);
+//       }})
+//         modalContent.remove(); // סגירת המודל אחרי בחירת קריאה
+//       }
+//     });
+//   });
+// }
 
 export async function createJiraTicketFromIndicator(data: any) {
   console.log("Creating Jira ticket with data:", data);
@@ -686,7 +1014,7 @@ chrome.runtime.onMessage.addListener( async (message) => {
     case "DELETE_INDICATOR": {
       // lets remove the indicator from storage
       const indicatorId = message.data;
-      const path = generateStoragePath(window.location.href);
+      const path = generateStoragePath(message.data);
       chrome.storage.local.get(["indicators"], (result) => {
         const indicators = result.indicators || {};
         const currentPageIndicators = indicators[path] || [];

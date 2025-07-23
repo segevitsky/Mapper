@@ -11,6 +11,7 @@ import { allNetworkCalls, createJiraTicketFromIndicator } from "../content";
 import initFloatingButton from "../floatingRecorderButton";
 import SchemaValidationService from "./schemaValidationService";
 import { createInteractiveJsonViewer, jsonViewerStyles } from "./components/jsonViewer";
+import { modalStyles } from "./components/networkModalStyles";
 
 export let pageIndicators: IndicatorData[] = [];
 
@@ -128,8 +129,6 @@ export async function createIndicatorFromData(
 
   console.log("indicators path", indicatorData.elementInfo.path);
   const elementByPath = await waitForElement(indicatorData.elementInfo.path);
-
-  console.log({ indicatorData, elementByPath }, "element by path");
   const elementBefore = elementByPath?.previousElementSibling;
   let originalElementAndElementBeforeAreInline = false;
 
@@ -232,10 +231,9 @@ function addIndicatorEvents(
     const dataAttribute = indicator.getAttribute('data-indicator-info');
     if (!dataAttribute) {
         throw new Error("data-indicator-info attribute is missing");
+        // lets add a tooltip telling the user that indi did not update
+
     }
-    const data = JSON.parse(dataAttribute);
-    const { duration, name, description } = data;
-    
     // יוצרים style element רק אם עוד לא קיים
     if (!document.getElementById('tooltip-styles')) {
         const style = document.createElement('style');
@@ -296,10 +294,17 @@ function addIndicatorEvents(
         `;
         document.head.appendChild(style);
     }
-    
-    // מוסיפים את המידע כ-attribute - אפשר להוסיף עוד מידע אם יש
+    let tooltipContent
+    const data = JSON.parse(dataAttribute);
+    if (!data) {
+        console.warn("No data found in data-indicator-info attribute");
+        tooltipContent = "No data available for this indicator.";
+        indicator.setAttribute('data-tooltip', tooltipContent);
+        return;
+    }
+    const { duration, name, description } = data;
     const schemaStatus = indicator.getAttribute('data-schema-status');
-    let tooltipContent = `Duration: ${Math.floor(duration)} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`;
+    tooltipContent = `Duration: ${Math.floor(duration)} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`;
     if (schemaStatus) {
         tooltipContent += `\nSchema Status: ${schemaStatus}`;
     }
@@ -1283,7 +1288,9 @@ indicator.addEventListener("click", async () => {
     clearTimeout(clickTimeout); // ביטול ה-single click
     // lets send a message to the background script to open the floating window
     const dataAttribute = indicator.getAttribute('data-indicator-info');
-    if (!dataAttribute) {
+    console.log({ allNetworkCalls }, 'all network calls in dbl');
+    const body = JSON.parse(dataAttribute || '{}')?.body;
+    if (!dataAttribute || !body) {
         const allNetworkCallsThatMatch = allNetworkCalls
           .filter(
             (call: any) =>
@@ -1639,8 +1646,11 @@ export function injectStyles() {
   const style = document.createElement("style");
   style.textContent = `
 
-
+  // network modal styles
+  
    ${jsonViewerStyles}
+
+   ${modalStyles}
 
       @keyframes shimmer {
       0% { left: -100%; }

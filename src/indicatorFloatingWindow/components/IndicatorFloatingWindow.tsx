@@ -231,7 +231,7 @@ const IndicatorFloatingWindow: React.FC = () => {
                 })()}
                 viewerId="response"
                 title="📄 Response Body"
-                maxHeight="400px"
+                maxHeight="800px"
               />
             </div>
           )}
