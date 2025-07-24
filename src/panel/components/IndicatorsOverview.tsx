@@ -329,7 +329,7 @@ const handleDeleteIndicator = (indicatorId: string, fromCategory: string) => {
             onClick={onClose}
             className="shadow-sm bg-none hover:text-pink-200 text-2xl font-bold p-2 hover:bg-pink-600 rounded-lg transition-colors "
           >
-            ×
+            <X />
           </button>
         </div>
 
