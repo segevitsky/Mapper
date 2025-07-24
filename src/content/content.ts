@@ -858,11 +858,20 @@ export async function createJiraTicketFromIndicator(data: any) {
           return;
         }
         if (response?.success) {
-          // REPLACE THIS ALERT WITH A NICE MODAL
-          alert(`Ticket created successfully! ID: ${response.data.key}`);
+          Swal.fire({
+            title: "Ticket Created",
+            text: `Ticket created successfully! ID: ${response.data.key}`,
+            icon: "success",
+            confirmButtonText: "OK",
+          });
+
         } else {
-          console.error("Error creating ticket:", response?.error);
-          alert(`Failed to create ticket: ${response?.error}`);
+          Swal.fire({
+            title: "Error",
+            text: `Failed to create ticket: ${response?.error}`,
+            icon: "error",
+            confirmButtonText: "OK",
+          });
         }
       }
     );

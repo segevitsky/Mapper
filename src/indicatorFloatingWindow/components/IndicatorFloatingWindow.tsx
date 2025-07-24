@@ -139,12 +139,6 @@ const IndicatorFloatingWindow: React.FC = () => {
               </p>
             </div>
           </div>
-          <button 
-            onClick={closeWindow}
-            className="p-3 hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
-          >
-            <X className="w-6 h-6" />
-          </button>
         </div>
       </div>
 
