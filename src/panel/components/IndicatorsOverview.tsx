@@ -316,7 +316,8 @@ const handleDeleteIndicator = (indicatorId: string, fromCategory: string) => {
       }}
     >
       {/* Header */}
-      <div className="bg-gradient-to-r from-pink-500 to-rose-500 text-white p-4 shadow-lg flex-shrink-0">
+      <div className="bg-gradient-to-r from-[#ff8177] via-[#f99185] to-[#b12a5b] text-white p-4 shadow-lg flex-shrink-0">
+
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold">Indicators Overview</h1>
