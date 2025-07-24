@@ -1,5 +1,5 @@
 chrome.devtools.panels.create(
-    "API Mapper",
+    "Indi Mapper",
     "",
     "/panel/index.html",
     (panel: unknown) => {

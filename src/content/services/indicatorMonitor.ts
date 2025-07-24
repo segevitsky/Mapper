@@ -27,13 +27,6 @@ export class IndicatorMonitor {
     
     // First lets calculate the duration
     const duration = newCall?.response?.response?.timing?.receiveHeadersEnd ?? newCall?.duration;
-
-
-    console.log(
-      { duration, indicator, newCall },
-      "this is the updated duration in the indicators monitor screen"
-    );
-  
   
     // Second lets update the lastCall object with the new data
     indicator.lastCall = {
@@ -58,8 +51,6 @@ export class IndicatorMonitor {
   
     // Lets find the element in the DOM
     const indicatorElement = await waitForIndicator(indicator.id);
-    console.log("Found indicator element:", indicatorElement);
-    console.log("indicator after update", indicator);
   
     // Lets remove any duplicated indicators
     if (indicatorElement) {
@@ -80,7 +71,7 @@ export class IndicatorMonitor {
       // יצירת סכמה חדשה - בדיוק כמו בקוד המקורי
       const typeDefinition = schemaService.generateTypeDefinition(
         indicator.body?.body, 
-        'PatientResponse', 
+        indicator.name ?? "Indicator-Schema", 
         { format: 'inline' }
       );
       console.log({ typeDefinition }, "typeDefinition for indicator body");

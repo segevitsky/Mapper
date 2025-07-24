@@ -34,8 +34,8 @@ const CleanHeaderDemo = (props: HeaderProps) => {
           <div className="relative">
             <div 
               className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center border border-white/30 cursor-pointer hover:bg-white/30 transition-all duration-200"
-              onMouseEnter={() => setIsDropdownOpen(true)}
-              onMouseLeave={() => setIsDropdownOpen(false)}
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+
             >
               <span className="text-white font-semibold text-sm">
                 {getInitials(userDetails.displayName)}
@@ -46,7 +46,6 @@ const CleanHeaderDemo = (props: HeaderProps) => {
             {isDropdownOpen && (
               <div 
                 className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border border-gray-200 py-2 z-50 animate-in slide-in-from-top-2 duration-200"
-                // on click event to open and close the dropdown
                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
               >
                 {/* User Info Section */}

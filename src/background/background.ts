@@ -57,12 +57,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function createJiraTicket(messageData: any) {
   const { userData, data } = messageData;
-  const { host, email, apiToken, projectKey } = userData.jiraConfig || {};
+  const { domain, email, apiToken, projectKey } = userData.jiraConfig || {};
   
-  return;
 
   console.log("About to make Jira API call with:", {
-    url: `https://${host}/rest/api/3/issue`,
+    url: `https://${domain}/rest/api/3/issue`,
     headers: {
       Authorization: "Basic " + btoa(email + ":" + apiToken),
       Accept: "application/json",
@@ -78,7 +77,7 @@ async function createJiraTicket(messageData: any) {
     },
   });
 
-  const response = await fetch(`https://${host}/rest/api/3/issue`, {
+  const response = await fetch(`https://${domain}/rest/api/3/issue`, {
     method: "POST",
     headers: {
       Authorization: "Basic " + btoa(email + ":" + apiToken),
@@ -88,7 +87,7 @@ async function createJiraTicket(messageData: any) {
     body: JSON.stringify({
       fields: {
         project: {
-          key: "CCS",
+          key: projectKey,
         },
         summary: data.summary,
         description: {

@@ -2,6 +2,7 @@ export const modalStyles = `
   /* Modal V5 Styles */
   .api-modal-overlay {
     position: fixed;
+    direction: ltr;
     top: 0;
     left: 0;
     width: 100%;
@@ -12,7 +13,7 @@ export const modalStyles = `
     justify-content: center;
     align-items: center;
     z-index: 999999;
-    animation: modalFadeIn 0.4s ease-out;
+    // animation: modalFadeIn 0.4s ease-out;
     pointer-events: auto;
   }
 

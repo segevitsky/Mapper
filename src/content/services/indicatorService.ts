@@ -400,6 +400,7 @@ indicator.addEventListener("click", async () => {
         box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
         border-left: 3px solid #cf556c;
         transform-origin: center;
+        direction: ltr;
     `;
 
     tooltip.innerHTML = `

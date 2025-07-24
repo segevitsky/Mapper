@@ -318,7 +318,7 @@ function showModal(
   modalContent.appendChild(searchSection);
 
   // Create calls list
-  const callsList = createCallsList(data.networkCalls, element, data);
+  const callsList = createCallsList(data.networkCalls);
   modalContent.appendChild(callsList);
 
   // Create form section (initially hidden)
@@ -377,8 +377,7 @@ function createSearchSection(networkCalls: NetworkCall[]): HTMLElement {
   return section;
 }
 
-function createCallsList(networkCalls: NetworkCall[], element: any, data: any): HTMLElement {
-  console.log({ networkCalls, element, data });
+function createCallsList(networkCalls: NetworkCall[]): HTMLElement {
   const listContainer = document.createElement("div");
   listContainer.className = "api-modal-calls-list";
   listContainer.id = "calls-list";
@@ -530,11 +529,11 @@ function setupModalEventListeners(
     }
 
     // Re-attach click listeners to new items
-    attachCallItemListeners(callsList, networkCalls, formSection, element, data, modalOverlay);
+    attachCallItemListeners(callsList, networkCalls, formSection, element, data);
   });
 
   // Initial call item listeners
-  attachCallItemListeners(callsList, networkCalls, formSection, element, data, modalOverlay);
+  attachCallItemListeners(callsList, networkCalls, formSection, element, data);
 
   // Form listeners
   setupFormListeners(formSection, modalOverlay);
@@ -546,10 +545,8 @@ function attachCallItemListeners(
   formSection: HTMLElement,
   element: any,
   data: any,
-  modalOverlay: HTMLElement
 ) {
   const callItems = callsList.querySelectorAll('.api-call-item');
-  console.log({ modalOverlay })
   callItems.forEach(item => {
     item.addEventListener('click', () => {
       const callId = item.getAttribute('data-call-id');
@@ -848,7 +845,6 @@ function setupFormListeners(formSection: HTMLElement, modalOverlay: HTMLElement)
 // }
 
 export async function createJiraTicketFromIndicator(data: any) {
-  console.log("Creating Jira ticket with data:", data);
   chrome.storage.local.get(['userData'], (result: any) => { 
     const userData = result.userData || {};
     chrome.runtime.sendMessage(
@@ -862,7 +858,6 @@ export async function createJiraTicketFromIndicator(data: any) {
           return;
         }
         if (response?.success) {
-          console.log("Ticket created:", response.data);
           // REPLACE THIS ALERT WITH A NICE MODAL
           alert(`Ticket created successfully! ID: ${response.data.key}`);
         } else {
@@ -898,7 +893,6 @@ chrome.runtime.onMessage.addListener( async (message) => {
 
     
     case "NETWORK_IDLE": {
-      console.log("network tab idle", message);
       if (message.requests.length === 0) {
         return;
       }
