@@ -229,29 +229,42 @@ function addIndicatorEvents(
   indicatorData: IndicatorData
 ) {
 
+  function calculateTooltipPosition(indicator: any) {
+    const rect = indicator.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    
+    // const TOOLTIP_WIDTH = 200;
+    const TOOLTIP_HEIGHT = 100;
+    const EDGE_THRESHOLD = 100; // 100 פיקסל מהצד
+    
+    // בדיקת קרבה לקצוות
+    const isNearTop = rect.top < (TOOLTIP_HEIGHT + EDGE_THRESHOLD);
+    const isNearBottom = rect.bottom > (viewportHeight - TOOLTIP_HEIGHT - EDGE_THRESHOLD);
+    const isNearLeft = rect.left < EDGE_THRESHOLD;
+    const isNearRight = rect.right > (viewportWidth - EDGE_THRESHOLD);
+    
+    return {
+      showBelow: true,
+      showAbove: false,
+      showRight: isNearLeft,
+      showLeft: isNearRight
+    };
+  }
 
-  indicator.addEventListener('mouseenter', () => {
+indicator.addEventListener('mouseenter', () => {
     const dataAttribute = indicator.getAttribute('data-indicator-info');
     if (!dataAttribute) {
         throw new Error("data-indicator-info attribute is missing");
-        // lets add a tooltip telling the user that indi did not update
-
     }
+    
     // יוצרים style element רק אם עוד לא קיים
     if (!document.getElementById('tooltip-styles')) {
         const style = document.createElement('style');
         style.id = 'tooltip-styles';
         style.textContent = `
-            [data-tooltip] {
-                position: relative;
-            }
-            
-            [data-tooltip]::before {
-                content: attr(data-tooltip);
-                position: absolute;
-                bottom: 100%;
-                left: 50%;
-                transform: translateX(-50%) translateY(10px);
+            .indi-tooltip {
+                position: fixed;
                 background: linear-gradient(to right, rgb(255, 129, 119) 0%, rgb(255, 134, 122) 0%, rgb(255, 140, 127) 21%, rgb(249, 145, 133) 52%, rgb(207, 85, 108) 78%, rgb(177, 42, 91) 100%);
                 color: white;
                 padding: 12px 20px;
@@ -259,64 +272,113 @@ function addIndicatorEvents(
                 max-width: 200px;
                 text-align: center;
                 line-height: 1.4;
-                margin-bottom: 8px;
                 font-size: 14px;
                 font-weight: 600;
-                z-index: 10000;
-                opacity: 0;
-                transition: all 0.3s ease;
-                pointer-events: none;
+                z-index: 999999;
                 box-shadow: 0 4px 15px rgba(177, 42, 91, 0.3);
                 text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-                white-space: normal;
+                white-space: pre-line;
                 word-wrap: break-word;
-            }
-            
-            [data-tooltip]:hover::before {
-                opacity: 1;
-                transform: translateX(-50%) translateY(0);
-            }
-            
-            [data-tooltip]::after {
-                content: '';
-                position: absolute;
-                bottom: 100%;
-                left: 50%;
-                transform: translateX(-50%) translateY(10px);
-                border: 6px solid transparent;
-                border-top-color: rgb(249, 145, 133);
-                margin-bottom: -4px;
+                pointer-events: none;
                 opacity: 0;
-                transition: all 0.3s ease;
-            }
-            
-            [data-tooltip]:hover::after {
-                opacity: 1;
-                transform: translateX(-50%) translateY(0);
+                transition: opacity 0.3s ease;
             }
         `;
         document.head.appendChild(style);
     }
-    let tooltipContent
+    
+    let tooltipContent;
     const data = JSON.parse(dataAttribute);
     if (!data) {
         console.warn("No data found in data-indicator-info attribute");
         tooltipContent = "No data available for this indicator.";
-        indicator.setAttribute('data-tooltip', tooltipContent);
-        return;
+    } else {
+        const { duration, name, description } = data;
+        const schemaStatus = indicator.getAttribute('data-schema-status');
+        tooltipContent = `Duration: ${Math.floor(duration)} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`;
+        if (schemaStatus) {
+            tooltipContent += `\nSchema Status: ${schemaStatus}`;
+        }
     }
-    const { duration, name, description } = data;
-    const schemaStatus = indicator.getAttribute('data-schema-status');
-    tooltipContent = `Duration: ${Math.floor(duration)} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`;
-    if (schemaStatus) {
-        tooltipContent += `\nSchema Status: ${schemaStatus}`;
-    }
-    indicator.setAttribute('data-tooltip', tooltipContent);
 
-    // remove when mouse leaves
-    indicator.addEventListener('mouseleave', () => {
-        indicator.removeAttribute('data-tooltip');
-    }, { once: true });
+    // יצירת טולטיפ כאלמנט נפרד
+    const tooltip = document.createElement('div');
+    tooltip.className = 'indi-tooltip';
+    tooltip.textContent = tooltipContent;
+
+    // חישוב מיקום חכם - הפונקציה שלנו!
+    const position = calculateTooltipPosition(indicator);
+    const rect = indicator.getBoundingClientRect();
+    
+    let left = rect.left + (rect.width / 2);
+    let top = rect.top - 10; // ברירת מחדל: למעלה
+    let transform = 'translateX(-50%) translateY(-100%)'; // ברירת מחדל
+    
+    // החלת המיקום לפי הפונקציה שלנו
+    if (position.showBelow) {
+        top = rect.bottom + 10;
+        transform = 'translateX(-50%) translateY(0)';
+    }
+    
+    if (position.showRight) {
+        left = rect.right + 10;
+        top = rect.top + (rect.height / 2);
+        transform = 'translateX(0) translateY(-50%)';
+    }
+    
+    if (position.showLeft) {
+        left = rect.left - 10;
+        top = rect.top + (rect.height / 2);
+        transform = 'translateX(-100%) translateY(-50%)';
+    }
+    
+    // מקרים משולבים (פינות)
+    if (position.showBelow && position.showRight) {
+        left = rect.right + 10;
+        top = rect.bottom + 10;
+        transform = 'translateX(0) translateY(0)';
+    }
+    
+    if (position.showBelow && position.showLeft) {
+        left = rect.left - 10;
+        top = rect.bottom + 10;
+        transform = 'translateX(-100%) translateY(0)';
+    }
+    
+    if (position.showAbove && position.showRight) {
+        left = rect.right + 10;
+        top = rect.top - 10;
+        transform = 'translateX(0) translateY(-100%)';
+    }
+    
+    if (position.showAbove && position.showLeft) {
+        left = rect.left - 10;
+        top = rect.top - 10;
+        transform = 'translateX(-100%) translateY(-100%)';
+    }
+    
+    // הגדרת המיקום הסופי
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
+    tooltip.style.transform = transform;
+
+    // הוספה לדף
+    document.body.appendChild(tooltip);
+    
+    // אנימציה להופעה
+    setTimeout(() => tooltip.style.opacity = '1', 10);
+
+    // הסרה ב-mouseleave
+    const removeTooltip = () => {
+        tooltip.style.opacity = '0';
+        setTimeout(() => {
+            if (tooltip.parentNode) {
+                tooltip.parentNode.removeChild(tooltip);
+            }
+        }, 300);
+    };
+    
+    indicator.addEventListener('mouseleave', removeTooltip, { once: true });
 });
 
 let clickTimeout: string | number | NodeJS.Timeout | undefined;

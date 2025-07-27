@@ -401,7 +401,7 @@ const handleDeleteIndicator = (indicatorId: string, fromCategory: string) => {
         ) : (
           <div className="space-y-6">
             {Object.entries(
-              allIndicators.reduce((acc, indicator) => {
+              filteredIndicators.reduce((acc, indicator) => {
                 if (!acc[indicator.pagePath]) acc[indicator.pagePath] = [];
                 acc[indicator.pagePath].push(indicator);
                 return acc;
@@ -437,6 +437,8 @@ const handleDeleteIndicator = (indicatorId: string, fromCategory: string) => {
                         <p className="text-sm text-gray-600">{pageIndicators.length} indicators</p>
                       </div>
                     </div>
+                  </div>
+                  <br />
                     <div className="flex space-x-2">
                       {pageIndicators.some(ind => ind?.lastCall?.status >= 400) && (
                         <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
@@ -449,7 +451,6 @@ const handleDeleteIndicator = (indicatorId: string, fromCategory: string) => {
                         </span>
                       )}
                     </div>
-                  </div>
                 </div>
 
                 {/* Page Indicators */}
