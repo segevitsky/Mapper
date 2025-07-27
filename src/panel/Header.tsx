@@ -18,6 +18,22 @@ const CleanHeaderDemo = (props: HeaderProps) => {
     return name.split(' ').map(word => word[0]).join('').toUpperCase();
   };
 
+  const handleExportingData = () => {
+    chrome.storage.local.get(['indicators'], (res) => {
+      const indicators = res.indicators || {};
+      const dataToExport = JSON.stringify(indicators, null, 2);
+      const blob = new Blob([dataToExport], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'indi-api-data.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    })
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between text-white p-6">
@@ -65,11 +81,11 @@ const CleanHeaderDemo = (props: HeaderProps) => {
                 
                 {/* Menu Items */}
                 <div className="py-1">
-                  <a href="#" className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                  <a href="https://indi-web.vercel.app/login" target="_blank" className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
                     <User className="w-4 h-4 mr-3 text-gray-500" />
                     My Profile
                   </a>
-                  <a href="#" className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                  <a href="https://indi-web.vercel.app/login" target="_blank" className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
                     <Settings className="w-4 h-4 mr-3 text-gray-500" />
                     Extension Settings
                   </a>
@@ -77,7 +93,7 @@ const CleanHeaderDemo = (props: HeaderProps) => {
                     <Bell className="w-4 h-4 mr-3 text-gray-500" />
                     Notifications
                   </a>
-                  <a href="#" className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
+                  <a onClick={handleExportingData} className="flex items-center px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 transition-colors">
                     <Download className="w-4 h-4 mr-3 text-gray-500" />
                     Export Data
                   </a>

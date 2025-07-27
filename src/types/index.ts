@@ -67,6 +67,9 @@ export interface IndicatorData {
   name?: string;
   description?: string;
   schema?: string;
+  // let add request property as a record of string to any
+  request?: Record<string, any>;
+  response?: Record<string, any>;
 }
 
 export type MovementObject = {

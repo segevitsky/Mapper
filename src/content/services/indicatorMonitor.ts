@@ -173,6 +173,11 @@ export class IndicatorMonitor {
       if (!indies) return;
       
       const currentPath = generateStoragePath(window.location.href);
+      const indicatorOriginalPath = generateStoragePath(indicator.request?.documentURL);
+      // if our current path is not the document URL, we don't update the indicator
+      if (currentPath !== indicatorOriginalPath) return;
+
+
       if (!indies[currentPath]) {
         indies[currentPath] = [];
       }

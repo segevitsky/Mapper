@@ -127,6 +127,9 @@ export async function createIndicatorFromData(
     });
   }
 
+  // lets not create an indicator if its base url is not the current page url
+  if (generateStoragePath(indicatorData?.request?.documentURL) !== generateStoragePath(window.location.href)) { return; }
+
   console.log("indicators path", indicatorData.elementInfo.path);
   const elementByPath = await waitForElement(indicatorData.elementInfo.path);
   const elementBefore = elementByPath?.previousElementSibling;

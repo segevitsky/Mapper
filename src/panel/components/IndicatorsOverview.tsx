@@ -91,7 +91,14 @@ const MoveDropdown = ({
           .map(category => (
             <button
               key={category}
-              onClick={() => onMove(indicator.id, currentCategory, category)}
+              onClick={() => {
+                if (category === 'Create New') {
+                  // on click needs to become an input field to create a new category with a button to save or we should open a modal
+                  console.log('Create New Category clicked');
+                  return;
+                }
+                onMove(indicator.id, currentCategory, category)
+              }}
               className="w-full text-left px-3 py-2 text-sm rounded-md hover:bg-gray-100 flex items-center justify-between group transition-colors"
             >
               <span className='group-hover:text-pink-500'>{splitSmart(category)}</span>
@@ -302,7 +309,7 @@ const handleDeleteIndicator = (indicatorId: string, fromCategory: string) => {
   const totalIndicators = allIndicators.length;
   const errorCount = allIndicators.filter(ind => ind?.lastCall?.status >= 400).length;
   const slowCount = allIndicators.filter(ind => ind?.lastCall?.timing?.duration > 1000).length;
-  const availableCategories = indicators ? Object.keys(indicators) : [];
+  const availableCategories = indicators ? [...Object.keys(indicators), 'global', 'Create New'] : ['global', 'Create New'];
 
   if (!isVisible) return null;
 
