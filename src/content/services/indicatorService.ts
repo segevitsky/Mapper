@@ -110,7 +110,8 @@ export async function createIndicatorFromData(
     indicatorData.updatedThisRound = false;
 
     // lets update the current indicator with the updated uuid in the storage
-    chrome.storage.local.get(["indicators"], (result) => {
+    try {
+      const result = await chrome.storage.local.get(["indicators"]);
       const indicators = result.indicators || {};
       const pathToUpdate = generateStoragePath(window.location.href);
       const currentPageIndicators = indicators[pathToUpdate] || [];
@@ -123,8 +124,10 @@ export async function createIndicatorFromData(
           currentPageUUID
         );
       }
-      chrome.storage.local.set({ indicators });
-    });
+      await chrome.storage.local.set({ indicators });
+    } catch (error) {
+      console.error('Storage error:', error);
+    }
   }
 
   // lets not create an indicator if its base url is not the current page url
@@ -132,6 +135,7 @@ export async function createIndicatorFromData(
 
   console.log("indicators path", indicatorData.elementInfo.path);
   const elementByPath = await waitForElement(indicatorData.elementInfo.path);
+  console.log("our element that our indicator needs to be in", elementByPath);
   const elementBefore = elementByPath?.previousElementSibling;
   let originalElementAndElementBeforeAreInline = false;
 
@@ -220,6 +224,7 @@ export async function createIndicatorFromData(
       }
     }
   } else {
+    console.log('we got here?? why is it not inserting the indicator?', elementByPath, indicator);
     elementByPath?.insertAdjacentElement("beforebegin", indicator);
   }
 }

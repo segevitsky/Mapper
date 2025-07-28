@@ -653,15 +653,6 @@ chrome.runtime.onMessage.addListener(async (message, sender) => {
 
   if (message.type === "OPEN_FLOATING_WINDOW") {
     openOrUpdateFloatingWindow(message.data);
-    // chrome.windows.create({
-    //   url: `src/indicatorFloatingWindow/floating-window.html?data=${encodeURIComponent(JSON.stringify(message.data))}`,
-    //   type: 'popup',
-    //   width: 1200,
-    //   height: 800,
-    //   focused: true,
-    //   // אפשרויות נוספות לחלון מרחף
-    //   // Removed unsupported property 'alwaysOnTop'
-    // });
   }
 });
 

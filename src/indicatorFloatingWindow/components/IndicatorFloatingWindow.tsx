@@ -16,6 +16,7 @@ interface IndicatorData {
   response?: any;
   body?: any;
   duration: number;
+  request: any;
 }
 
 const IndicatorFloatingWindow: React.FC = () => {
@@ -154,7 +155,7 @@ const IndicatorFloatingWindow: React.FC = () => {
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">🌐 URL</label>
               <div className="p-3 bg-gray-50 rounded-lg font-mono text-sm break-all">
-                {indicatorData.url}
+                {indicatorData?.request?.request?.url ?? indicatorData?.url ?? 'Unknown URL'}
               </div>
             </div>
 
