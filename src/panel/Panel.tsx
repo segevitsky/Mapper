@@ -5,12 +5,11 @@ import { useNetworkCalls } from "./hooks/useNetworkCalls";
 import "../index.css";
 import { NetworkCall } from "../types";
 import { GrClear } from "react-icons/gr";
+import { SlRefresh } from "react-icons/sl"
 import { LuToggleLeft, LuToggleRight } from "react-icons/lu";
 import ApiResponsePanel from "./components/ResponseModal";
 import FailedIndicatorsReport from "./components/FailedIndicatorsReport";
 import IndicatorsOverview from "./components/IndicatorsOverview";
-import { findKeyById } from "./utils";
-import logoIcon from "../assets/bug.png";
 import CleanHeaderDemo from "./Header";
 
 const MAX_NETWORK_RESPONSES = 50;
@@ -296,6 +295,15 @@ export const Panel: React.FC = () => {
               className="text-1xl mt-[.25rem] text-white"
             />
             <span className="ml-1 text-1xl">Clear Indicators</span>
+          </div>
+          <br />
+          <div className="flex justify-start align-middle">
+            {" "}
+            <SlRefresh
+              onClick={handleIndicatorsLoad}
+              className="text-1xl mt-[.25rem] text-white"
+            />
+            <span className="ml-1 text-1xl">Reload Indicators</span>
           </div>
           <br />
           <button 

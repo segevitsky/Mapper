@@ -10,8 +10,9 @@ import { extractUUIDFromUrl, updateUrlWithNewUUID } from "../../utils/urlUrils";
 import { allNetworkCalls, createJiraTicketFromIndicator } from "../content";
 import initFloatingButton from "../floatingRecorderButton";
 import SchemaValidationService from "./schemaValidationService";
-import { createInteractiveJsonViewer, jsonViewerStyles } from "./components/jsonViewer";
+import { createInteractiveJsonViewer, jsonViewerStyles, setupJsonViewerListeners } from "./components/jsonViewer";
 import { modalStyles } from "./components/networkModalStyles";
+import test from "node:test";
 
 export let pageIndicators: IndicatorData[] = [];
 
@@ -127,8 +128,10 @@ export async function createIndicatorFromData(
     });
   }
 
+
   // lets not create an indicator if its base url is not the current page url
   if (generateStoragePath(indicatorData?.request?.documentURL) !== generateStoragePath(window.location.href)) { return; }
+
 
   console.log("indicators path", indicatorData.elementInfo.path);
   const elementByPath = await waitForElement(indicatorData.elementInfo.path);
@@ -946,6 +949,31 @@ indicator.addEventListener("click", async () => {
       const allIndicatorData = JSON.parse(
         indicator.getAttribute("data-indicator-info") || "{}"
       );
+      if (!allIndicatorData) {
+          const allNetworkCallsThatMatch = allNetworkCalls
+            .filter(
+              (call: any) =>
+                generateStoragePath(
+                  call?.response?.url ?? call?.request?.request?.url
+                ) === generateStoragePath(indicatorData.lastCall?.url)
+            )
+            .filter(
+              (el: any) => el?.request?.request?.method === indicatorData.method
+            );
+          console.log({ allNetworkCalls, indicatorData, allNetworkCallsThatMatch });
+          if (allNetworkCallsThatMatch.length > 0) {
+            const allIndicatorData = allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1];
+            // lets send the message to the background script to open the floating window
+          chrome.runtime.sendMessage({
+          type: "OPEN_FLOATING_WINDOW",
+          data: {
+            indicatorData: allIndicatorData,
+            networkCall: allIndicatorData,
+              }
+            });
+          }
+          return;
+      }
 
       chrome.runtime.sendMessage({
         type: "OPEN_FLOATING_WINDOW",
@@ -956,98 +984,98 @@ indicator.addEventListener("click", async () => {
       });
 
       // Toggle display of the panel regardless of data
-      // const isHidden = (responsePanel as HTMLElement).style.display === "none";
-      // (responsePanel as HTMLElement).style.display = isHidden
-      //   ? "block"
-      //   : "none";
+      const isHidden = (responsePanel as HTMLElement).style.display === "none";
+      (responsePanel as HTMLElement).style.display = isHidden
+        ? "block"
+        : "none";
 
-      // // If we're hiding the panel, no need to load data
-      // if (!isHidden) return;
+      // If we're hiding the panel, no need to load data
+      if (!isHidden) return;
 
-      // // Set up tab click handlers
-      // responsePanel.querySelectorAll(".tab-button").forEach(() => {
-      //   responsePanel.addEventListener("click", (e) => {
-      //     handleTabClick(e, responsePanel as HTMLElement);
-      //   });
-      // });
-      // const isAutoIndicator =
-      //   Object.keys(allIndicatorData)?.length > 0
-      //     ? allIndicatorData.id.includes("auto")
-      //     : false;
+      // Set up tab click handlers
+      responsePanel.querySelectorAll(".tab-button").forEach(() => {
+        responsePanel.addEventListener("click", (e) => {
+          handleTabClick(e, responsePanel as HTMLElement);
+        });
+      });
+      const isAutoIndicator =
+        Object.keys(allIndicatorData)?.length > 0
+          ? allIndicatorData.id.includes("auto")
+          : false;
 
-      // // Check if we need to get more data
-      // if (
-      //   !allIndicatorData.body ||
-      //   !allIndicatorData.request ||
-      //   (!allIndicatorData.response && !isAutoIndicator)
-      // ) {
-      //   // We need more data - get it from storage
-      //   chrome.storage.local.get(["indicators"], (result) => {
-      //     const indies = result.indicators || {};
-      //     const pathWereAt = generateStoragePath(window.location.href);
-      //     const relevantIndies = indies[pathWereAt] || [];
-      //     const indicatorsDataFromStorage = relevantIndies.filter(
-      //       (el: IndicatorData) => el.lastCall.url === currentData.lastCall.url
-      //     );
-      //     if (indicatorsDataFromStorage.length > 0) {
-      //       const indicatorDataFromStorage =
-      //         indicatorsDataFromStorage[indicatorsDataFromStorage.length - 1];
-      //       indicator.setAttribute(
-      //         "data-indicator-info",
-      //         JSON.stringify(indicatorDataFromStorage)
-      //       );
-      //       const tooltipDurationElement =
-      //         document.querySelector("#tooltip-duration");
-      //       if (tooltipDurationElement) {
-      //         tooltipDurationElement.innerHTML = `${Math.floor(
-      //           indicatorDataFromStorage?.duration ??
-      //             indicatorDataFromStorage?.lastCal.timing.duration ??
-      //             0
-      //         )}ms`;
-      //       }
-      //       populatePanels(indicatorDataFromStorage);
-      //     } else {
-      //       // Use whatever data we have
-      //       populatePanels(allIndicatorData);
-      //     }
-      //   });
-      // } else {
-      //   // We already have all the data we need
-      //   populatePanels(allIndicatorData);
-      // }
+      // Check if we need to get more data
+      if (
+        !allIndicatorData.body ||
+        !allIndicatorData.request ||
+        (!allIndicatorData.response && !isAutoIndicator)
+      ) {
+        // We need more data - get it from storage
+        chrome.storage.local.get(["indicators"], (result) => {
+          const indies = result.indicators || {};
+          const pathWereAt = generateStoragePath(window.location.href);
+          const relevantIndies = indies[pathWereAt] || [];
+          const indicatorsDataFromStorage = relevantIndies.filter(
+            (el: IndicatorData) => el.lastCall.url === currentData.lastCall.url
+          );
+          if (indicatorsDataFromStorage.length > 0) {
+            const indicatorDataFromStorage =
+              indicatorsDataFromStorage[indicatorsDataFromStorage.length - 1];
+            indicator.setAttribute(
+              "data-indicator-info",
+              JSON.stringify(indicatorDataFromStorage)
+            );
+            const tooltipDurationElement =
+              document.querySelector("#tooltip-duration");
+            if (tooltipDurationElement) {
+              tooltipDurationElement.innerHTML = `${Math.floor(
+                indicatorDataFromStorage?.duration ??
+                  indicatorDataFromStorage?.lastCal.timing.duration ??
+                  0
+              )}ms`;
+            }
+            populatePanels(indicatorDataFromStorage);
+          } else {
+            // Use whatever data we have
+            populatePanels(allIndicatorData);
+          }
+        });
+      } else {
+        // We already have all the data we need
+        populatePanels(allIndicatorData);
+      }
 
 
-      // function populatePanels(data: any) {
-      //   // Store the original data for the viewer
-      //   const viewerContainer = (responsePanel as HTMLElement).querySelector("#request");
-      //   if (viewerContainer && data.body) {
-      //     try {
-      //       const parsedBody = typeof data.body.body === 'string' 
-      //         ? JSON.parse(data.body.body) 
-      //         : data.body.body;
+      function populatePanels(data: any) {
+        // Store the original data for the viewer
+        const viewerContainer = (responsePanel as HTMLElement).querySelector("#request");
+        if (viewerContainer && data.body) {
+          try {
+            const parsedBody = typeof data.body.body === 'string' 
+              ? JSON.parse(data.body.body) 
+              : data.body.body;
             
-      //       // Store the parsed data as an attribute for later use
-      //       viewerContainer.setAttribute('data-json', JSON.stringify(parsedBody));
-      //     } catch (e) {
-      //       console.error('Failed to parse body:', e);
-      //     }
-      //   }
+            // Store the parsed data as an attribute for later use
+            viewerContainer.setAttribute('data-json', JSON.stringify(parsedBody));
+          } catch (e) {
+            console.error('Failed to parse body:', e);
+          }
+        }
       
-      //   // Load Security Tab
-      //   const securityPane = (responsePanel as HTMLElement).querySelector("#security");
-      //   (securityPane as HTMLElement).innerHTML = generateSecurityContent(data);
+        // Load Security Tab
+        const securityPane = (responsePanel as HTMLElement).querySelector("#security");
+        (securityPane as HTMLElement).innerHTML = generateSecurityContent(data);
       
-      //   // Load Performance Tab
-      //   const performancePane = (responsePanel as HTMLElement).querySelector("#performance");
-      //   (performancePane as HTMLElement).innerHTML = generatePerformanceContent(data);
+        // Load Performance Tab
+        const performancePane = (responsePanel as HTMLElement).querySelector("#performance");
+        (performancePane as HTMLElement).innerHTML = generatePerformanceContent(data);
       
-      //   // Load Request/Response Tab with the new interactive viewer
-      //   const requestPane = (responsePanel as HTMLElement).querySelector("#request");
-      //   (requestPane as HTMLElement).innerHTML = generateRequestContent(data);
+        // Load Request/Response Tab with the new interactive viewer
+        const requestPane = (responsePanel as HTMLElement).querySelector("#request");
+        (requestPane as HTMLElement).innerHTML = generateRequestContent(data);
         
-      //   // Set up the JSON viewer listeners after content is loaded
-      //   setupJsonViewerListeners(tooltip);
-      // }
+        // Set up the JSON viewer listeners after content is loaded
+        setupJsonViewerListeners(tooltip);
+      }
 
 
 

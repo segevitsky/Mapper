@@ -9,7 +9,8 @@ import {
   getElementPath,
   injectStyles,
   pageIndicators,
-} from "./services/indicatorService";
+  createIndicatorFromData,
+} from "./services/indicatorService"
 import { waitForIndicator } from "../utils/general";
 import Swal from "sweetalert2";
 
@@ -884,6 +885,27 @@ chrome.runtime.onMessage.addListener( async (message) => {
     case "START_INSPECT_MODE":
       enableInspectMode();
       break;
+
+    case "RELOAD_INDICATORS": 
+      chrome.storage.local.get(["indicators"], (result) => {
+        const indicators = result.indicators || {};
+        const path = generateStoragePath(window.location.href);
+        const currentPageIndicators = indicators[path] || [];
+        // Do something with currentPageIndicators
+        console.log({ currentPageIndicators }, "currentPageIndicators on reload");
+        currentPageIndicators.forEach((indicator: IndicatorData) => {
+          createIndicatorFromData(indicator);
+        });
+
+        // lets also check if we have any indicators that did not update
+        // const monitor = IndicatorMonitor.getInstance();
+        // monitor.checkIndicatorsUpdate(
+        //   currentPageIndicators,
+        //   allNetworkCalls,
+        // );
+
+      });
+      break;  
 
     case "NAVIGATE_TO_INDICATOR":
       const { data } = message;

@@ -39,7 +39,7 @@ const CleanHeaderDemo = (props: HeaderProps) => {
       <div className="flex items-center justify-between text-white p-6">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-white/20 rounded backdrop-blur-sm flex items-center justify-center">
-           <img src={logoIcon} alt="Indi API" className="w-8 h-8 rounded drop-shadow-lg" />
+           <img src={logoIcon} alt="Indi API" className="w-8 h-8 rounded drop-shadow-lg transition-transform duration-200 hover:scale-110" />
           </div>
           <h1 className="font-thin text-2xl">
             INDI API
