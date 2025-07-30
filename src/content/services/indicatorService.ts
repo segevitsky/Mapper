@@ -133,7 +133,7 @@ export async function createIndicatorFromData(
 
 
   // lets not create an indicator if its base url is not the current page url
-  if (generateStoragePath(indicatorData?.request?.documentURL) !== generateStoragePath(window.location.href)) { return; }
+  if (generateStoragePath(indicatorData?.request?.documentURL) !== generateStoragePath(window.location.href) && indicatorData.baseUrl !== 'global') { return; }
 
 
   console.log("indicators path", indicatorData.elementInfo.path);
@@ -262,11 +262,6 @@ function addIndicatorEvents(
 
 indicator.addEventListener('mouseenter', () => {
     const dataAttribute = indicator.getAttribute('data-indicator-info');
-    if (!dataAttribute) {
-        throw new Error("data-indicator-info attribute is missing");
-    }
-    
-    // יוצרים style element רק אם עוד לא קיים
     if (!document.getElementById('tooltip-styles')) {
         const style = document.createElement('style');
         style.id = 'tooltip-styles';
@@ -295,8 +290,20 @@ indicator.addEventListener('mouseenter', () => {
         document.head.appendChild(style);
     }
     
+    const allNetworkCallsThatMatch = allNetworkCalls
+          .filter(
+            (call: any) =>
+              generateStoragePath(
+                call?.response?.url ?? call?.request?.request?.url
+              ) === generateStoragePath(indicatorData.lastCall?.url)
+          )
+          .filter(
+            (el: any) => el?.request?.request?.method === indicatorData.method
+          );
+    const netWorkData = allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1];   
+    
     let tooltipContent;
-    const data = JSON.parse(dataAttribute);
+    const data = dataAttribute ? JSON.parse(dataAttribute) : netWorkData ;
     if (!data) {
         console.warn("No data found in data-indicator-info attribute");
         tooltipContent = "No data available for this indicator.";
@@ -545,6 +552,7 @@ indicator.addEventListener("click", async () => {
     </span>
   </div>
 
+  <div id='top-part'>
   <div style="margin-bottom: 16px;">
     <div style="margin-bottom: 12px;">
       <div style="
@@ -635,6 +643,7 @@ indicator.addEventListener("click", async () => {
   ">
     <span>Status: ${parsedDataFromAttr?.status || currentData?.lastCall?.status}</span>
     <span>✨</span>
+  </div>
   </div>
 
   <div style="
@@ -946,7 +955,11 @@ indicator.addEventListener("click", async () => {
       });
 
     tooltip.querySelector(".show-response")?.addEventListener("click", () => {
-      
+        // toggle the display from block to none
+        const topPart = tooltip.querySelector("#top-part");
+        if (topPart) {
+          (topPart as HTMLElement).style.display = (topPart as HTMLElement).style.display === "none" ? "block" : "none";
+        }
       const responsePanel = tooltip.querySelector(".response-container");
       if (!responsePanel) return;
 
@@ -1400,7 +1413,6 @@ indicator.addEventListener("click", async () => {
           .filter(
             (el: any) => el?.request?.request?.method === indicatorData.method
           );
-        console.log({ allNetworkCalls, indicatorData, allNetworkCallsThatMatch });
         if (allNetworkCallsThatMatch.length > 0) {
           const allIndicatorData = allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1];
           // lets send the message to the background script to open the floating window

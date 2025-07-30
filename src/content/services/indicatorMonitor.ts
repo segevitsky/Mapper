@@ -192,7 +192,12 @@ export class IndicatorMonitor {
         indies[currentPath].push(indicator);
       }
       
-      chrome.storage.local.set({ indicators: indies });
+      try {
+        chrome.storage.local.set({ indicators: indies });
+      } catch (error) {
+        console.error("Error saving indicators:", error);
+      }
+      // chrome.storage.local.set({ indicators: indies });
     });
   }
 
