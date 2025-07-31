@@ -308,9 +308,10 @@ indicator.addEventListener('mouseenter', () => {
         console.warn("No data found in data-indicator-info attribute");
         tooltipContent = "No data available for this indicator.";
     } else {
-        const { duration, name, description } = data;
+        const { duration, name, description, timestamp } = data;
         const schemaStatus = indicator.getAttribute('data-schema-status');
-        tooltipContent = `Duration: ${Math.floor(duration)} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`;
+        const lastUpdated = new Date(timestamp).toLocaleTimeString();
+        tooltipContent = `Last Updated: ${lastUpdated}\nDuration: ${Math.floor(duration)} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`;
         if (schemaStatus) {
             tooltipContent += `\nSchema Status: ${schemaStatus}`;
         }
