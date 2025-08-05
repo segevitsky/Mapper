@@ -27,7 +27,6 @@ export const useNetworkCalls = () => {
 
   useEffect(() => {
     const handleNetworkCall = (message: any) => {
-      console.log("Network call received:", message);
       if (message.type === "NEW_NETWORK_CALL") {
         setNetworkCalls((prev) => [...prev, message.data]);
         setNetworkCallsAll((prev) => [...prev, message.data]);
@@ -39,12 +38,10 @@ export const useNetworkCalls = () => {
       }
     };
 
-    console.log({ networkCallsAll });
 
     // נוסיף שמירה וטעינה מהסטור
     chrome.storage.local.get(["networkCalls"], (result) => {
       if (result.networkCalls) {
-        console.log("Loading saved network calls:", result.networkCalls);
         setNetworkCalls(result.networkCalls);
         setNetworkCallsAll(result.networkCalls);
       }
@@ -99,7 +96,6 @@ export const useNetworkCalls = () => {
   // נעדכן את הפאנל
   const handleElementSelected = useCallback(
     (message: any) => {
-      console.log("Element selected, current network calls:", networkCalls);
       if (message.type === "ELEMENT_SELECTED") {
         chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
           if (tabs[0]?.id) {

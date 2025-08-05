@@ -95,6 +95,14 @@ const IndicatorFloatingWindow: React.FC = () => {
     return 'text-gray-500';
   };
 
+  const handleReloadIndicator = () => {
+        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, { type: "RELOAD_INDICATORS" });
+      }
+    });
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-pink-50 to-rose-50">
@@ -132,7 +140,10 @@ const IndicatorFloatingWindow: React.FC = () => {
       <div className="bg-gradient-to-r from-pink-500 to-rose-500 text-white p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <img src={logoIcon} alt="Indi API" className="w-8 h-8 rounded drop-shadow-lg" />
+            <img
+              title='Reload Indicator'
+              onClick={handleReloadIndicator}
+            src={logoIcon} alt="Indi API" className="w-8 h-8 rounded drop-shadow-lg cursor-pointer" />
             <div>
               <h1 className="text-2xl font-bold">🎯 Indicator Details</h1>
               <p className="text-pink-100">

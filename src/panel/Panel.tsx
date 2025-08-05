@@ -50,7 +50,7 @@ export const Panel: React.FC = () => {
     if (result.indicators) {
       setIndicators(result.indicators);
     }
-    console.log({ userData: result.userData }, 'user data from storage');
+    // console.log({ userData: result.userData }, 'user data from storage');
     setUserDetails(result.userData);  
   });
 
@@ -64,7 +64,7 @@ export const Panel: React.FC = () => {
       
       // Check if userData changed
       if (changes.userData) {
-        console.log({ userData: changes.userData.newValue }, 'user data updated from storage');
+        // console.log({ userData: changes.userData.newValue }, 'user data updated from storage');
         setUserDetails(changes.userData.newValue);
       }
     }
@@ -119,7 +119,7 @@ export const Panel: React.FC = () => {
 
         case "ELEMENT_SELECTED":
           // טיפול באלמנט נבחר
-          console.log("Network calls in panel:", networkCalls);
+          // console.log("Network calls in panel:", networkCalls);
           setSelectedElement(message.data); // אפשר לשמור את זה למקרה שנצטרך
 
           // שליחת הודעה לcontent script במקום פתיחת המודל בפאנל
@@ -228,7 +228,6 @@ export const Panel: React.FC = () => {
           </div>
           <input
             onChange={(e) => {
-              console.log({ e });
               handleSearch(e);
             }}
             type="text"

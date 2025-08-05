@@ -34,10 +34,7 @@ const IndicatorsList = ({ currentUrl }: IndicatorsListProps) => {
   const [indiesList, setIndiesList] = useState<Record<string, IndicatorData[]>>(
     {}
   ); // כאן נשמור את האינדיקטורים
-  console.log({ indiesList, currentUrl }, "our indiesList");
   const path = generateStoragePath(currentUrl);
-  console.log({ path }, "our path");
-  console.log(indiesList?.path ?? [], "our path in indiesList");
 
   let currentIndies = {};
   useEffect(() => {

@@ -29,18 +29,15 @@ type TooltipContent = {
 };
 
 export function loadIndicators() {
-  console.log({ allNetworkCalls }, "all network calls");
   const storagePath = generateStoragePath(window.location.href);
   
   chrome.storage.local.get(["indicators", 'userData', 'limits', 'role'], (result) => {
-    console.log('all results', result);
     const { userData, limits, role, indicators } = result;
     const { domains, status } = userData || {};
     // lets see if our current location is included in the domains
     const currentLocationHost = window.location.host;
     const domainIsAllowed = currentLocationHost.includes('localhost') || domains?.find((d: Domain) => d.value.includes(currentLocationHost));
     if (!domainIsAllowed) {
-      console.log('this domain is not allowed', currentLocationHost, domains);
       // also lets send a message to the panel to show a message that the domain is not allowed
       chrome.runtime.sendMessage({
         type: "DOMAIN_NOT_ALLOWED",
@@ -56,8 +53,6 @@ export function loadIndicators() {
     const currentPageIndicators = indicators[storagePath] || [];
     pageIndicators = currentPageIndicators.slice();
 
-    console.log(storagePath, "storage path");
-    console.log(pageIndicators, "page indicators");
     if (currentPageIndicators.length === 0) {
       return;
     }
@@ -68,7 +63,6 @@ export function loadIndicators() {
       //   const indicatorElement = document.getElementById(`indi-${indicator.id}`);
       const indicatorElement = await waitForIndicator(indicator.id);
       if (!indicatorElement) {
-        console.log({ indicator }, "Indicator not found - retrying load");
         setTimeout(() => {
           createIndicatorFromData(indicator);
         }, 1000);
@@ -97,11 +91,11 @@ export async function createIndicatorFromData(
   isAuto?: boolean
 ) {
   const indicatorElement = document.getElementById(`indi-${indicatorData.id}`);
+  const currentPageUUID = extractUUIDFromUrl(window.location.href);
   if (indicatorElement) {
     return;
   }
   if (indicatorData.pattern) {
-    const currentPageUUID = extractUUIDFromUrl(window.location.href);
     indicatorData.baseUrl = window.location.href;
     indicatorData.lastCall.url = updateUrlWithNewUUID(
       indicatorData.lastCall.url,
@@ -132,13 +126,12 @@ export async function createIndicatorFromData(
   }
 
 
-  // lets not create an indicator if its base url is not the current page url
-  if (generateStoragePath(indicatorData?.request?.documentURL) !== generateStoragePath(window.location.href) && indicatorData.baseUrl !== 'global') { return; }
+  // lets not create an indicator if its base url is not the current page url this could happen if the user nagivated to a different page
+  // quickly causing the indicator to keep looking for the element
+  if (generateStoragePath(currentPageUUID ? updateUrlWithNewUUID(indicatorData?.request?.documentURL, currentPageUUID) : indicatorData?.request?.documentURL) !== generateStoragePath(window.location.href) && indicatorData.baseUrl !== 'global') { return; }
 
 
-  console.log("indicators path", indicatorData.elementInfo.path);
   const elementByPath = await waitForElement(indicatorData.elementInfo.path);
-  console.log("our element that our indicator needs to be in", elementByPath);
   const elementBefore = elementByPath?.previousElementSibling;
   let originalElementAndElementBeforeAreInline = false;
 
@@ -227,7 +220,6 @@ export async function createIndicatorFromData(
       }
     }
   } else {
-    console.log('we got here?? why is it not inserting the indicator?', elementByPath, indicator);
     elementByPath?.insertAdjacentElement("beforebegin", indicator);
   }
 }
@@ -306,12 +298,13 @@ indicator.addEventListener('mouseenter', () => {
     const data = dataAttribute ? JSON.parse(dataAttribute) : netWorkData ;
     if (!data) {
         console.warn("No data found in data-indicator-info attribute");
-        tooltipContent = "No data available for this indicator.";
+        tooltipContent = "No data available for this indicator. please refresh the page.";
     } else {
         const { duration, name, description, timestamp } = data;
         const schemaStatus = indicator.getAttribute('data-schema-status');
-        const lastUpdated = new Date(timestamp).toLocaleTimeString();
-        tooltipContent = `Last Updated: ${lastUpdated}\nDuration: ${Math.floor(duration)} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`;
+        // lets update to local time and date
+        const localDate = new Date(timestamp).toLocaleDateString() + ' ' + new Date(timestamp).toLocaleTimeString();
+        tooltipContent = `Last Updated: ${localDate}\nDuration: ${Math.floor(duration)} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`;
         if (schemaStatus) {
             tooltipContent += `\nSchema Status: ${schemaStatus}`;
         }
@@ -460,10 +453,6 @@ indicator.addEventListener("click", async () => {
     const parsedDataFromAttr = dataFromAttr
       ? JSON.parse(dataFromAttr)
       : indicatorData;
-    console.log(
-      { parsedDataFromAttr },
-      "parsed data from attr - this is suppose to be the tooltip data"
-    );
 
     const tooltip = document.createElement("div");
     tooltip.id = `indicator-tooltip-${indicatorData.id}`;
@@ -979,7 +968,6 @@ indicator.addEventListener("click", async () => {
             .filter(
               (el: any) => el?.request?.request?.method === indicatorData.method
             );
-          console.log({ allNetworkCalls, indicatorData, allNetworkCallsThatMatch });
           if (allNetworkCallsThatMatch.length > 0) {
             const allIndicatorData = allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1];
             // lets send the message to the background script to open the floating window
@@ -1104,7 +1092,6 @@ indicator.addEventListener("click", async () => {
       const dataIndicatorInfo = JSON.parse(
         indicator.getAttribute("data-indicator-info") || "{}"
       );
-      console.log({ dataIndicatorInfo }, "restOfData");
       // send message to the panel to print the response of all network calls perhaps find this one using the url
       chrome.runtime.sendMessage({
         type: "SHOW_REQUEST_REPONSE",
@@ -1121,7 +1108,6 @@ indicator.addEventListener("click", async () => {
 
     // הוספת האזנה לכפתור החדש
     tooltip.querySelector(".create-jira-ticket")?.addEventListener("click", () => {
-    console.log("lets create a jira ticket with this data", currentData);
     tooltip.remove();
     Swal.fire({
       title: '<span style="color: #cf556c;">Create Jira Ticket</span>',
@@ -1401,7 +1387,6 @@ indicator.addEventListener("click", async () => {
     clearTimeout(clickTimeout); // ביטול ה-single click
     // lets send a message to the background script to open the floating window
     const dataAttribute = indicator.getAttribute('data-indicator-info');
-    console.log({ allNetworkCalls }, 'all network calls in dbl');
     const body = JSON.parse(dataAttribute || '{}')?.body;
     if (!dataAttribute || !body) {
         const allNetworkCallsThatMatch = allNetworkCalls

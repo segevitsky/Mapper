@@ -130,7 +130,6 @@ export function understandUrlPatterns(indicatorData: IndicatorData) {
     // we need to save our indicators according to our pathname splitted by '/' if the url doesn't have a uuid in it except if it is ca query param
     chrome.storage.local.get(["indicators"], (res) => {
       const indicators = res.indicators || {};
-      console.log({ pathToSaveInStorage }, "our path to save in storage");
       indicators[pathToSaveInStorage] = indicators[pathToSaveInStorage] || [];
       indicators[pathToSaveInStorage].push(indicatorData);
       // chrome.storage.local.set({ indicators }, () => {
@@ -149,7 +148,6 @@ export function understandUrlPatterns(indicatorData: IndicatorData) {
       // הוסף את האינדיקטור החדש
       indicators[pathToSaveInStorage][tabValue].push(indicatorData);
 
-      console.log({ indicators }, "our indicators after adding one more");
 
       // chrome.storage.local.set({ indicators }, () => {
       //   elementByPath.after(indicator);

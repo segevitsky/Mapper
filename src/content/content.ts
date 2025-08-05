@@ -892,7 +892,7 @@ chrome.runtime.onMessage.addListener( async (message) => {
         const path = generateStoragePath(window.location.href);
         const currentPageIndicators = indicators[path] || [];
         // Do something with currentPageIndicators
-        console.log({ currentPageIndicators }, "currentPageIndicators on reload");
+        // console.log({ currentPageIndicators }, "currentPageIndicators on reload");
         currentPageIndicators.forEach((indicator: IndicatorData) => {
           createIndicatorFromData(indicator);
         });

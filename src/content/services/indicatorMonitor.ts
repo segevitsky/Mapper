@@ -74,7 +74,7 @@ export class IndicatorMonitor {
         indicator.name ?? "Indicator-Schema", 
         { format: 'inline' }
       );
-      console.log({ typeDefinition }, "typeDefinition for indicator body");
+      // console.log({ typeDefinition }, "typeDefinition for indicator body");
       indicator.schema = typeDefinition;
       
     } else if (indicator.schema && indicator.body && newCall?.body) {
@@ -83,10 +83,10 @@ export class IndicatorMonitor {
         indicator.body?.body
       );
       
-      console.log(
-        { validation, indicator, newCall }, 
-        'validation schema for indicator body'
-      );
+      // console.log(
+      //   { validation, indicator, newCall }, 
+      //   'validation schema for indicator body'
+      // );
   
       validationResult = validation;
     }
@@ -149,7 +149,7 @@ export class IndicatorMonitor {
       };
   
       // Saving the updated data to the element
-      console.log("Updated data indicator monitor:", updatedData);
+      // console.log("Updated data indicator monitor:", updatedData);
       elementToUpdate.setAttribute(
         "data-indicator-info",
         JSON.stringify(updatedData)
@@ -203,7 +203,7 @@ export class IndicatorMonitor {
 
 
   private updateTooltipContent(tooltip: HTMLElement, data: IndicatorData) {
-    console.log("lets update our indicator", data);
+    // console.log("lets update our indicator", data);
     const durationColor =
       data.lastCall?.timing?.duration < 300
         ? "#4CAF50"
@@ -267,7 +267,6 @@ export class IndicatorMonitor {
     allNetworkCalls?: any,
     currentMessages?: any
   ): void | IndicatorData[] {
-    console.log({ currentMessages }, "currentMessages");
 
     const indicatorsThatDidNotUpdate: IndicatorData[] = [];
 
@@ -306,24 +305,13 @@ export class IndicatorMonitor {
           (el: any) => !!el.body
         );
 
-        console.log(
-          { allNetworkCallsThatMatchTest },
-          "allNetworkCallsThatMatchTest"
-        );
 
         if (
           networkCall ||
           allNetworkCallsThatMatch.length > 0 ||
           allNetworkCallsThatMatchTest.length > 0
         ) {
-          console.log(
-            "Updating indicator with this network call",
-            allNetworkCallsThatMatchTest,
-            indicator,
-            allNetworkCallsThatMatch,
-            allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1] ??
-              networkCall
-          );
+
           this.updateIndicatorContent(
             indicator,
             allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1] ??
@@ -356,11 +344,11 @@ export class IndicatorMonitor {
             );
 
             if (networkCall) {
-              console.log(
-                "מצאנו התאמה - מעדכנים אינדיקטור:",
-                indicator,
-                networkCall
-              );
+              // console.log(
+              //   "מצאנו התאמה - מעדכנים אינדיקטור:",
+              //   indicator,
+              //   networkCall
+              // );
 
               // עדכון ישיר של האובייקט בתוך המערך
               return {
@@ -378,7 +366,7 @@ export class IndicatorMonitor {
               };
             }
           });
-        console.log({ currentPageNestedIndies }, "currentPageNestedIndies");
+        // console.log({ currentPageNestedIndies }, "currentPageNestedIndies");
 
         if (!indies) return;
         let hasUpdates = false;
@@ -396,11 +384,11 @@ export class IndicatorMonitor {
             );
 
             if (networkCall) {
-              console.log(
-                "מצאנו התאמה - מעדכנים אינדיקטור:",
-                indicator,
-                networkCall
-              );
+              // console.log(
+              //   "מצאנו התאמה - מעדכנים אינדיקטור:",
+              //   indicator,
+              //   networkCall
+              // );
 
               // עדכון ישיר של האובייקט בתוך המערך
               indies[key][index] = {
@@ -417,7 +405,6 @@ export class IndicatorMonitor {
                 },
               };
 
-              console.log("אינדיקטור אחרי עדכון", indies[key][index]);
               hasUpdates = true;
             }
           });
@@ -425,7 +412,6 @@ export class IndicatorMonitor {
 
         // שמירה בסטוראג' רק אם היו עדכונים
         if (hasUpdates) {
-          console.log("שומר אינדיקטורים מעודכנים", indies);
           chrome.storage.local.set({ indicators: indies });
         }
       });

@@ -34,7 +34,7 @@ export class AutoIndicatorService {
 
   public scanForDataIndies(networkCalls: any[]): void {
     const elements = document.querySelectorAll("[data-indi]");
-    console.log("Found elements with data-indi:", elements.length);
+    // console.log("Found elements with data-indi:", elements.length);
     elements.forEach(async (element) => {
       try {
         const indiConfig = this.parseIndiAttribute(element as HTMLElement);
@@ -71,7 +71,7 @@ export class AutoIndicatorService {
 
         function hasAdjacentElementIndi(element: any) {
           const previous = element.previousElementSibling;
-          console.log({ previous });
+          // console.log({ previous });
           return (
             previous !== null &&
             (previous.hasAttribute("data-indicator-info") ||
@@ -143,8 +143,8 @@ export class AutoIndicatorService {
       matchingNetworkCalls.length > 0
         ? matchingNetworkCalls[matchingNetworkCalls.length - 1]
         : null;
-    console.log("Matching network call:", matchingNetworkCall);
-    console.log("all network calls for auto", networkCalls);
+    // console.log("Matching network call:", matchingNetworkCall);
+    // console.log("all network calls for auto", networkCalls);
     return {
       id: `auto-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
       baseUrl: window.location.href,

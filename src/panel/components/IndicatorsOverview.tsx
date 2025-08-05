@@ -94,7 +94,6 @@ const MoveDropdown = ({
               onClick={() => {
                 if (category === 'Create New') {
                   // on click needs to become an input field to create a new category with a button to save or we should open a modal
-                  console.log('Create New Category clicked');
                   return;
                 }
                 onMove(indicator.id, currentCategory, category)
@@ -232,7 +231,7 @@ const handleDeleteIndicator = (indicatorId: string, fromCategory: string) => {
 
   const formatTimestamp = (timestamp: number | undefined) => {
     if (!timestamp || typeof timestamp !== 'number') return 'Unknown';
-    return new Date(timestamp).toLocaleTimeString();
+    return new Date(timestamp).toLocaleTimeString() + ' ' + new Date(timestamp).toLocaleDateString();
   };
 
   const getAllIndicators = () => {

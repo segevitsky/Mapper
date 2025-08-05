@@ -28,7 +28,7 @@ export const Toolbar: React.FC = () => {
         className="flex-1 items-center justify-center border-radius-6 fixed bottom-4 right-6 bg-gradient-to-r from-[#f857a6] to-[#ff5858] px-4 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
       >
         <LuInspect style={{ marginRight: ".25rem" }} />
-        Select Element
+        Create Indicator
       </button>
     </div>
   );

@@ -186,7 +186,6 @@ const ApiResponsePanel: React.FC<ApiResponsePanelProps> = ({
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      console.log({ text }, "this is the text we copied");
       setCopySuccess(true);
       setTimeout(() => setCopySuccess(false), 2000);
     } catch (err) {
@@ -208,7 +207,6 @@ const ApiResponsePanel: React.FC<ApiResponsePanelProps> = ({
             }
           : parsedData;
 
-      console.log("formattedData", formattedData);
 
       if (activeTab === "headers") {
         return (
