@@ -269,7 +269,7 @@ export class IndicatorMonitor {
   ): void | IndicatorData[] {
 
     const indicatorsThatDidNotUpdate: IndicatorData[] = [];
-
+    console.log({ currentMessages })
     if (indicators.length > 0) {
       indicators.forEach((indicator) => {
         const networkCall = allNetworkCalls.find(
