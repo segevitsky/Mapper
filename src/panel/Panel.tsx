@@ -80,9 +80,6 @@ export const Panel: React.FC = () => {
 }, []);
 
 
-  
-
-
 
   // NEW USE-EFFECT
   useEffect(() => {

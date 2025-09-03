@@ -13,6 +13,11 @@ import {
 } from "./services/indicatorService"
 import { waitForIndicator } from "../utils/general";
 import Swal from "sweetalert2";
+// import { createAIChatInterface } from './aiChatComponent';
+
+// אחרי שכל הדף נטען, פשוט להוסיף:
+// createAIChatInterface();
+
 
 // content.ts
 let isInspectMode = false;
@@ -612,238 +617,6 @@ function setupFormListeners(formSection: HTMLElement, modalOverlay: HTMLElement)
   });
 }
 
-// function showModal(
-//   element: {
-//     data: NetworkCall[];
-//     id: string;
-//     path: string;
-//     rect: any;
-//     tagName: string;
-//   },
-//   data: { networkCalls: NetworkCall[] }
-// ) {
-//   if (!modalContainer) createContainers();
-
-//   // ניקוי התוכן הקודם של innerModalContainer
-//   innerModalContainer.innerHTML = "";
-
-//   const modalContent = document.createElement("div");
-//   modalContent.className = "modal-content";
-//   modalContent.style.cssText = `
-//     position: fixed;
-//     z-index: 999999;
-//     top: 50%;
-//     left: 50%;
-//     transform: translate(-50%, -50%);
-//     background: white;
-//     padding: 16px;
-//     border-radius: 8px;
-//     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-//     border: 1px solid #e0e0e0;
-//     max-width: 500px;
-//     pointer-events: auto;
-//   `;
-
-//   const callsList = data.networkCalls
-//     .map(
-//       (call) => `
-//     <div 
-//       class="api-call-item" 
-//       style="
-//         padding: 8px;
-//         margin: 4px 0;
-//         border: 1px solid #e0e0e0;
-//         border-radius: 4px;
-//         cursor: pointer;
-//         display: flex;
-//         align-items: center;
-//       "
-//       data-call-id="${call.id}"
-//     >
-//       <div style="
-//         width: 8px;
-//         height: 8px;
-//         border-radius: 50%;
-//         margin-right: 8px;
-//         background-color: ${call.status === 200 ? "#4CAF50" : "#f44336"};
-//       "></div>
-//       <div>
-//         <div style="font-weight: bold;">${call.method}</div>
-//         <div style="font-size: 12px; color: #666;">${call.url}</div>
-//       </div>
-//     </div>
-//   `
-//     )
-//     .join("");
-
-//   modalContent.innerHTML = `
-//     <div style="float: right; cursor: pointer" id='close-modal'> X </div>
-//     <h3 style="font-size: 18px; font-weight: bold; margin-bottom: 12px;">
-//       Select API Call for Element
-//     </h3>
-//     <div style="margin-bottom: 12px;">
-//       <div style="margin-bottom: 16px;">
-//       <input 
-//         type="text" 
-//         id="search-calls" 
-//         placeholder="Search API calls..." 
-//         style="
-//           width: 100%;
-//           padding: 8px;
-//           border: 1px solid #e0e0e0;
-//           border-radius: 4px;
-//           font-size: 14px;
-//           outline: none;
-//         "
-//       />
-//     </div>
-//     </div>
-//     <div style="max-height: 300px; overflow-y: auto;">
-//       ${callsList}
-//     </div>
-//   `;
-
-//   // הוספת לוגיקת החיפוש
-//   const searchInput = modalContent.querySelector("#search-calls");
-
-//   searchInput?.addEventListener("input", (e) => {
-//     const searchTerm = (e.target as HTMLInputElement).value.toLowerCase();
-
-//     // יצירת רשימה מסוננת
-//     const filteredCallsList = data.networkCalls
-//       .filter(
-//         (call) =>
-//           call.url.toLowerCase().includes(searchTerm) ||
-//           call.method.toLowerCase().includes(searchTerm)
-//       )
-//       .map(
-//         (call) => `
-//       <div 
-//         class="api-call-item" 
-//         style="
-//           padding: 8px;
-//           margin: 4px 0;
-//           border: 1px solid #e0e0e0;
-//           border-radius: 4px;
-//           cursor: pointer;
-//           display: flex;
-//           align-items: center;
-//         "
-//         data-call-id="${call.id}"
-//       >
-//         <div style="
-//           width: 8px;
-//           height: 8px;
-//           border-radius: 50%;
-//           margin-right: 8px;
-//           background-color: ${call.status === 200 ? "#4CAF50" : "#f44336"};
-//         "></div>
-//         <div>
-//           <div style="font-weight: bold;">${call.method}</div>
-//           <div style="font-size: 12px; color: #666;">${call.url}</div>
-//         </div>
-//       </div>
-//     `
-//       )
-//       .join("");
-
-//     // עדכון התצוגה
-//     const listContainer = modalContent.querySelector(
-//       'div[style*="overflow-y: auto"]'
-//     );
-//     if (listContainer) {
-//       listContainer.innerHTML = filteredCallsList || "No matching calls found";
-
-//       modalContent.querySelectorAll(".api-call-item")?.forEach((item) => {
-//         item.addEventListener("click", () => {
-//           // כל הלוגיקה של הקליק שכבר יש לנו
-//           const callId = item.getAttribute("data-call-id");
-//           const selectedCall = data.networkCalls.find(
-//             (call) => call.id === callId
-//           );
-//           if (selectedCall) {
-//             // add a dialouge to ask for name and description use sweetalert2 modal
-//             // create a sweetalert2 modal
-//             Swal.fire({
-//               title: "Create Indicator",
-//               html: `
-//               <input type="text" id="indicator-name" class="swal2-input" placeholder="Indicator Name">
-//               <textarea id="indicator-description" class="swal2-textarea" placeholder="Indicator Description"></textarea>
-//               `,
-//               focusConfirm: false,
-//               preConfirm: () => {
-//                 const name = (document.getElementById(
-//                   "indicator-name"
-//                 ) as HTMLInputElement).value;
-//                 const description = (document.getElementById(
-//                   "indicator-description"
-//                 ) as HTMLTextAreaElement).value;
-//                 if (!name) {
-//                   Swal.showValidationMessage("Name is required");
-//                   return false;
-//                 }
-//                 return { name, description };
-//               },
-//             }).then((result) => {
-//           if (result.isConfirmed) {
-//             const { name, description } = result.value;
-//             createIndicator(data, item, element, name, description);
-//           }})
-
-//             modalContent.remove(); // סגירת המודל אחרי בחירת קריאה
-//           }
-//         });
-//       });
-//     }
-//   });
-
-//   // הוספת המודל ל-innerModalContainer
-//   innerModalContainer.appendChild(modalContent);
-
-//   // טיפול בסגירת המודל
-//   const closeModal = modalContent.querySelector("#close-modal");
-//   closeModal?.addEventListener("click", () => {
-//     modalContent.remove(); // במקום לרוקן את כל ה-container
-//   });
-
-//   // הוספת מאזינים לקליקים על הקריאות
-//   modalContent.querySelectorAll(".api-call-item")?.forEach((item) => {
-//     item.addEventListener("click", () => {
-//       const callId = item.getAttribute("data-call-id");
-//       const selectedCall = data.networkCalls.find((call) => call.id === callId);
-//       if (selectedCall) {
-//         // add a dialouge to ask for name and description use sweetalert2 modal
-//         // create a sweetalert2 modal
-//         Swal.fire({
-//           title: "Create Indicator",
-//           html: `
-//           <input type="text" id="indicator-name" class="swal2-input" placeholder="Indicator Name">
-//           <textarea id="indicator-description" class="swal2-textarea" placeholder="Indicator Description"></textarea>
-//           `,
-//           focusConfirm: false,
-//           preConfirm: () => {
-//             const name = (document.getElementById(
-//               "indicator-name"
-//             ) as HTMLInputElement).value;
-//             const description = (document.getElementById(
-//               "indicator-description"
-//             ) as HTMLTextAreaElement).value;
-//             if (!name || !description) {
-//               Swal.showValidationMessage("Please enter both name and description");
-//               return false;
-//             }
-//             return { name, description };
-//           },
-//         }).then((result) => {
-//       if (result.isConfirmed) {
-//         const { name, description } = result.value;
-//         createIndicator(data, item, element, name, description);
-//       }})
-//         modalContent.remove(); // סגירת המודל אחרי בחירת קריאה
-//       }
-//     });
-//   });
-// }
 
 export async function createJiraTicketFromIndicator(data: any) {
   chrome.storage.local.get(['userData'], (result: any) => { 
@@ -880,7 +653,8 @@ export async function createJiraTicketFromIndicator(data: any) {
 }
 
 // האזנה להודעות מהפאנל
-chrome.runtime.onMessage.addListener( async (message) => {
+chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
+  console.log({ message, sender, sendResponse }, "message from panel to content script");
   switch (message.type) {
     case "START_INSPECT_MODE":
       enableInspectMode();

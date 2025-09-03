@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Globe, X, Clock, CheckCircle, XCircle } from 'lucide-react';
+import { Clock, CheckCircle, XCircle } from 'lucide-react';
 import JsonViewer from './JsonViewer';
 import logoIcon from "../../assets/bug.png";
+import { Panel } from '../../panel/Panel';
 
 
 interface IndicatorData {
@@ -22,6 +23,7 @@ interface IndicatorData {
 const IndicatorFloatingWindow: React.FC = () => {
   const [indicatorData, setIndicatorData] = useState<IndicatorData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showPanel, setShowPanel] = useState(false);
 
   useEffect(() => {
     console.log('🚀 Floating window loaded!');
@@ -134,6 +136,14 @@ const IndicatorFloatingWindow: React.FC = () => {
     );
   }
 
+  if (showPanel) {
+    return (
+      <div className="w-screen h-screen bg-white">
+        <Panel />
+      </div>
+    );
+   }
+
   return (
     <div className="w-screen max-w-screen min-h-screen bg-gradient-to-br from-pink-50 to-rose-50">
       {/* Header */}
@@ -145,7 +155,9 @@ const IndicatorFloatingWindow: React.FC = () => {
               onClick={handleReloadIndicator}
             src={logoIcon} alt="Indi API" className="w-8 h-8 rounded drop-shadow-lg cursor-pointer" />
             <div>
+              {/* // lets add a button to show our panel here */}
               <h1 className="text-2xl font-bold">🎯 Indicator Details</h1>
+              <h3 onClick={() => setShowPanel(true)} className="cursor-pointer text-blue-500 hover:underline">Go back to panel</h3>
               <p className="text-pink-100">
                 {indicatorData.method} • Status: {indicatorData.status}
               </p>

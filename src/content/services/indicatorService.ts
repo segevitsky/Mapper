@@ -38,7 +38,8 @@ export function loadIndicators() {
     const currentLocationHost = window.location.host;
     const domainIsAllowed = currentLocationHost.includes('localhost') || domains?.find((d: Domain) => d.value.includes(currentLocationHost));
     if (!domainIsAllowed) {
-      // also lets send a message to the panel to show a message that the domain is not allowed
+      console.log('Domain not allowed, but attempting to load indicators anyway for debugging');
+      // Don't return early - still try to load indicators for better debugging
       chrome.runtime.sendMessage({
         type: "DOMAIN_NOT_ALLOWED",
         data: {
@@ -46,7 +47,6 @@ export function loadIndicators() {
           status: 403,
         },
       });
-      return;
     }
     
 
@@ -58,14 +58,22 @@ export function loadIndicators() {
     }
     currentPageIndicators?.forEach(createIndicatorFromData);
 
-    // Make sure we have all indicators
-    currentPageIndicators?.forEach(async (indicator: any) => {
-      //   const indicatorElement = document.getElementById(`indi-${indicator.id}`);
-      const indicatorElement = await waitForIndicator(indicator.id);
-      if (!indicatorElement) {
+    // Make sure we have all indicators with better error handling
+    currentPageIndicators?.forEach(async (indicator: any, index: number) => {
+      try {
+        const indicatorElement = await waitForIndicator(indicator.id, 3000);
+        if (!indicatorElement) {
+          console.log(`Indicator ${indicator.id} not found, creating with delay ${index * 200}ms`);
+          setTimeout(() => {
+            createIndicatorFromData(indicator);
+          }, 500 + (index * 200)); // Stagger indicator creation
+        }
+      } catch (error) {
+        console.error(`Error loading indicator ${indicator.id}:`, error);
+        // Try to create the indicator anyway
         setTimeout(() => {
           createIndicatorFromData(indicator);
-        }, 1000);
+        }, 1000 + (index * 200));
       }
     });
 
@@ -95,7 +103,7 @@ export async function createIndicatorFromData(
   if (indicatorElement) {
     return;
   }
-  if (indicatorData.pattern) {
+  if (indicatorData?.pattern) {
     indicatorData.baseUrl = window.location.href;
     indicatorData.lastCall.url = updateUrlWithNewUUID(
       indicatorData.lastCall.url,
@@ -126,12 +134,35 @@ export async function createIndicatorFromData(
   }
 
 
-  // lets not create an indicator if its base url is not the current page url this could happen if the user nagivated to a different page
-  // quickly causing the indicator to keep looking for the element
-  if (generateStoragePath(currentPageUUID ? updateUrlWithNewUUID(indicatorData?.request?.documentURL, currentPageUUID) : indicatorData?.request?.documentURL) !== generateStoragePath(window.location.href) && indicatorData.baseUrl !== 'global') { return; }
+  // Check if indicator belongs to current page with more flexible matching
+  const currentPagePath = generateStoragePath(window.location.href);
+  const indicatorPagePath = generateStoragePath(
+    currentPageUUID 
+      ? updateUrlWithNewUUID(indicatorData?.request?.documentURL || indicatorData.baseUrl, currentPageUUID) 
+      : indicatorData?.request?.documentURL || indicatorData.baseUrl
+  );
+  
+  if (indicatorPagePath !== currentPagePath && indicatorData.baseUrl !== 'global') { 
+    console.log(`Skipping indicator ${indicatorData.id}: page mismatch (${indicatorPagePath} !== ${currentPagePath})`);
+    return; 
+  }
+  
+  // claude code addition
+  // const indicatorUrl = currentPageUUID ? updateUrlWithNewUUID(indicatorData?.request?.documentURL, currentPageUUID) : indicatorData?.request?.documentURL;
+  // const indicatorStoragePath = generateStoragePath(indicatorUrl);
+  // const currentStoragePath = generateStoragePath(window.location.href);
+  
+  // if (indicatorStoragePath !== currentStoragePath && indicatorData.baseUrl !== 'global') { 
+  //   return; 
+  // }
 
 
   const elementByPath = await waitForElement(indicatorData.elementInfo.path);
+  if (!elementByPath) {
+    console.warn(`Element not found for path: ${indicatorData.elementInfo.path}`);
+    return;
+  }
+  
   const elementBefore = elementByPath?.previousElementSibling;
   let originalElementAndElementBeforeAreInline = false;
 

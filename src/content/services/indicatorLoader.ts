@@ -98,13 +98,36 @@ export class IndicatorLoader {
     events.forEach((event) =>
       window.addEventListener(event, this.handleIndicatorLoad)
     );
+    
+    // Also listen for SPA navigation and dynamic content changes
+    const observer = new MutationObserver(() => {
+      this.debouncedLoadIndicators();
+    });
+    
+    // Start observing after initial load
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true
+        });
+      });
+    } else {
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    }
 
     this.urlDetector.subscribe(() => {
       document.querySelectorAll(".indicator")?.forEach((indicator) => {
         indicator.remove();
       });
-      this.debouncedLoadIndicators();
-      this.removeDuplicatedIndicatorElements();
+      // Add a small delay to ensure DOM is ready after URL change
+      setTimeout(() => {
+        this.debouncedLoadIndicators();
+        this.removeDuplicatedIndicatorElements();
+      }, 100);
     });
 
     this.handleIndicatorLoad();
@@ -112,8 +135,16 @@ export class IndicatorLoader {
 
   private removeDuplicatedIndicatorElements() {
     const arrayOfIndies = document.querySelectorAll(".indicator");
-    arrayOfIndies.forEach((el, index) => {
-      if (index !== 0) el.remove();
+    const seen = new Set();
+    arrayOfIndies.forEach((el) => {
+      const indicatorId = el.getAttribute('data-indicator-id');
+      if (indicatorId) {
+        if (seen.has(indicatorId)) {
+          el.remove();
+        } else {
+          seen.add(indicatorId);
+        }
+      }
     });
   }
 }

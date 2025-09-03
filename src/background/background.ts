@@ -1,4 +1,5 @@
 // background.ts
+// import { IndiAIAssistant } from "../content/aiAssistant";
 
 interface NetworkRequestInfo {
   request: any;
@@ -29,11 +30,32 @@ interface IdleCheckState {
   lastIdleSentTimestamp?: number;
 }
 
+
+// // Global AI instance
+// let aiAssistant: IndiAIAssistant | null = null;
+
+// // Initialize AI when extension starts
+// async function initializeAI() {
+//   aiAssistant = new IndiAIAssistant();
+//   const success = await aiAssistant.initialize();
+  
+//   if (success) {
+//     console.log('🤖 Indi AI Assistant initialized successfully');
+//   } else {
+//     console.log('⚠️ AI not available, falling back to basic functionality');
+//     aiAssistant = null;
+//   }
+// }
+
+// // Call this when your extension loads
+// initializeAI();
+
+
 const pendingRequests = new Map();
 let envsArray: string[] = [];
 
 //JIRA START + MESSAGES LISTENER
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener(async  (message, sender, sendResponse) => {
   console.log({ message, sender }, "this is the message in background.ts");
   if (message.type === "CREATE_JIRA_TICKET") {
     console.log("Creating Jira ticket with data:", message.data);
@@ -52,6 +74,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log("Updated envsArray with authenticated user domains:", envsArray);
     return true; // חשוב בשביל sendResponse אסינכרוני
   }
+
+
+//  if (message.type === "ANALYZE_API_CALL") {
+//     if (aiAssistant) {
+//       try {
+//         const analysis = await aiAssistant.analyzeAPICall(message.data);
+//         sendResponse({ success: true, analysis });
+//       } catch (error: any) {
+//         sendResponse({ success: false, error: error.message });
+//       }
+//     } else {
+//       sendResponse({ success: false, error: "AI not available" });
+//     }
+//     return true; // Keep message channel open for async response
+//   }
+  
+//   if (message.type === "GET_API_HEALTH_SUMMARY") {
+//     if (aiAssistant) {
+//       try {
+//         const summary = await aiAssistant.summarizeAPIHealth(message.data.calls);
+//         sendResponse({ success: true, summary });
+//       } catch (error: any) {
+//         sendResponse({ success: false, error: error.message });
+//       }
+//     } else {
+//       sendResponse({ success: false, error: "AI not available" });
+//     }
+//     return true;
+//   }
+  
+//   if (message.type === "ASK_AI_QUESTION") {
+//     if (aiAssistant) {
+//       try {
+//         const answer = await aiAssistant.answerQuestion(message.question, message.context);
+//         sendResponse({ success: true, answer });
+//       } catch (error: any) {
+//         sendResponse({ success: false, error: error.message });
+//       }
+//     } else {
+//       sendResponse({ success: false, error: "AI not available" });
+//     }
+//     return true;
+//   }
+
 
 });
 
@@ -306,37 +372,71 @@ async function attachDebugger(tabId: number): Promise<void> {
 
     // Helper for idling
     // הוספה לקוד - פונקציה לשליחת הודעת NETWORK_IDLE באופן יותר עמיד
+    // async function sendNetworkIdleMessage(requests: any) {
+    //   try {
+    //     // בדיקה שהטאב עדיין קיים
+    //     const tab = await chrome.tabs.get(tabId).catch(() => null);
+    //     if (!tab) {
+    //       console.log("Tab no longer exists, not sending message");
+    //       return false;
+    //     }
+
+    //     await chrome.tabs
+    //       .sendMessage(tabId, {
+    //         type: "NETWORK_IDLE",
+    //         requests: requests,
+    //       }
+    //     )
+    //       .catch((error) => {
+    //         if (
+    //           error?.message?.includes("message channel is closed") ||
+    //           error?.message?.includes("Receiving end does not exist")
+    //         ) {
+    //           console.log("Message channel closed, normal during navigation");
+    //           return false;
+    //         } else {
+    //           throw error; // זריקת שגיאות אחרות להמשך הטיפול
+    //         }
+    //       });
+
+    //     console.log("NETWORK_IDLE message sent successfully");
+    //     return true;
+    //   } catch (error) {
+    //     console.error("Failed to send NETWORK_IDLE message:", error);
+    //     return false;
+    //   }
+    // }
+
     async function sendNetworkIdleMessage(requests: any) {
       try {
-        // בדיקה שהטאב עדיין קיים
         const tab = await chrome.tabs.get(tabId).catch(() => null);
         if (!tab) {
           console.log("Tab no longer exists, not sending message");
           return false;
         }
 
-        // ניסיון לשלוח הודעה עם טיפול בשגיאות
-        await chrome.tabs
-          .sendMessage(tabId, {
-            type: "NETWORK_IDLE",
-            requests: requests,
-          })
-          .catch((error) => {
-            if (
-              error?.message?.includes("message channel is closed") ||
-              error?.message?.includes("Receiving end does not exist")
-            ) {
-              console.log("Message channel closed, normal during navigation");
-              return false;
-            } else {
-              throw error; // זריקת שגיאות אחרות להמשך הטיפול
-            }
-          });
+        // Send the network data to content script
+        await chrome.tabs.sendMessage(tabId, {
+          type: "NETWORK_IDLE",
+          requests: requests,
+        });
 
-        console.log("NETWORK_IDLE message sent successfully");
+        // If AI is available, also send AI insights
+        // if (aiAssistant && requests.length > 0) {
+        //   try {
+        //     const healthSummary = await aiAssistant.summarizeAPIHealth(requests);
+        //     await chrome.tabs.sendMessage(tabId, {
+        //       type: "AI_HEALTH_SUMMARY",
+        //       summary: healthSummary,
+        //     });
+        //   } catch (error) {
+        //     console.error('Failed to generate AI summary:', error);
+        //   }
+        // }
+
         return true;
       } catch (error) {
-        console.error("Failed to send NETWORK_IDLE message:", error);
+        console.error('Error in sendNetworkIdleMessage:', error);
         return false;
       }
     }

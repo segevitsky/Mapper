@@ -230,10 +230,13 @@ async function handleLogin(
     if (modal) {
       modal.remove();
     }
-    // refresh page
-    window.location.reload();
-    // Add this line to dispatch the event
+    // Don't refresh page immediately - dispatch event first
     window.dispatchEvent(new CustomEvent('indi-user-authenticated'));
+    
+    // Delay refresh to allow event handlers to run
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
     
     return { 
       success: true 

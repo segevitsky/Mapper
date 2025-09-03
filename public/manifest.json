@@ -1,27 +1,26 @@
 {
   "manifest_version": 3,
-  "name": "Indi - API",
+  "name": "Indi - Mapper",
   "version": "1.0",
   "description": "Map UI elements to API calls",
   "permissions": [
     "storage",
     "webRequest",
-    "webRequestBlocking",
-    "debugger",
+    "debugger", 
     "activeTab",
     "tabs",
-    "<all_urls>",
     "identity",
-    "background",
-    "desktopCapture"
-  ],
+    "desktopCapture",
+    "alarms"
+    ],
   "host_permissions": [
     "<all_urls>",
     "https://*.atlassian.net/*",
     "https://indiemapper.atlassian.net/*",
     "*://*.firebaseio.com/*",
     "*://*.firebase.com/*",
-    "*://*.googleapis.com/*"
+    "*://*.googleapis.com/*",
+    "https://api.anthropic.com/*"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.atlassian.net"
@@ -35,14 +34,5 @@
       "matches": ["<all_urls>"],
       "js": ["content.js"]
     }
-  ],
-  "commands": {
-    "_execute_action": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+3",
-        "mac": "Alt+Shift+I"
-      },
-      "description": "Open Indi DevTools"
-    }
-  }
+  ]
 }

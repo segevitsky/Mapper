@@ -1,16 +1,27 @@
-export function waitForElement(selector: string): Promise<Element> {
+export function waitForElement(selector: string, timeout: number = 10000): Promise<Element | null> {
   return new Promise((resolve) => {
-    if (document.querySelector(selector)) {
-      resolve(document.querySelector(selector)!);
+    const element = document.querySelector(selector);
+    if (element) {
+      resolve(element);
       return;
     }
 
+    let timeoutId: NodeJS.Timeout;
     const observer = new MutationObserver(() => {
-      if (document.querySelector(selector)) {
+      const element = document.querySelector(selector);
+      if (element) {
         observer.disconnect();
-        resolve(document.querySelector(selector)!);
+        clearTimeout(timeoutId);
+        resolve(element);
       }
     });
+
+    // Set up timeout to prevent infinite waiting
+    timeoutId = setTimeout(() => {
+      observer.disconnect();
+      console.warn(`Element not found within ${timeout}ms: ${selector}`);
+      resolve(null);
+    }, timeout);
 
     observer.observe(document.body, {
       childList: true,
