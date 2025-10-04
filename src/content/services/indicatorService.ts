@@ -331,22 +331,26 @@ indicator.addEventListener('mouseenter', () => {
         console.warn("No data found in data-indicator-info attribute");
         tooltipContent = "No data available for this indicator. please refresh the page.";
     } else {
-        const { duration, name, description, timestamp } = data;
+        const { duration, name, description, timestamp, bodyError } = data;
         const schemaStatus = indicator.getAttribute('data-schema-status');
-        // lets update to local time and date
-        const localDate = new Date(timestamp).toLocaleDateString() + ' ' + new Date(timestamp).toLocaleTimeString();
-        tooltipContent = `Last Updated: ${localDate}\nDuration: ${Math.floor(duration)} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`;
-        if (schemaStatus) {
-            tooltipContent += `\nSchema Status: ${schemaStatus}`;
+
+        // If there's a bodyError, show it instead of the regular tooltip content
+        if (bodyError) {
+            tooltipContent = `Body Error: ${bodyError}`;
+        } else {
+            // lets update to local time and date
+            const localDate = new Date(timestamp).toLocaleDateString() + ' ' + new Date(timestamp).toLocaleTimeString();
+            tooltipContent = `Last Updated: ${localDate}\nDuration: ${Math.floor(duration)} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`;
+            if (schemaStatus) {
+                tooltipContent += `\nSchema Status: ${schemaStatus}`;
+            }
         }
     }
 
-    // יצירת טולטיפ כאלמנט נפרד
     const tooltip = document.createElement('div');
     tooltip.className = 'indi-tooltip';
     tooltip.textContent = tooltipContent;
 
-    // חישוב מיקום חכם - הפונקציה שלנו!
     const position = calculateTooltipPosition(indicator);
     const rect = indicator.getBoundingClientRect();
     
