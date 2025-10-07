@@ -1,7 +1,7 @@
 import { JiraTicketData } from "../services/jiraService";
 import { IndicatorData, NetworkCall } from "../types";
 import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
-import { generateStoragePath } from "../utils/storage";
+import { generatePatternBasedStoragePath, generateStoragePath } from "../utils/storage";
 import { identifyDynamicParams } from "../utils/urlUrils";
 import { IndicatorMonitor } from "./services/indicatorMonitor";
 import { IndicatorLoader } from "./services/indicatorLoader";
@@ -26,8 +26,67 @@ let highlighter: HTMLElement | null = null;
 // content.ts - נוסיף את הלוגיקה למודל ולאינדיקטורים
 let modalContainer: HTMLElement;
 let innerModalContainer: HTMLElement;
-export const allNetworkCalls: NetworkCall[] = [];
 
+
+// export const allNetworkCalls: NetworkCall[] = [];
+// content.ts - REPLACE allNetworkCalls array with this:
+export const recentCallsCache = new Map<string, NetworkCall[]>();
+const MAX_CALLS_PER_ENDPOINT = 50;
+
+function addToCache(calls: NetworkCall[]) {
+  calls.forEach(call => {
+    try {
+      // Extract URL from various possible locations
+      const url = call?.response?.response?.url ?? 
+                  call?.response?.url ?? 
+                  call?.request?.request?.url ?? 
+                  call?.url;
+      
+      // Extract method
+      const method = call?.request?.request?.method ?? 
+                     call?.method ?? 
+                     'GET';
+      
+      if (!url) {
+        console.warn('Call without URL, skipping cache', call);
+        return;
+      }
+      
+      // Strategy 1: Simple path (ignores most params)
+      const simpleKey = generateStoragePath(url) + '|' + method;
+      addToCacheKey(simpleKey, call);
+      
+      // Strategy 2: Pattern-based (includes param names)
+      const patternKey = generatePatternBasedStoragePath(url) + '|' + method;
+      addToCacheKey(patternKey, call);
+      
+    } catch (error) {
+      console.error('Error adding to cache:', error, call);
+    }
+  });
+}
+
+function addToCacheKey(key: string, call: NetworkCall) {
+  const existing = recentCallsCache.get(key) || [];
+  
+  // Add to front (newest first)
+  existing.unshift(call);
+  
+  // Keep only last 50
+  if (existing.length > MAX_CALLS_PER_ENDPOINT) {
+    existing.pop(); // Remove oldest
+  }
+  
+  recentCallsCache.set(key, existing);
+}
+
+function clearCache() {
+  recentCallsCache.clear();
+  console.log('🧹 Cache cleared');
+}
+
+// Clear cache on navigation
+window.addEventListener('beforeunload', clearCache);
 
 createContainers();
 injectStyles();
@@ -703,12 +762,11 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
       }
       const monitor = IndicatorMonitor.getInstance();
 
-      allNetworkCalls.push(...message.requests);
-      monitor.checkIndicatorsUpdate(
-        pageIndicators,
-        allNetworkCalls,
-        message.requests
-      );
+        // Add to cache instead of array
+        addToCache(message.requests);
+
+      monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache, message.requests);
+      
       // lets check if we have any indicators that did not update
       const failedIndicators: any[] = [];
       const allIndicators = document.querySelectorAll(".indicator");
@@ -719,7 +777,7 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
         if (!indicatorIsUpdated) {
           failedIndicators.push(indicator);
           if (failedIndicators.length > 0) {
-            monitor.checkIndicatorsUpdate(pageIndicators, allNetworkCalls);
+            monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache, message.requests);
           }
           // chrome.runtime.sendMessage({
           //   type: "INDICATOR_FAILED",
