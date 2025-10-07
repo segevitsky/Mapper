@@ -341,6 +341,8 @@ async function attachDebugger(tabId: number): Promise<void> {
       lastActivityTimestamp: Date.now(),
     };
 
+    const cleanupInterval = createPeriodicCleanup(requestData);
+
     function resetIdleCheck(): void {
       if (idleCheckState.timeout) {
         clearTimeout(idleCheckState.timeout);
@@ -355,6 +357,11 @@ async function attachDebugger(tabId: number): Promise<void> {
 
     function cleanup(): void {
       resetIdleCheck();
+
+      // Stop periodic cleanup
+      if (cleanupInterval) {
+        clearInterval(cleanupInterval);
+      }
 
       // הסרת מאזינים עם בדיקות הגנה
       chrome.debugger.onEvent.removeListener(debuggerListener);
@@ -443,10 +450,20 @@ async function attachDebugger(tabId: number): Promise<void> {
 
     // פונקציית checkIdle משופרת שמשתמשת בפונקציה לעיל
     function checkIdle(): void {
-      console.log(
-        "checkIdle called, requestCount:",
-        idleCheckState.requestCount
-      );
+      const MAX_ENTRIES = 2000;
+      if (requestData.size > MAX_ENTRIES) {
+        console.warn(`⚠️ requestData exceeded ${MAX_ENTRIES} entries (currently ${requestData.size}), force cleaning`);
+        
+        // Sort by timestamp, keep newest 500, delete rest
+        const entries = Array.from(requestData.entries());
+        entries.sort((a, b) => (b[1].timestamp || 0) - (a[1].timestamp || 0));
+        
+        // Delete oldest entries
+        const toDelete = entries.slice(500);
+        toDelete.forEach(([id]) => requestData.delete(id));
+        
+        console.log(`Cleaned ${toDelete.length} old entries, ${requestData.size} remaining`);
+      }
 
       // עדכון זמן הפעילות האחרון
       idleCheckState.lastActivityTimestamp = Date.now();
@@ -472,29 +489,29 @@ async function attachDebugger(tabId: number): Promise<void> {
               console.log("Normal NETWORK_IDLE send, no pending requests");
             }
 
-            // שליחת הנתונים רק אם יש בקשות לשלוח
             if (requestData.size > 0) {
               const requestsToSend = Array.from(requestData.values());
-              console.log(
-                `Sending ${requestsToSend.length} requests in NETWORK_IDLE message`
-              );
-
+              // Track which request IDs we're sending
+              const sentRequestIds = requestsToSend
+                .map(req => req.request?.requestId)
+                .filter(id => id !== undefined);
               const success = await sendNetworkIdleMessage(requestsToSend);
               if (success) {
-                requestData.clear();
+                sentRequestIds.forEach(id => requestData.delete(id));
               }
             } else {
               console.log("No request data to send, skipping NETWORK_IDLE");
             }
           } else {
-            console.log(
-              `Not sending NETWORK_IDLE: ${idleCheckState.requestCount} requests still pending, last activity ${timeSinceActivity}ms ago`
-            );
-            console.log("lets try to send what we have until now");
             const requestsToSend = Array.from(requestData.values());
+            // Track which request IDs we're sending
+            const sentRequestIds = requestsToSend
+              .map(req => req.request?.requestId)
+              .filter(id => id !== undefined);
+              
             const success = await sendNetworkIdleMessage(requestsToSend);
             if (success) {
-              requestData.clear();
+              sentRequestIds.forEach(id => requestData.delete(id)); // ✅ FIXED
             }
           }
         } catch (error) {
@@ -520,6 +537,17 @@ async function attachDebugger(tabId: number): Promise<void> {
             request: params,
             timestamp: Date.now(),
           });
+
+          // Orphan detection - delete if no response after 30 seconds
+          setTimeout(() => {
+            const req = requestData.get(params.requestId);
+            if (req && !req.response && !req.failed && !req.cancelled) {
+              console.log(`Cleaning orphaned request: ${params.requestId}`);
+              requestData.delete(params.requestId);
+              idleCheckState.requestCount = Math.max(0, idleCheckState.requestCount - 1);
+            }
+          }, 30000);
+
           break;
 
         case "Network.responseReceived": {
@@ -682,6 +710,48 @@ async function attachDebugger(tabId: number): Promise<void> {
       throw err;
     }
   }
+}
+
+// Periodic cleanup - runs every 2 minutes to remove old data
+function createPeriodicCleanup(requestDataMap: Map<string, NetworkRequestInfo>) {
+  const cleanup = () => {
+    const now = Date.now();
+    const FIVE_MINUTES = 5 * 60 * 1000;
+    const TWO_MINUTES = 2 * 60 * 1000;
+    
+    let deletedCount = 0;
+    
+    for (const [id, req] of requestDataMap.entries()) {
+      const age = now - (req.timestamp || 0);
+      
+      // Delete old completed requests (have response and body)
+      if (req.response && req.body && age > FIVE_MINUTES) {
+        requestDataMap.delete(id);
+        deletedCount++;
+        continue;
+      }
+      
+      // Delete old errors (keep them longer for debugging)
+      if (req.failed && age > TWO_MINUTES) {
+        requestDataMap.delete(id);
+        deletedCount++;
+        continue;
+      }
+      
+      // Delete old cancelled requests
+      if (req.cancelled && age > TWO_MINUTES) {
+        requestDataMap.delete(id);
+        deletedCount++;
+      }
+    }
+    
+    if (deletedCount > 0) {
+      console.log(`🧹 Periodic cleanup: removed ${deletedCount} old entries, ${requestDataMap.size} remaining`);
+    }
+  };
+  
+  // Run every 2 minutes
+  return setInterval(cleanup, 2 * 60 * 1000);
 }
 
 let floatingWindowId: number | null = null;

@@ -7,7 +7,8 @@ import {
 } from "../../utils/general";
 import { generateStoragePath } from "../../utils/storage";
 import { extractUUIDFromUrl, updateUrlWithNewUUID } from "../../utils/urlUrils";
-import { allNetworkCalls, createJiraTicketFromIndicator } from "../content";
+import { createJiraTicketFromIndicator, recentCallsCache  } from "../content";
+
 import initFloatingButton from "../floatingRecorderButton";
 import SchemaValidationService from "./schemaValidationService";
 import { createInteractiveJsonViewer, jsonViewerStyles, setupJsonViewerListeners } from "./components/jsonViewer";
@@ -33,6 +34,7 @@ export function loadIndicators() {
   
   chrome.storage.local.get(["indicators", 'userData', 'limits', 'role'], (result) => {
     const { userData, limits, role, indicators } = result;
+    console.log('All Indicators from storage:', indicators);
     const { domains, status } = userData || {};
     // lets see if our current location is included in the domains
     const currentLocationHost = window.location.host;
@@ -312,18 +314,10 @@ indicator.addEventListener('mouseenter', () => {
         `;
         document.head.appendChild(style);
     }
-    
-    const allNetworkCallsThatMatch = allNetworkCalls
-          .filter(
-            (call: any) =>
-              generateStoragePath(
-                call?.response?.url ?? call?.request?.request?.url
-              ) === generateStoragePath(indicatorData.lastCall?.url)
-          )
-          .filter(
-            (el: any) => el?.request?.request?.method === indicatorData.method
-          );
-    const netWorkData = allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1];   
+
+    const key = generateStoragePath(indicatorData.lastCall?.url) + '|' + indicatorData.method;
+    const recentCalls = recentCallsCache.get(key) || [];
+    const netWorkData = recentCalls[0]; // Newest first since we unshift
     
     let tooltipContent;
     const data = dataAttribute ? JSON.parse(dataAttribute) : netWorkData ;
@@ -993,27 +987,19 @@ indicator.addEventListener("click", async () => {
         indicator.getAttribute("data-indicator-info") || "{}"
       );
       if (!allIndicatorData) {
-          const allNetworkCallsThatMatch = allNetworkCalls
-            .filter(
-              (call: any) =>
-                generateStoragePath(
-                  call?.response?.url ?? call?.request?.request?.url
-                ) === generateStoragePath(indicatorData.lastCall?.url)
-            )
-            .filter(
-              (el: any) => el?.request?.request?.method === indicatorData.method
-            );
-          if (allNetworkCallsThatMatch.length > 0) {
-            const allIndicatorData = allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1];
+          const key = generateStoragePath(indicatorData.lastCall?.url) + '|' + indicatorData.method;
+          const recentCalls = recentCallsCache.get(key) || [];
+          if (recentCalls.length > 0) {
+            const allIndicatorData = recentCalls[0];
             // lets send the message to the background script to open the floating window
-          chrome.runtime.sendMessage({
-          type: "OPEN_FLOATING_WINDOW",
-          data: {
-            indicatorData: allIndicatorData,
-            networkCall: allIndicatorData,
-              }
-            });
-          }
+            chrome.runtime.sendMessage({
+            type: "OPEN_FLOATING_WINDOW",
+            data: {
+              indicatorData: allIndicatorData,
+              networkCall: allIndicatorData,
+                }
+              });
+            }
           return;
       }
 
@@ -1424,18 +1410,11 @@ indicator.addEventListener("click", async () => {
     const dataAttribute = indicator.getAttribute('data-indicator-info');
     const body = JSON.parse(dataAttribute || '{}')?.body;
     if (!dataAttribute || !body) {
-        const allNetworkCallsThatMatch = allNetworkCalls
-          .filter(
-            (call: any) =>
-              generateStoragePath(
-                call?.response?.url ?? call?.request?.request?.url
-              ) === generateStoragePath(indicatorData.lastCall?.url)
-          )
-          .filter(
-            (el: any) => el?.request?.request?.method === indicatorData.method
-          );
-        if (allNetworkCallsThatMatch.length > 0) {
-          const allIndicatorData = allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1];
+        const key = generateStoragePath(indicatorData.lastCall?.url) + '|' + indicatorData.method;
+        const recentCalls = recentCallsCache.get(key) || [];
+        if (recentCalls.length > 0) {
+          const allIndicatorData = recentCalls[0]; // Newest first
+
           // lets send the message to the background script to open the floating window
         chrome.runtime.sendMessage({
         type: "OPEN_FLOATING_WINDOW",
@@ -1634,119 +1613,157 @@ function handleTabClick(e: Event, responsePanel: HTMLElement) {
 }
 
 interface DraggableOptions {
-  handle?: string; // CSS selector for drag handle
-  bounds?: boolean; // Whether to constrain to window bounds
-  onDragEnd?: (position: { x: number; y: number }) => void; // Callback when drag ends
+  handle?: string;
+  bounds?: boolean;
+  onDragStart?: (position: { x: number; y: number }) => void;
+  onDrag?: (position: { x: number; y: number }) => void;
+  onDragEnd?: (position: { x: number; y: number }) => void;
 }
 
+interface DragState {
+  isDragging: boolean;
+  offsetX: number;
+  offsetY: number;
+}
 
-function makeDraggable(element: HTMLElement, options: DraggableOptions = {}) {
-  const { handle = null, bounds = true, onDragEnd = null } = options;
+function makeDraggable(element: HTMLElement, options: DraggableOptions = {}): () => void {
+  const {
+    handle = null,
+    bounds = true,
+    onDragStart = null,
+    onDrag = null,
+    onDragEnd = null
+  } = options;
 
-  let isDragging = false;
-  let currentX: number;
-  let currentY: number;
-  let initialX: number;
-  let initialY: number;
-  let offsetX: number;
-  let offsetY: number;
+  const state: DragState = {
+    isDragging: false,
+    offsetX: 0,
+    offsetY: 0
+  };
 
-  const handleElement = handle ? element.querySelector(handle) : element;
-  if (!handleElement) return;
+  // Get handle element or use the element itself
+  const handleElement = handle 
+    ? element.querySelector<HTMLElement>(handle) 
+    : element;
 
-  (handleElement as HTMLElement).style.cursor = "move";
-  (handleElement as HTMLElement).style.userSelect = "none";
-
-  function startDragging(e: MouseEvent) {
-    isDragging = true;
-
-    const rect = element.getBoundingClientRect();
-    
-    // חישוב המרחק בין נקודת הקליק לפינה השמאלית העליונה של האלמנט
-    offsetX = e.clientX - rect.left;
-    offsetY = e.clientY - rect.top;
-
-    // שמירת המיקום הראשוני
-    initialX = rect.left;
-    initialY = rect.top;
-
-    element.style.transition = "none";
-    element.style.zIndex = "100000";
-    element.style.position = "fixed"; // ודא שהאלמנט ממוקם באופן קבוע
+  if (!handleElement) {
+    console.warn('Draggable handle not found');
+    return () => {}; // Return empty cleanup function
   }
 
-  function drag(e: MouseEvent) {
-    if (!isDragging) return;
+  // Setup handle styles
+  setupHandleStyles(handleElement);
 
+  // Ensure element is positioned
+  ensurePositioned(element);
+
+  // Event handlers
+  const handleMouseDown = (e: MouseEvent) => {
+    e.preventDefault();
+    
+    const rect = element.getBoundingClientRect();
+    state.isDragging = true;
+    state.offsetX = e.clientX - rect.left;
+    state.offsetY = e.clientY - rect.top;
+
+    // Prepare element for dragging
+    element.style.transition = 'none';
+    element.style.zIndex = '100000';
+
+    if (onDragStart) {
+      onDragStart({ x: rect.left, y: rect.top });
+    }
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!state.isDragging) return;
     e.preventDefault();
 
-    // חישוב המיקום החדש בהתבסס על מיקום העכבר פחות הקיזוז
-    let newX = e.clientX - offsetX;
-    let newY = e.clientY - offsetY;
+    // Calculate new position
+    let x = e.clientX - state.offsetX;
+    let y = e.clientY - state.offsetY;
 
-    // הגבלת התנועה לגבולות המסך
+    // Apply bounds if enabled
     if (bounds) {
-      const rect = element.getBoundingClientRect();
-      const elementWidth = rect.width;
-      const elementHeight = rect.height;
-      
-      // חישוב הגבולות המקסימליים והמינימליים
-      const minX = 0;
-      const minY = 0;
-      const maxX = window.innerWidth - elementWidth;
-      const maxY = window.innerHeight - elementHeight;
-
-      // הגבלת המיקום לגבולות
-      newX = Math.min(Math.max(minX, newX), maxX);
-      newY = Math.min(Math.max(minY, newY), maxY);
+      const constrained = constrainToBounds(element, x, y);
+      x = constrained.x;
+      y = constrained.y;
     }
 
-    currentX = newX;
-    currentY = newY;
+    // Update position
+    updatePosition(element, x, y);
 
-    // החלת התנועה
-    requestAnimationFrame(() => {
-      element.style.left = `${currentX}px`;
-      element.style.top = `${currentY}px`;
-    });
-  }
+    if (onDrag) {
+      onDrag({ x, y });
+    }
+  };
 
-  function stopDragging() {
-    if (!isDragging) return;
+  const handleMouseUp = () => {
+    if (!state.isDragging) return;
 
-    isDragging = false;
-    element.style.transition = "box-shadow 0.3s ease";
-    element.style.zIndex = "99999";
+    state.isDragging = false;
+    element.style.transition = 'box-shadow 0.3s ease';
+    element.style.zIndex = '99999';
 
-    // קריאה לקולבק עם המיקום הסופי
+    const rect = element.getBoundingClientRect();
     if (onDragEnd) {
-      onDragEnd({ x: currentX, y: currentY });
+      onDragEnd({ x: rect.left, y: rect.top });
     }
-  }
+  };
 
-  // הוספת מאזינים
-  (handleElement as HTMLElement).addEventListener("mousedown", startDragging);
-  document.addEventListener("mousemove", drag);
-  document.addEventListener("mouseup", stopDragging);
-
-  // מניעת בחירת טקסט בזמן גרירה
-  document.addEventListener("selectstart", (e) => {
-    if (isDragging) {
+  const handleSelectStart = (e: Event) => {
+    if (state.isDragging) {
       e.preventDefault();
     }
-  });
-
-  // פונקציית ניקוי
-  return () => {
-    (handleElement as HTMLElement).removeEventListener("mousedown", startDragging);
-    document.removeEventListener("mousemove", drag);
-    document.removeEventListener("mouseup", stopDragging);
-    document.removeEventListener("selectstart", (e) => {
-      if (isDragging) {
-        e.preventDefault();
-      }
-    });
   };
+
+  // Attach listeners
+  handleElement.addEventListener('mousedown', handleMouseDown);
+  document.addEventListener('mousemove', handleMouseMove);
+  document.addEventListener('mouseup', handleMouseUp);
+  document.addEventListener('selectstart', handleSelectStart);
+
+  // Return cleanup function
+  return () => {
+    handleElement.removeEventListener('mousedown', handleMouseDown);
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+    document.removeEventListener('selectstart', handleSelectStart);
+  };
+}
+
+// Helper functions
+function setupHandleStyles(element: HTMLElement): void {
+  element.style.cursor = 'grab';
+  element.style.userSelect = 'none';
+}
+
+function ensurePositioned(element: HTMLElement): void {
+  const computed = window.getComputedStyle(element);
+  if (computed.position === 'static') {
+    element.style.position = 'fixed';
+  }
+}
+
+function constrainToBounds(element: HTMLElement, x: number, y: number): { x: number; y: number } {
+  const rect = element.getBoundingClientRect();
+  
+  const minX = 0;
+  const minY = 0;
+  const maxX = window.innerWidth - rect.width;
+  const maxY = window.innerHeight - rect.height;
+
+  return {
+    x: Math.max(minX, Math.min(maxX, x)),
+    y: Math.max(minY, Math.min(maxY, y))
+  };
+}
+
+function updatePosition(element: HTMLElement, x: number, y: number): void {
+  requestAnimationFrame(() => {
+    element.style.left = `${x}px`;
+    element.style.top = `${y}px`;
+  });
 }
 
 export function getElementPath(element: Element): string {

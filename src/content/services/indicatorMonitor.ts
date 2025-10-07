@@ -1,4 +1,4 @@
-import { IndicatorData, NetworkRequest } from "../../types";
+import { IndicatorData, NetworkCall, NetworkRequest } from "../../types";
 import { waitForIndicator } from "../../utils/general";
 import {
   generatePatternBasedStoragePath,
@@ -263,164 +263,146 @@ export class IndicatorMonitor {
   }
 
   public checkIndicatorsUpdate(
-    indicators: IndicatorData[],
-    allNetworkCalls?: any,
-    currentMessages?: any
-  ): void | IndicatorData[] {
+  indicators: IndicatorData[],
+  recentCalls: Map<string, NetworkCall[]>,
+  currentMessages?: any
+): void | IndicatorData[] {
 
-    const indicatorsThatDidNotUpdate: IndicatorData[] = [];
-    console.log({ currentMessages })
-    if (indicators.length > 0) {
-      indicators.forEach((indicator) => {
-        const networkCall = allNetworkCalls.find(
-          (call: any) =>
-            generateStoragePath(
-              call?.response?.url ?? call?.request?.request?.url
-            ) === generateStoragePath(indicator.lastCall?.url)
+  const indicatorsThatDidNotUpdate: IndicatorData[] = [];
+  console.log({ currentMessages });
+
+  if (indicators.length > 0) {
+    // Update indicators on current page
+    indicators.forEach((indicator) => {
+      try {
+        // Create keys using same logic as cache
+        const normalKey = generateStoragePath(indicator.lastCall?.url) + '|' + indicator.method;
+        const patternKey = generatePatternBasedStoragePath(indicator.lastCall?.url) + '|' + indicator.method;
+        
+        // Get recent calls for both keys
+        const normalCalls = recentCalls.get(normalKey) || [];
+        const patternCalls = recentCalls.get(patternKey) || [];
+        
+        // Combine and deduplicate by requestId
+        const allMatches = [...normalCalls, ...patternCalls];
+        const uniqueMatches = Array.from(
+          new Map(allMatches.map(call => [call.request?.requestId, call])).values()
         );
-
-        const allNetworkCallsThatMatch = allNetworkCalls
-          .filter(
-            (call: any) =>
-              generateStoragePath(
-                call?.response?.url ?? call?.request?.request?.url
-              ) === generateStoragePath(indicator.lastCall?.url)
-          )
-          .filter(
-            (el: any) => el?.request?.request?.method === indicator.method
-          );
-
-        const allNetworkCallsThatMatchTest = allNetworkCalls
-          .filter(
-            (call: any) =>
-              generatePatternBasedStoragePath(
-                call?.response?.url ?? call?.request?.request?.url
-              ) === generatePatternBasedStoragePath(indicator.lastCall?.url)
-          )
-          .filter(
-            (el: any) => el?.request?.request?.method === indicator.method
-          );
-
-        const networkCallWithBody = allNetworkCallsThatMatchTest.find(
-          (el: any) => !!el.body
-        );
-
-
-        if (
-          networkCall ||
-          allNetworkCallsThatMatch.length > 0 ||
-          allNetworkCallsThatMatchTest.length > 0
-        ) {
-
-          this.updateIndicatorContent(
-            indicator,
-            allNetworkCallsThatMatch[allNetworkCallsThatMatch.length - 1] ??
-              networkCallWithBody ??
-              networkCall
-          );
-        } else {
-          // Add here a way to report this on the screen!
-          indicatorsThatDidNotUpdate.push(indicator);
-        }
-      });
-    } else {
-      // In this situation we are navigating to a page that has no indicators however his children might have indicators so we are checking
-      // lets update all the indicators from our storage with our current network calls and save them back to storage
-      chrome.storage.local.get(["indicators"], (result) => {
-        const indies = result.indicators as { [key: string]: IndicatorData[] };
-
-        const currentPageNestedIndies = Object.keys(indies)
-          .filter((key) =>
-            key.includes(generateStoragePath(window.location.href))
-          )
-          .map((key) => indies[key])
-          .flat()
-          .map((indicator: IndicatorData) => {
-            const networkCall = allNetworkCalls.find(
-              (call: any) =>
-                generateStoragePath(
-                  call?.response?.response?.url ?? call?.request?.request?.url
-                ) === generateStoragePath(indicator.lastCall?.url)
-            );
-
-            if (networkCall) {
-              // console.log(
-              //   "מצאנו התאמה - מעדכנים אינדיקטור:",
-              //   indicator,
-              //   networkCall
-              // );
-
-              // עדכון ישיר של האובייקט בתוך המערך
-              return {
-                ...indicator,
-                ...networkCall,
-                lastCall: {
-                  ...indicator.lastCall,
-                  status:
-                    networkCall.response?.status || indicator.lastCall.status,
-                  timestamp: Date.now(),
-                  url:
-                    networkCall.response?.response?.url ||
-                    indicator.lastCall.url,
-                },
-              };
-            }
-          });
-        // console.log({ currentPageNestedIndies }, "currentPageNestedIndies");
-
-        if (!indies) return;
-        let hasUpdates = false;
-
-        Object.keys(indies).forEach((key: string) => {
-          const arrayOfIndiesPerPath = indies[key];
-
-          arrayOfIndiesPerPath.forEach((indicator, index) => {
-            const networkCall = allNetworkCalls.find(
-              (call: any) =>
-                generateStoragePath(
-                  call?.response?.response?.url ?? call?.request?.request?.url
-                ) === generateStoragePath(indicator.lastCall?.url) &&
-                call.request.request.method === indicator.method
-            );
-
-            if (networkCall) {
-              // console.log(
-              //   "מצאנו התאמה - מעדכנים אינדיקטור:",
-              //   indicator,
-              //   networkCall
-              // );
-
-              // עדכון ישיר של האובייקט בתוך המערך
-              indies[key][index] = {
-                ...indicator,
-                ...networkCall,
-                lastCall: {
-                  ...indicator.lastCall,
-                  status:
-                    networkCall.response?.status || indicator.lastCall.status,
-                  timestamp: Date.now(),
-                  url:
-                    networkCall.response?.response?.url ||
-                    indicator.lastCall.url,
-                },
-              };
-
-              hasUpdates = true;
-            }
-          });
+        
+        // Find best match using fallback chain
+        let matchingCall = null;
+        
+        // 1. Try exact path match first
+        matchingCall = uniqueMatches.find(call => {
+          const callUrl = call?.response?.url ?? call?.request?.request?.url;
+          return generateStoragePath(callUrl) === generateStoragePath(indicator.lastCall?.url);
         });
+        
+        // 2. Try pattern-based match
+        if (!matchingCall) {
+          matchingCall = uniqueMatches.find(call => {
+            const callUrl = call?.response?.url ?? call?.request?.request?.url;
+            return generatePatternBasedStoragePath(callUrl) === 
+                   generatePatternBasedStoragePath(indicator.lastCall?.url);
+          });
+        }
+        
+        // 3. Prefer call with body if available
+        if (!matchingCall) {
+          matchingCall = uniqueMatches.find(call => !!call.body);
+        }
+        
+        // 4. Fall back to latest call
+        if (!matchingCall && uniqueMatches.length > 0) {
+          matchingCall = uniqueMatches[0]; // Newest since we unshift
+        }
+        
+        if (matchingCall) {
+          this.updateIndicatorContent(indicator, matchingCall as any);
+        } else {
+          indicatorsThatDidNotUpdate.push(indicator);
+          console.warn('No match found for indicator:', {
+            indicator: indicator.id,
+            url: indicator.lastCall?.url,
+            method: indicator.method,
+            normalKey,
+            patternKey,
+            cacheSize: recentCalls.size
+          });
+        }
+      } catch (error) {
+        console.error('Error updating indicator:', error, indicator);
+        indicatorsThatDidNotUpdate.push(indicator);
+      }
+    });
+  } else {
+    // Update nested route indicators in storage
+    this.updateNestedIndicators(recentCalls);
+  }
 
-        // שמירה בסטוראג' רק אם היו עדכונים
-        if (hasUpdates) {
-          chrome.storage.local.set({ indicators: indies });
+  // Scan for auto indicators - pass only recent calls
+  const autoIndicatorService = AutoIndicatorService.getInstance();
+  const allRecentCalls = Array.from(recentCalls.values()).flat();
+  autoIndicatorService.scanForDataIndies(allRecentCalls);
+  
+  return indicatorsThatDidNotUpdate;
+}
+
+private updateNestedIndicators(recentCalls: Map<string, NetworkCall[]>): void {
+  chrome.storage.local.get(["indicators"], (result) => {
+    const indies = result.indicators as { [key: string]: IndicatorData[] };
+    if (!indies) return;
+
+    const currentPath = generateStoragePath(window.location.href);
+    let hasUpdates = false;
+
+    // Only check indicators whose paths contain current URL
+    Object.keys(indies).forEach((path: string) => {
+      if (!path.includes(currentPath)) return; // Skip unrelated paths
+      
+      const arrayOfIndiesPerPath = indies[path];
+
+      arrayOfIndiesPerPath.forEach((indicator, index) => {
+        try {
+          const normalKey = generateStoragePath(indicator.lastCall?.url) + '|' + indicator.method;
+          const patternKey = generatePatternBasedStoragePath(indicator.lastCall?.url) + '|' + indicator.method;
+          
+          const normalCalls = recentCalls.get(normalKey) || [];
+          const patternCalls = recentCalls.get(patternKey) || [];
+          const allMatches = [...normalCalls, ...patternCalls];
+          
+          const matchingCall = allMatches.find(call => {
+            const callUrl = call?.response?.response?.url ?? call?.request?.request?.url;
+            return generateStoragePath(callUrl) === generateStoragePath(indicator.lastCall?.url);
+          });
+
+          if (matchingCall) {
+            // Update indicator in storage
+            indies[path][index] = {
+              ...indicator,
+              lastCall: {
+                ...indicator.lastCall,
+                status: matchingCall.response?.status || indicator.lastCall.status,
+                timestamp: Date.now(),
+                url: matchingCall.response?.response?.url || indicator.lastCall.url,
+              },
+            };
+            hasUpdates = true;
+          }
+        } catch (error) {
+          console.error('Error updating nested indicator:', error, indicator);
         }
       });
-    }
+    });
 
-    // RIGHT HERE WE NEED TO SEND A MESSAGE SAYING LETS START TO SCAN FOR INDICATORS
-    const autoIndicatorService = AutoIndicatorService.getInstance();
-    autoIndicatorService.scanForDataIndies(allNetworkCalls);
-  }
+    // Save to storage only if there were updates
+    if (hasUpdates) {
+      chrome.storage.local.set({ indicators: indies });
+    }
+  });
+}
+
+
 }
 
 // יצוא ברירת מחדל של המחלקה

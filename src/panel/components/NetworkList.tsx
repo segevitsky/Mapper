@@ -14,6 +14,8 @@ interface NetworkCall {
     duration: number;
   };
   responseHeaders?: any[];
+  request?: any;
+  response?: any;
 }
 
 export const NetworkList: React.FC<{
