@@ -762,8 +762,8 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
       }
       const monitor = IndicatorMonitor.getInstance();
 
-        // Add to cache instead of array
-        addToCache(message.requests);
+      // Add to cache instead of array
+      addToCache(message.requests);
 
       monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache, message.requests);
       
