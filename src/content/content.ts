@@ -1,6 +1,6 @@
-import { JiraTicketData } from "../services/jiraService";
+// import { JiraTicketData } from "../services/jiraService";
 import { IndicatorData, NetworkCall } from "../types";
-import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
+// import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
 import { generatePatternBasedStoragePath, generateStoragePath } from "../utils/storage";
 import { identifyDynamicParams } from "../utils/urlUrils";
 import { IndicatorMonitor } from "./services/indicatorMonitor";
@@ -13,8 +13,11 @@ import {
 } from "./services/indicatorService"
 import { waitForIndicator } from "../utils/general";
 import Swal from "sweetalert2";
+import { IndiBlob } from './blob/indiBlob';
+import { SpeechBubble } from './blob/speechBubble';
+import { OnboardingFlow } from './blob/onboarding';
+import { PageSummary, PageSummaryData } from './blob/PageSummary';
 // import { createAIChatInterface } from './aiChatComponent';
-
 // אחרי שכל הדף נטען, פשוט להוסיף:
 // createAIChatInterface();
 
@@ -26,6 +29,282 @@ let highlighter: HTMLElement | null = null;
 // content.ts - נוסיף את הלוגיקה למודל ולאינדיקטורים
 let modalContainer: HTMLElement;
 let innerModalContainer: HTMLElement;
+
+// Initialize Indi Blob
+// Global instances
+let indiBlob: IndiBlob | null = null;
+let speechBubble: SpeechBubble | null = null;
+let onboardingFlow: OnboardingFlow | null = null;
+let isIndiInitialized = false;
+let pageSummary: PageSummary | null = null;
+let issuesSummary: PageSummaryData | null = null;
+
+
+async function initializeIndi(networkData: NetworkCall[]) {
+  if (isIndiInitialized) return;
+
+  try {
+    console.log('🫧 Initializing Indi with network data...');
+
+    // 1. Create Indi blob
+    indiBlob = new IndiBlob();
+    await indiBlob.loadPosition();
+
+    // 2. Create speech bubble
+    speechBubble = new SpeechBubble();
+    indiBlob.setSpeechBubble(speechBubble);
+
+    // 3. Create page summary analyzer
+    pageSummary = new PageSummary();
+
+    // 4. Create onboarding flow
+    onboardingFlow = new OnboardingFlow(indiBlob, speechBubble);
+    await onboardingFlow.startWithNetworkData(networkData);
+
+    // 5. Set up event listeners
+    setupIndiEventListeners();
+
+    isIndiInitialized = true;
+    console.log('✅ Indi initialized successfully!');
+  } catch (error) {
+    console.error('❌ Failed to initialize Indi:', error);
+  }
+}
+
+// listen to create indi events
+document.addEventListener('indi-create-indicator', async (e: Event) => {
+  const customEvent = e as CustomEvent<{ indicatorData: IndicatorData }>;
+  const { indicatorData } = customEvent.detail;
+  enableInspectMode();
+  
+});
+
+
+document.addEventListener('indi-badge-clicked', (e: Event) => {
+  // cast the generic Event to our CustomEvent with the expected detail shape
+  const customEvent = e as CustomEvent<{ count: number; summaryData: PageSummaryData }>;
+  const { count, summaryData } = customEvent.detail;
+  console.log('🔔 Badge clicked, showing issues summary:', { count, summaryData });
+  
+  // Call showIssuesSummary with the actual data
+  if (issuesSummary) {
+    showIssuesSummary(issuesSummary);
+  } else {
+    console.warn('⚠️ No summary data available or speech bubble not initialized');
+  }
+});
+
+
+/**
+ * Set up Indi-specific event listeners
+ */
+function setupIndiEventListeners() {
+  // Listen for Indi blob clicks
+  document.addEventListener('indi-blob-clicked', handleBlobClick);
+}
+
+
+function handleBlobClick() {
+  console.log('🫧 Indi blob clicked!');
+  
+  if (speechBubble) {
+    speechBubble.show({
+      title: 'Coming Soon! 🚀',
+      message: 'The expanded panel is under construction.\nStay tuned for awesome insights!',
+      actions: [
+        {
+          label: 'Got it!',
+          style: 'primary',
+          onClick: () => speechBubble?.hide(),
+        },
+      ],
+      showClose: true,
+      persistent: false,
+    });
+  }
+}
+
+function analyzeNetworkForIndi(networkData: NetworkCall[]) {
+  if (!indiBlob || !pageSummary) return;
+
+  // Analyze page
+  const summary = pageSummary.analyze(networkData);
+  
+  console.log('📊 Page Summary:', summary);
+
+  // Update Indi's notification count
+  indiBlob.setNotifications(summary.issueCount);
+
+  // Generate HTML summary for hover tooltip
+  const summaryHTML = pageSummary.generateSummaryHTML(summary);
+  indiBlob.showSummaryOnHover(summaryHTML);
+
+  // If there are issues, show speech bubble automatically
+  if (summary.hasIssues) {
+    showIssuesSummary(summary);
+    issuesSummary = summary;
+  }
+}
+
+function showIssuesSummary(summary: PageSummaryData) {
+  if (!speechBubble) return;
+
+  const issueMessages: string[] = [];
+
+  if (summary.errorCalls > 0) {
+    issueMessages.push(`❌ ${summary.errorCalls} API${summary.errorCalls > 1 ? 's' : ''} failing`);
+  }
+
+  if (summary.slowestApi && summary.slowestApi.duration > 1000) {
+    issueMessages.push(`⚡ Slow API detected (${summary.slowestApi.duration}ms)`, summary.slowestApi.url);
+    // let offer the user to add an indicator for the slow API
+    issueMessages.push(`👉 Consider adding an indicator for this API to monitor its performance.`);
+  }
+
+  if (summary.securityIssues > 0) {
+    issueMessages.push(`🔒 ${summary.securityIssues} security issue${summary.securityIssues > 1 ? 's' : ''}`);
+  }
+
+  if (issueMessages.length > 0) {
+    speechBubble.show({
+      title: '⚠️ Issues Detected',
+      message: issueMessages.join('\n'),
+      actions: [
+        {
+          label: 'View Details',
+          style: 'primary',
+          onClick: () => {
+            speechBubble?.hide();
+            handleBlobClick();
+          },
+        },
+        {
+          label: 'Dismiss',
+          style: 'secondary',
+          onClick: () => speechBubble?.hide(),
+        },
+        {
+          label: 'Add An Indi',
+          style: 'third',
+          onClick: () => speechBubble?.createIndi(summary),
+        },
+      ],
+      showClose: true,
+      persistent: false, // Auto-dismiss after 10s
+    });
+  }
+}
+
+/**
+ * Extract URLs from cache for onboarding
+ */
+function getUrlsFromCache(): string[] {
+  const urls = new Set<string>();
+  
+  // Extract URLs from cache keys
+  recentCallsCache.forEach((calls, key) => {
+    // Key format: "url|METHOD"
+    const url = key.split('|')[0];
+    
+    // Get a sample call to extract full URL
+    if (calls.length > 0) {
+      try {
+        const sampleCall = calls[0];
+        const fullUrl = sampleCall?.response?.url || 
+                        sampleCall?.url || 
+                        sampleCall?.request?.url;
+        
+        if (fullUrl) {
+          const urlObj = new URL(fullUrl);
+          const baseUrl = `${urlObj.protocol}//${urlObj.hostname}`;
+          urls.add(baseUrl);
+        }
+      } catch (e) {
+        // Invalid URL, skip
+      }
+    }
+  });
+
+  return Array.from(urls);
+}
+
+
+function cleanupIndi() {
+  document.removeEventListener('indi-blob-clicked', handleBlobClick);
+  
+  if (indiBlob) {
+    indiBlob.destroy();
+    indiBlob = null;
+  }
+
+  if (speechBubble) {
+    speechBubble.destroy();
+    speechBubble = null;
+  }
+
+  if (pageSummary) {
+    pageSummary = null;
+  }
+
+  onboardingFlow = null;
+  isIndiInitialized = false;
+}
+
+// Add cleanup to existing beforeunload
+window.addEventListener('beforeunload', () => {
+  cleanupIndi();
+  clearCache(); // Your existing cache clear
+});
+
+// Export for debugging
+(window as any).indi = {
+  blob: () => indiBlob,
+  speech: () => speechBubble,
+  onboarding: () => onboardingFlow,
+  restart: () => onboardingFlow?.restart(),
+  cache: () => recentCallsCache,
+  urls: () => getUrlsFromCache(),
+};
+
+/**
+ * Get insight title based on type
+ */
+function getInsightTitle(type: string): string {
+  const titles: Record<string, string> = {
+    error: '🔴 API Error Detected',
+    slow: '⚡ Slow Response',
+    security: '🔒 Security Issue',
+    new_api: '🆕 New API Discovered',
+    schema_change: '📊 Schema Changed',
+  };
+
+  return titles[type] || '💡 New Insight';
+}
+
+/**
+ * Cleanup on page unload
+ */
+function cleanup() {
+  document.removeEventListener('indi-blob-clicked', handleBlobClick);
+  
+  if (indiBlob) {
+    indiBlob.destroy();
+    indiBlob = null;
+  }
+
+  if (speechBubble) {
+    speechBubble.destroy();
+    speechBubble = null;
+  }
+
+  onboardingFlow = null;
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', cleanup);
+
+// Export for debugging in console
+(window as any).indiBlob = indiBlob;
 
 
 // export const allNetworkCalls: NetworkCall[] = [];
@@ -729,14 +1008,6 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
         currentPageIndicators.forEach((indicator: IndicatorData) => {
           createIndicatorFromData(indicator);
         });
-
-        // lets also check if we have any indicators that did not update
-        // const monitor = IndicatorMonitor.getInstance();
-        // monitor.checkIndicatorsUpdate(
-        //   currentPageIndicators,
-        //   allNetworkCalls,
-        // );
-
       });
       break;  
 
@@ -755,16 +1026,44 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
 
       break;
 
-    
+    case 'SET_EMOTION':
+      // Manually set emotion (for testing or specific events)
+      if (indiBlob && message.emotion) {
+        indiBlob.setEmotion(message.emotion);
+      }
+      break;
+
+    case 'RESTART_ONBOARDING':
+      if (onboardingFlow) {
+        onboardingFlow.restart();
+      }
+      break;
+
+    case 'GET_NETWORK_CALLS':
+      // Background is requesting network calls (for onboarding)
+      // We don't have them here, background should respond
+      sendResponse({ networkCalls: [] });
+      break;
+
     case "NETWORK_IDLE": {
       if (message.requests.length === 0) {
         return;
-      }
-      const monitor = IndicatorMonitor.getInstance();
-
+      };
+      
       // Add to cache instead of array
       addToCache(message.requests);
-
+      
+      // Initialize Indi on first NETWORK_IDLE
+      if (!isIndiInitialized) {
+        initializeIndi(message.requests);
+      } else {
+        // Already initialized, just analyze
+        // only analyze if indi blob is connected to this page - which means finished onboarding
+        analyzeNetworkForIndi(message.requests);
+      }
+      
+      
+      const monitor = IndicatorMonitor.getInstance();
       monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache, message.requests);
       
       // lets check if we have any indicators that did not update
@@ -983,13 +1282,6 @@ function updateRelevantIndicators(newCall: NetworkCall) {
           if (openTooltip) {
             updateTooltipContent(openTooltip, updatedData);
           }
-
-          // console.log(
-          //   { currentPageIndicators },
-          //   "Current page indicators after update"
-          // );
-
-          // אנימציה
           (indicatorElement as HTMLElement).style.transform = "scale(1.2)";
           setTimeout(() => {
             (indicatorElement as HTMLElement).style.transform = "scale(1)";
@@ -997,23 +1289,16 @@ function updateRelevantIndicators(newCall: NetworkCall) {
 
           hasUpdates = true;
         } else {
-          // console.log("Indicator element not found:", indicator);
           const indicatorSecondAttempt = document.getElementById(
             `indi-${indicator.id}`
           );
-          // console.log(
-          //   "Indicator element second attempt:",
-          //   !!indicatorSecondAttempt
-          // );
+
         }
       }
     } catch (error) {
       console.error("Error processing indicator:", error);
     }
   });
-
-  // console.log("Has updates:", hasUpdates);
-  // console.log("Indicators after update:", currentPageIndicators);
 }
 
 // פונקציה חדשה לעדכון תוכן הטולטיפ
