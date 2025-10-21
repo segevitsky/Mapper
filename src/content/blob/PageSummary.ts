@@ -102,8 +102,8 @@ export class PageSummary {
     const securityIssues = apisWithoutAuth.length;
 
     // Issues summary
-    const slowAPIs = durations.filter(d => d > 1000).length;
-    const issueCount = errors.length + slowAPIs + securityIssues;
+    const hasSlowAPI = durations.some(d => d > 1000) ? 1 : 0;
+    const issueCount = errors.length + hasSlowAPI + securityIssues;
     const hasIssues = issueCount > 0;
 
     console.log('📊 Analysis complete:', {
@@ -112,7 +112,7 @@ export class PageSummary {
       errorsCount: errors.length,
       issueCount,
       errors,
-      slowAPIs,
+      hasSlowAPI,
       securityIssues,
 
     });
