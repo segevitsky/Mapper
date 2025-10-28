@@ -1,24 +1,35 @@
 import { uuidRegex } from "./urlUrils";
 
 export function generateStoragePath(url: string): string {
-  const urlObj = new URL(url);
-  const search = urlObj.search;
-  const pathname = urlObj.pathname;
-  const params = new URLSearchParams(search);
-  const tabValue = params.get("tab");
+  try {
+    if (!url || typeof url !== 'string') {
+      throw new Error('Invalid URL input');
+    }
 
-  const pathParts = pathname
-    .split("/")
-    .filter(Boolean)
-    .filter((el) => el !== "/")
-    .filter((el) => el !== "")
-    .filter((el) => !uuidRegex.test(el));
+    const urlObj = new URL(url);
+    const search = urlObj.search;
+    const pathname = urlObj.pathname;
+    const params = new URLSearchParams(search);
+    const tabValue = params.get("tab");
 
-  if (tabValue) {
-    pathParts.push(tabValue);
+    const pathParts = pathname
+      .split("/")
+      .filter(Boolean)
+      .filter((el) => el !== "/")
+      .filter((el) => el !== "")
+      .filter((el) => !uuidRegex.test(el));
+
+    if (tabValue) {
+      pathParts.push(tabValue);
+    }
+
+    return pathParts.join("_");
+  } catch (error) {
+    console.warn('⚠️ generateStoragePath failed for URL:', url, error);
+    // Return sanitized fallback
+    const sanitized = String(url).replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 100);
+    return sanitized || 'invalid_url';
   }
-
-  return pathParts.join("_");
 }
 
 /**

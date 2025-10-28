@@ -17,6 +17,9 @@ export interface NetworkCall {
   request?: any;
   body?: any;
   error?: string;
+  lastCall?: any;
+  duration?: number;
+  bodySize?: number;
 }
 
 export interface ElementMapping {

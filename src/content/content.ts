@@ -1,6 +1,6 @@
-import { JiraTicketData } from "../services/jiraService";
+// import { JiraTicketData } from "../services/jiraService";
 import { IndicatorData, NetworkCall } from "../types";
-import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
+// import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
 import { generatePatternBasedStoragePath, generateStoragePath } from "../utils/storage";
 import { identifyDynamicParams } from "../utils/urlUrils";
 import { IndicatorMonitor } from "./services/indicatorMonitor";
@@ -13,8 +13,11 @@ import {
 } from "./services/indicatorService"
 import { waitForIndicator } from "../utils/general";
 import Swal from "sweetalert2";
+import { IndiBlob } from './blob/indiBlob';
+import { SpeechBubble } from './blob/speechBubble';
+import { OnboardingFlow } from './blob/onboarding';
+import { PageSummary, PageSummaryData } from './blob/PageSummary';
 // import { createAIChatInterface } from './aiChatComponent';
-
 // אחרי שכל הדף נטען, פשוט להוסיף:
 // createAIChatInterface();
 
@@ -26,6 +29,450 @@ let highlighter: HTMLElement | null = null;
 // content.ts - נוסיף את הלוגיקה למודל ולאינדיקטורים
 let modalContainer: HTMLElement;
 let innerModalContainer: HTMLElement;
+
+// Initialize Indi Blob
+// Global instances
+let indiBlob: IndiBlob | null = null;
+let speechBubble: SpeechBubble | null = null;
+let onboardingFlow: OnboardingFlow | null = null;
+let isIndiInitialized = false;
+let pageSummary: PageSummary | null = null;
+let issuesSummary: PageSummaryData | null = null;
+let indiBlobUrlWithIssue: string | null = null;
+
+
+async function initializeIndi(networkData: NetworkCall[]) {
+  if (isIndiInitialized) return;
+
+  try {
+    console.log('🫧 Initializing Indi with network data...');
+
+    // 1. Create Indi blob
+    indiBlob = new IndiBlob();
+    await indiBlob.loadPosition();
+
+    // 2. Create speech bubble
+    speechBubble = new SpeechBubble();
+    indiBlob.setSpeechBubble(speechBubble);
+
+    // 3. Create page summary analyzer
+    pageSummary = new PageSummary();
+
+    // 4. Create onboarding flow
+    onboardingFlow = new OnboardingFlow(indiBlob, speechBubble);
+    await onboardingFlow.startWithNetworkData(networkData);
+
+    // 5. Set up event listeners
+    setupIndiEventListeners();
+
+    isIndiInitialized = true;
+    console.log('✅ Indi initialized successfully!');
+  } catch (error) {
+    console.error('❌ Failed to initialize Indi:', error);
+  }
+}
+
+/**
+ * Helper function to check if a URL is a static asset (not an API call)
+ */
+function isStaticAsset(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname.toLowerCase();
+    const staticExtensions = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.woff', '.woff2', '.ttf', '.ico', '.map'];
+    return staticExtensions.some(ext => pathname.endsWith(ext));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Helper function to safely generate storage path with error handling
+ */
+function safeGenerateStoragePath(url: string): string | null {
+  try {
+    return generateStoragePath(url);
+  } catch (error) {
+    console.warn('⚠️ Could not generate storage path for URL:', url);
+    return null;
+  }
+}
+
+/**
+ * Find a network call in cache by URL, filtering out static assets
+ */
+function findNetworkCallInCache(targetUrl: string): NetworkCall | null {
+  const targetPath = safeGenerateStoragePath(targetUrl);
+  if (!targetPath) {
+    console.warn('⚠️ Invalid target URL:', targetUrl);
+    return null;
+  }
+
+  let foundCall: NetworkCall | null = null;
+
+  recentCallsCache.forEach((calls, key) => {
+    if (foundCall) return; // Already found, skip remaining
+
+    try {
+      const [cachedUrl, method] = key.split('|');
+
+      // Skip static assets
+      if (isStaticAsset(cachedUrl)) {
+        return;
+      }
+
+      const cachedPath = safeGenerateStoragePath(cachedUrl);
+      if (!cachedPath) {
+        return; // Skip invalid URLs
+      }
+
+      if (cachedPath === targetPath && calls.length > 0) {
+        foundCall = calls[0];
+        console.log('✅ Found API call in cache:', { url: cachedUrl, method, call: foundCall });
+      }
+    } catch (error) {
+      console.warn('⚠️ Error processing cache key:', key, error);
+    }
+  });
+
+  return foundCall;
+}
+
+// listen to create indi events
+document.addEventListener('indi-create-indicator', async (e: Event) => {
+  const customEvent = e as CustomEvent<{ apiUrl: string; duration?: number; fullSummary?: any }>;
+  const { apiUrl, duration, fullSummary } = customEvent.detail;
+  console.log('🎯 Indi create indicator event received:', { apiUrl, duration, fullSummary });
+
+  // Try to find the full NetworkCall data from cache using the safe helper
+  const fullNetworkCall = findNetworkCallInCache(apiUrl);
+
+  if (fullNetworkCall) {
+    console.log('✅ Found full network call data from cache:', fullNetworkCall);
+  } else {
+    console.warn('⚠️ Could not find network call in cache for URL:', apiUrl);
+  }
+
+  // Store the URL and full data for later use
+  indiBlobUrlWithIssue = apiUrl;
+  (window as any).__indiBlobNetworkCall = fullNetworkCall; // Store for handleIndiBlobRef
+
+  enableInspectMode(apiUrl);
+});
+
+
+document.addEventListener('indi-badge-clicked', (e: Event) => {
+  // cast the generic Event to our CustomEvent with the expected detail shape
+  const customEvent = e as CustomEvent<{ count: number; summaryData: PageSummaryData }>;
+  const { count, summaryData } = customEvent.detail;
+  console.log('🔔 Badge clicked, showing issues summary:', { count, summaryData });
+  
+  // Call showIssuesSummary with the actual data
+  if (issuesSummary) {
+    showIssuesSummary(issuesSummary);
+  } else {
+    console.warn('⚠️ No summary data available or speech bubble not initialized');
+  }
+});
+
+
+/**
+ * Set up Indi-specific event listeners
+ */
+function setupIndiEventListeners() {
+  // Listen for Indi blob clicks
+  document.addEventListener('indi-blob-clicked', handleBlobClick);
+}
+
+
+function handleBlobClick() {
+  console.log('🫧 Indi blob clicked!');
+  
+  if (speechBubble) {
+    speechBubble.show({
+      title: 'Coming Soon! 🚀',
+      message: 'The expanded panel is under construction.\nStay tuned for awesome insights!',
+      actions: [
+        {
+          label: 'Got it!',
+          style: 'primary',
+          onClick: () => speechBubble?.hide(),
+        },
+      ],
+      showClose: true,
+      persistent: false,
+    });
+  }
+}
+
+// Track cumulative issues for the current page
+let currentPageUrl: string = window.location.href;
+let cumulativeErrorCalls = new Set<string>(); // Track unique error URLs
+let cumulativeSlowApis = new Set<string>(); // Track unique slow API URLs
+let cumulativeSecurityIssues = new Set<string>(); // Track unique security issues
+let cumulativeSummary: PageSummaryData | null = null; // Track cumulative summary for badge clicks
+
+// Reset cumulative tracking when page changes
+function resetCumulativeTracking() {
+  currentPageUrl = window.location.href;
+  cumulativeErrorCalls.clear();
+  cumulativeSlowApis.clear();
+  cumulativeSecurityIssues.clear();
+  cumulativeSummary = null;
+  console.log('🔄 Reset cumulative tracking for new page:', currentPageUrl);
+}
+
+async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
+  const result = await chrome.storage.local.get(['userData']);
+  const { domains } = result.userData || {};
+  const urlDomains = domains.map((el: any) => el.value)
+  if (!Array.isArray(urlDomains)) return;
+
+  const matchFound = urlDomains.some((url: string) => {
+    const domain = new URL(url).origin;
+    return window.location.href.includes(domain);
+  });
+
+  if (!indiBlob || !pageSummary || !matchFound) return;
+
+  // Check if URL changed - if so, reset cumulative tracking
+  if (window.location.href !== currentPageUrl) {
+    resetCumulativeTracking();
+  }
+
+  // Analyze current batch
+  const summary = pageSummary.analyze(networkData);
+
+  console.log('📊 Current Batch Summary:', summary);
+
+  // Update cumulative tracking with NEW issues from this batch
+  if (summary.errorCalls > 0) {
+    // Add error URLs to cumulative set
+    networkData.forEach(call => {
+      if (call.status >= 400) {
+        const url = extractNetworkCallUrl(call);
+        cumulativeErrorCalls.add(url);
+      }
+    });
+  }
+
+  if (summary.slowestApi && summary.slowestApi.duration > 1000) {
+    cumulativeSlowApis.add(summary.slowestApi.url);
+  }
+
+  if (summary.apisWithoutAuth && summary.apisWithoutAuth.length > 0) {
+    summary.apisWithoutAuth.forEach((url: string) => cumulativeSecurityIssues.add(url));
+  }
+
+  // Calculate total cumulative issue count for this page
+  const totalIssueCount =
+    cumulativeErrorCalls.size +
+    cumulativeSlowApis.size +
+    cumulativeSecurityIssues.size;
+
+  console.log('📊 Cumulative Issues for Page:', {
+    pageUrl: currentPageUrl,
+    errors: cumulativeErrorCalls.size,
+    slowApis: cumulativeSlowApis.size,
+    security: cumulativeSecurityIssues.size,
+    total: totalIssueCount
+  });
+
+  // Build cumulative summary for badge clicks
+  if (!cumulativeSummary) {
+    // First batch - use current summary as base
+    cumulativeSummary = { ...summary };
+  } else {
+    // Merge new batch into cumulative summary
+    cumulativeSummary.errorCalls = cumulativeErrorCalls.size;
+    cumulativeSummary.securityIssues = cumulativeSecurityIssues.size;
+    cumulativeSummary.apisWithoutAuth = Array.from(cumulativeSecurityIssues);
+
+    // Update slowest API if new batch has slower one
+    if (summary.slowestApi && cumulativeSlowApis.has(summary.slowestApi.url)) {
+      if (!cumulativeSummary.slowestApi || summary.slowestApi.duration > cumulativeSummary.slowestApi.duration) {
+        cumulativeSummary.slowestApi = summary.slowestApi;
+      }
+    }
+
+    // Update issue flags
+    cumulativeSummary.hasIssues = totalIssueCount > 0;
+    cumulativeSummary.issueCount = totalIssueCount;
+  }
+
+  // Update Indi's notification count with cumulative count
+  indiBlob.setNotifications(totalIssueCount);
+
+  // Generate HTML summary for hover tooltip (use cumulative summary)
+  const summaryHTML = pageSummary.generateSummaryHTML(cumulativeSummary);
+  indiBlob.showSummaryOnHover(summaryHTML);
+
+  // If there are NEW issues in this batch, show speech bubble
+  if (summary.hasIssues) {
+    showIssuesSummary(cumulativeSummary); // Show cumulative summary
+    issuesSummary = cumulativeSummary; // Store cumulative summary for badge clicks
+  }
+}
+
+function showIssuesSummary(summary: PageSummaryData) {
+  if (!speechBubble) return;
+
+  const issueMessages: string[] = [];
+
+  if (summary.errorCalls > 0) {
+    issueMessages.push(`❌ ${summary.errorCalls} API${summary.errorCalls > 1 ? 's' : ''} failing`);
+  }
+
+  if (summary.slowestApi && summary.slowestApi.duration > 1000) {
+    issueMessages.push(`⚡ Slow API detected (${summary.slowestApi.duration}ms)`, summary.slowestApi.url);
+    // let offer the user to add an indicator for the slow API
+    issueMessages.push(`👉 Consider adding an indicator for this API to monitor its performance.`);
+  }
+
+  if (summary.securityIssues > 0) {
+    issueMessages.push(`🔒 ${summary.securityIssues} security issue${summary.securityIssues > 1 ? 's' : ''}`);
+  }
+
+  if (issueMessages.length > 0) {
+    speechBubble.show({
+      title: '⚠️ Issues Detected',
+      message: issueMessages.join('\n'),
+      actions: [
+        {
+          label: 'View Details',
+          style: 'primary',
+          onClick: () => {
+            speechBubble?.hide();
+            handleBlobClick();
+          },
+        },
+        {
+          label: 'Dismiss',
+          style: 'secondary',
+          onClick: () => speechBubble?.hide(),
+        },
+        {
+          label: 'Add An Indi',
+          style: 'third',
+          onClick: () => speechBubble?.createIndi(summary),
+        },
+      ],
+      showClose: true,
+      persistent: false, // Auto-dismiss after 10s
+    });
+  }
+}
+
+/**
+ * Extract URLs from cache for onboarding
+ */
+function getUrlsFromCache(): string[] {
+  const urls = new Set<string>();
+  
+  // Extract URLs from cache keys
+  recentCallsCache.forEach((calls, key) => {
+    // Key format: "url|METHOD"
+    const url = key.split('|')[0];
+    
+    // Get a sample call to extract full URL
+    if (calls.length > 0) {
+      try {
+        const sampleCall = calls[0];
+        const fullUrl = sampleCall?.response?.url || 
+                        sampleCall?.url || 
+                        sampleCall?.request?.url;
+        
+        if (fullUrl) {
+          const urlObj = new URL(fullUrl);
+          const baseUrl = `${urlObj.protocol}//${urlObj.hostname}`;
+          urls.add(baseUrl);
+        }
+      } catch (e) {
+        // Invalid URL, skip
+      }
+    }
+  });
+
+  return Array.from(urls);
+}
+
+
+function cleanupIndi() {
+  document.removeEventListener('indi-blob-clicked', handleBlobClick);
+  
+  if (indiBlob) {
+    indiBlob.destroy();
+    indiBlob = null;
+  }
+
+  if (speechBubble) {
+    speechBubble.destroy();
+    speechBubble = null;
+  }
+
+  if (pageSummary) {
+    pageSummary = null;
+  }
+
+  onboardingFlow = null;
+  isIndiInitialized = false;
+}
+
+// Add cleanup to existing beforeunload
+window.addEventListener('beforeunload', () => {
+  cleanupIndi();
+  clearCache(); // Your existing cache clear
+});
+
+// Export for debugging
+(window as any).indi = {
+  blob: () => indiBlob,
+  speech: () => speechBubble,
+  onboarding: () => onboardingFlow,
+  restart: () => onboardingFlow?.restart(),
+  cache: () => recentCallsCache,
+  urls: () => getUrlsFromCache(),
+};
+
+/**
+ * Get insight title based on type
+ */
+function getInsightTitle(type: string): string {
+  const titles: Record<string, string> = {
+    error: '🔴 API Error Detected',
+    slow: '⚡ Slow Response',
+    security: '🔒 Security Issue',
+    new_api: '🆕 New API Discovered',
+    schema_change: '📊 Schema Changed',
+  };
+
+  return titles[type] || '💡 New Insight';
+}
+
+/**
+ * Cleanup on page unload
+ */
+function cleanup() {
+  document.removeEventListener('indi-blob-clicked', handleBlobClick);
+  
+  if (indiBlob) {
+    indiBlob.destroy();
+    indiBlob = null;
+  }
+
+  if (speechBubble) {
+    speechBubble.destroy();
+    speechBubble = null;
+  }
+
+  onboardingFlow = null;
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', cleanup);
+
+// Export for debugging in console
+(window as any).indiBlob = indiBlob;
 
 
 // export const allNetworkCalls: NetworkCall[] = [];
@@ -141,23 +588,23 @@ function createIndicator(data: any, item: any, element: any, name: string, descr
   const indicatorData: IndicatorData = {
     id: Date.now().toString(),
     baseUrl: window.location.href,
-    method: selectedCall.method,
+    method: selectedCall.method ?? selectedCall.request.request.method,
     elementInfo: {
       path: element.path,
       rect: element.rect,
     },
     lastCall: {
       status: selectedCall.status,
-      timing: selectedCall?.timing ?? "debug here!",
+      timing: selectedCall?.timing ?? selectedCall?.request?.request?.timing ?? "debug here!",
       timestamp: Date.now(),
-      url: selectedCall.url,
+      url: selectedCall.url ?? selectedCall.request.request.url,
     },
     position: {
       top: rect.top + window.scrollY,
       left: rect.right + window.scrollX,
     },
     calls: [selectedCall],
-    hisDaddyElement: item,
+    hisDaddyElement: item ?? null,
     name: name || "API Indicator",
     description: description || "No description provided",
   };
@@ -188,11 +635,10 @@ function createIndicator(data: any, item: any, element: any, name: string, descr
                   : "relative"
               };
           top: 1rem;
-          
+
         `;
 
-  // הוספת האינדיקטור מייד אחרי האלמנט
-  elementByPath.after(indicator);
+  // Don't add indicator here - it will be added in the storage callback to avoid duplicates
 
   indicator.addEventListener("click", () => {
     const tooltip = document.createElement("div");
@@ -359,7 +805,8 @@ function showModal(
     rect: any;
     tagName: string;
   },
-  data: { networkCalls: NetworkCall[] }
+  data: { networkCalls: NetworkCall[] },
+  autoSelect: boolean = false
 ) {
   if (!modalContainer) createContainers();
 
@@ -369,24 +816,42 @@ function showModal(
   // Create modal overlay
   const modalOverlay = document.createElement("div");
   modalOverlay.className = "api-modal-overlay";
+  // Ensure modal has proper z-index and pointer events
+  modalOverlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 999999;
+    pointer-events: auto;
+  `;
 
   // Create modal content
   const modalContent = document.createElement("div");
   modalContent.className = "api-modal-content";
+  modalContent.style.pointerEvents = "auto";
 
   // Create header
   const header = createModalHeader();
   modalContent.appendChild(header);
 
-  // Create search section
-  const searchSection = createSearchSection(data.networkCalls);
-  modalContent.appendChild(searchSection);
+  // If autoSelect mode, skip search and list, go straight to form
+  if (!autoSelect) {
+    // Create search section
+    const searchSection = createSearchSection(data.networkCalls);
+    modalContent.appendChild(searchSection);
 
-  // Create calls list
-  const callsList = createCallsList(data.networkCalls);
-  modalContent.appendChild(callsList);
+    // Create calls list
+    const callsList = createCallsList(data.networkCalls);
+    modalContent.appendChild(callsList);
+  }
 
-  // Create form section (initially hidden)
+  // Create form section (initially hidden unless autoSelect)
   const formSection = createFormSection();
   modalContent.appendChild(formSection);
 
@@ -394,7 +859,34 @@ function showModal(
   innerModalContainer.appendChild(modalOverlay);
 
   // Setup event listeners
-  setupModalEventListeners(modalOverlay, searchSection, callsList, formSection, data.networkCalls, element, data);
+  if (autoSelect && data.networkCalls.length > 0) {
+    // Auto-select the first (and only) call and show form immediately
+    const selectedCall = data.networkCalls[0];
+    formSection.setAttribute('data-selected-call', JSON.stringify(selectedCall));
+    formSection.setAttribute('data-element', JSON.stringify(element));
+    formSection.setAttribute('data-data', JSON.stringify(data));
+    formSection.classList.add('show');
+
+    // Update header to show selected API
+    const subtitle = header.querySelector('.api-modal-subtitle');
+    if (subtitle) {
+      const apiUrl = extractNetworkCallUrl(selectedCall);
+      subtitle.textContent = `API: ${apiUrl}`;
+    }
+
+    // Focus on name input
+    setTimeout(() => {
+      const nameInput = formSection.querySelector('#indicator-name') as HTMLInputElement;
+      nameInput?.focus();
+    }, 100);
+
+    // Pass null for searchSection and callsList since they don't exist in autoSelect mode
+    setupModalEventListeners(modalOverlay, null, null, formSection, data.networkCalls, element, data);
+  } else {
+    const searchSection = modalContent.querySelector('.api-modal-search-section') as HTMLElement;
+    const callsList = modalContent.querySelector('.api-modal-calls-list') as HTMLElement;
+    setupModalEventListeners(modalOverlay, searchSection, callsList, formSection, data.networkCalls, element, data);
+  }
 }
 
 function createModalHeader(): HTMLElement {
@@ -466,16 +958,38 @@ function createCallsList(networkCalls: NetworkCall[]): HTMLElement {
   return listContainer;
 }
 
+/**
+ * Extract URL from NetworkCall - handles various data structures
+ */
+function extractNetworkCallUrl(call: NetworkCall): string {
+  return call?.response?.response?.url ??
+         call?.response?.url ??
+         call?.request?.request?.url ??
+         call?.url ??
+         'Unknown URL';
+}
+
+/**
+ * Extract HTTP method from NetworkCall - handles various data structures
+ */
+function extractNetworkCallMethod(call: NetworkCall): string {
+  return call?.request?.request?.method ??
+         call?.method ??
+         'GET';
+}
+
 function renderCallItems(container: HTMLElement, calls: NetworkCall[]) {
   container.innerHTML = calls.map(call => createCallItemHTML(call)).join('');
 }
 
 function createCallItemHTML(call: NetworkCall): string {
   const isSuccess = call.status >= 200 && call.status < 300;
-  const methodClass = `api-call-badge-${call.method.toLowerCase()}`;
+  const url = extractNetworkCallUrl(call);
+  const method = extractNetworkCallMethod(call);
+  const methodClass = `api-call-badge-${method.toLowerCase()}`;
   const statusClass = isSuccess ? 'api-call-badge-success' : 'api-call-badge-error';
   const indicatorClass = isSuccess ? 'api-call-status-success' : 'api-call-status-error';
-  
+
   const formatUrl = (url: string) => {
     try {
       const urlObj = new URL(url);
@@ -490,10 +1004,10 @@ function createCallItemHTML(call: NetworkCall): string {
       <div class="api-call-content">
         <div class="api-call-info">
           <div class="api-call-badges">
-            <span class="api-call-badge ${methodClass}">${call.method}</span>
+            <span class="api-call-badge ${methodClass}">${method}</span>
             <span class="api-call-badge ${statusClass}">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                ${isSuccess 
+                ${isSuccess
                   ? '<path d="M9 12l2 2 4-4"></path><circle cx="12" cy="12" r="10"></circle>'
                   : '<circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line>'
                 }
@@ -501,8 +1015,8 @@ function createCallItemHTML(call: NetworkCall): string {
               ${call.status}
             </span>
           </div>
-          <div class="api-call-url-main">${formatUrl(call.url)}</div>
-          <div class="api-call-url-full">${call.url}</div>
+          <div class="api-call-url-main">${formatUrl(url)}</div>
+          <div class="api-call-url-full">${url}</div>
         </div>
         <div class="api-call-status-indicator ${indicatorClass}"></div>
       </div>
@@ -539,8 +1053,8 @@ function createFormSection(): HTMLElement {
 // Setup event listeners
 function setupModalEventListeners(
   modalOverlay: HTMLElement,
-  searchSection: HTMLElement, 
-  callsList: HTMLElement,
+  searchSection: HTMLElement | null,
+  callsList: HTMLElement | null,
   formSection: HTMLElement,
   networkCalls: NetworkCall[],
   element: any,
@@ -568,37 +1082,40 @@ function setupModalEventListeners(
     e.stopPropagation();
   });
 
-  // Search functionality
-  const searchInput = searchSection.querySelector('#search-calls') as HTMLInputElement;
-  const searchContainer = searchSection.querySelector('#search-container');
-  const resultsCount = searchSection.querySelector('#results-count');
+  // Search functionality - only if searchSection exists (not in autoSelect mode)
+  if (searchSection && callsList) {
+    const searchInput = searchSection.querySelector('#search-calls') as HTMLInputElement;
+    const searchContainer = searchSection.querySelector('#search-container');
+    const resultsCount = searchSection.querySelector('#results-count');
 
-  searchInput?.addEventListener('focus', () => {
-    searchContainer?.classList.add('focused');
-  });
+    searchInput?.addEventListener('focus', () => {
+      searchContainer?.classList.add('focused');
+    });
 
-  searchInput?.addEventListener('blur', () => {
-    searchContainer?.classList.remove('focused');
-  });
+    searchInput?.addEventListener('blur', () => {
+      searchContainer?.classList.remove('focused');
+    });
 
-  searchInput?.addEventListener('input', (e) => {
-    const searchTerm = (e.target as HTMLInputElement).value.toLowerCase();
-    const filteredCalls = networkCalls.filter(call =>
-      call.url.toLowerCase().includes(searchTerm) ||
-      call.method.toLowerCase().includes(searchTerm)
-    );
+    searchInput?.addEventListener('input', (e) => {
+      const searchTerm = (e.target as HTMLInputElement).value.toLowerCase();
+      const filteredCalls = networkCalls.filter(call => {
+        const url = extractNetworkCallUrl(call);
+        const method = extractNetworkCallMethod(call);
+        return url.toLowerCase().includes(searchTerm) || method.toLowerCase().includes(searchTerm);
+      });
 
-    renderCallItems(callsList, filteredCalls);
-    if (resultsCount) {
-      resultsCount.textContent = `Showing ${filteredCalls.length} of ${networkCalls.length} API calls`;
-    }
+      renderCallItems(callsList, filteredCalls);
+      if (resultsCount) {
+        resultsCount.textContent = `Showing ${filteredCalls.length} of ${networkCalls.length} API calls`;
+      }
 
-    // Re-attach click listeners to new items
+      // Re-attach click listeners to new items
+      attachCallItemListeners(callsList, networkCalls, formSection, element, data);
+    });
+
+    // Initial call item listeners
     attachCallItemListeners(callsList, networkCalls, formSection, element, data);
-  });
-
-  // Initial call item listeners
-  attachCallItemListeners(callsList, networkCalls, formSection, element, data);
+  }
 
   // Form listeners
   setupFormListeners(formSection, modalOverlay);
@@ -729,14 +1246,6 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
         currentPageIndicators.forEach((indicator: IndicatorData) => {
           createIndicatorFromData(indicator);
         });
-
-        // lets also check if we have any indicators that did not update
-        // const monitor = IndicatorMonitor.getInstance();
-        // monitor.checkIndicatorsUpdate(
-        //   currentPageIndicators,
-        //   allNetworkCalls,
-        // );
-
       });
       break;  
 
@@ -755,16 +1264,44 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
 
       break;
 
-    
+    case 'SET_EMOTION':
+      // Manually set emotion (for testing or specific events)
+      if (indiBlob && message.emotion) {
+        indiBlob.setEmotion(message.emotion);
+      }
+      break;
+
+    case 'RESTART_ONBOARDING':
+      if (onboardingFlow) {
+        onboardingFlow.restart();
+      }
+      break;
+
+    case 'GET_NETWORK_CALLS':
+      // Background is requesting network calls (for onboarding)
+      // We don't have them here, background should respond
+      sendResponse({ networkCalls: [] });
+      break;
+
     case "NETWORK_IDLE": {
       if (message.requests.length === 0) {
         return;
-      }
-      const monitor = IndicatorMonitor.getInstance();
-
+      };
+      
       // Add to cache instead of array
       addToCache(message.requests);
-
+      
+      // Initialize Indi on first NETWORK_IDLE
+      if (!isIndiInitialized) {
+        initializeIndi(message.requests);
+      } else {
+        // Already initialized, just analyze
+        // only analyze if indi blob is connected to this page - which means finished onboarding
+        analyzeNetworkForIndi(message.requests);
+      }
+      
+      
+      const monitor = IndicatorMonitor.getInstance();
       monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache, message.requests);
       
       // lets check if we have any indicators that did not update
@@ -983,13 +1520,6 @@ function updateRelevantIndicators(newCall: NetworkCall) {
           if (openTooltip) {
             updateTooltipContent(openTooltip, updatedData);
           }
-
-          // console.log(
-          //   { currentPageIndicators },
-          //   "Current page indicators after update"
-          // );
-
-          // אנימציה
           (indicatorElement as HTMLElement).style.transform = "scale(1.2)";
           setTimeout(() => {
             (indicatorElement as HTMLElement).style.transform = "scale(1)";
@@ -997,23 +1527,16 @@ function updateRelevantIndicators(newCall: NetworkCall) {
 
           hasUpdates = true;
         } else {
-          // console.log("Indicator element not found:", indicator);
           const indicatorSecondAttempt = document.getElementById(
             `indi-${indicator.id}`
           );
-          // console.log(
-          //   "Indicator element second attempt:",
-          //   !!indicatorSecondAttempt
-          // );
+
         }
       }
     } catch (error) {
       console.error("Error processing indicator:", error);
     }
   });
-
-  // console.log("Has updates:", hasUpdates);
-  // console.log("Indicators after update:", currentPageIndicators);
 }
 
 // פונקציה חדשה לעדכון תוכן הטולטיפ
@@ -1054,7 +1577,7 @@ function createHighlighter() {
   document.body.appendChild(highlighter);
 }
 
-function enableInspectMode() {
+function enableInspectMode(indicatorData?: any) {
   chrome.storage.local.get(["userData"], (data) => {
     const user = data.userData;
     const location = window.location.host;
@@ -1069,7 +1592,12 @@ function enableInspectMode() {
     
       document.addEventListener("mouseover", handleMouseOver);
       document.addEventListener("mouseout", handleMouseOut);
-      document.addEventListener("click", handleClick, true);
+      if (indicatorData) {
+        // createIndicatorFromData(indicatorData)
+        document.addEventListener("click", handleIndiBlobRef, true);
+      } else {
+        document.addEventListener("click", handleClick, true);
+      }
     } else {
       Swal.fire({
         title: "Inspect Mode Disabled",
@@ -1129,17 +1657,84 @@ function handleClick(e: MouseEvent) {
   disableInspectMode();
 }
 
+function handleIndiBlobRef(e: MouseEvent) {
+  if (!isInspectMode) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (hoveredElement) {
+    const data =  {
+        tagName: hoveredElement.tagName,
+        id: hoveredElement.id,
+        className: hoveredElement.className,
+        path: getElementPath(hoveredElement),
+        rect: hoveredElement.getBoundingClientRect(),
+    };
+    // Build element param to satisfy showModal's required shape
+    const elementParam = {
+      ...data,
+      id: data.id || '',
+      data: [] as NetworkCall[],
+    };
+
+    // Get the full NetworkCall data that was stored by the event listener
+    const storedNetworkCall = (window as any).__indiBlobNetworkCall as NetworkCall | null;
+
+    // Build NetworkCall array with complete data
+    let networkCalls: NetworkCall[] = [];
+
+    if (storedNetworkCall) {
+      // Use the complete network call data from cache
+      console.log('✅ Using complete network call data:', storedNetworkCall);
+      networkCalls = [storedNetworkCall];
+    } else if (indiBlobUrlWithIssue) {
+      // Fallback: try to find it again in the cache using safe helper
+      console.log('⚠️ No stored network call, searching cache again...');
+      const foundCall = findNetworkCallInCache(indiBlobUrlWithIssue);
+
+      if (foundCall) {
+        networkCalls = [foundCall];
+        console.log('✅ Found network call in cache:', foundCall);
+      } else {
+        // Last resort: create minimal call
+        console.warn('⚠️ Creating minimal network call as fallback');
+        networkCalls = [{
+          id: 'external-1',
+          url: indiBlobUrlWithIssue,
+          method: 'GET',
+          status: 0,
+          timing: { duration: 0 },
+          timestamp: Date.now(),
+          request: {},
+          response: {},
+        } as NetworkCall];
+      }
+    }
+
+    // Disable inspect mode before showing modal
+    disableInspectMode();
+
+    // Show modal with auto-select flag
+    showModal(elementParam, { networkCalls }, true);
+  }
+}
+
 function disableInspectMode() {
   isInspectMode = false;
   document.body.style.cursor = "default";
   document.removeEventListener("mouseover", handleMouseOver);
   document.removeEventListener("mouseout", handleMouseOut);
   document.removeEventListener("click", handleClick, true);
+  document.removeEventListener("click", handleIndiBlobRef, true);
 
   if (highlighter) {
     highlighter.remove();
     highlighter = null;
   }
+
+  // Clean up stored data
+  indiBlobUrlWithIssue = null;
+  delete (window as any).__indiBlobNetworkCall;
 }
 
 // content.ts

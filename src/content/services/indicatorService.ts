@@ -261,6 +261,125 @@ function addIndicatorEvents(
   indicator: HTMLElement,
   indicatorData: IndicatorData
 ) {
+  // Dragging state
+  let isDragging = false;
+  let hasDragged = false; // Track if actually moved
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let indicatorStartLeft = 0;
+  let indicatorStartTop = 0;
+  let dragTimeout: number | null = null;
+
+  // Make indicator draggable
+  indicator.style.cursor = 'grab';
+
+  const handleMouseDown = (e: MouseEvent) => {
+    // Only drag with left mouse button and only if target is the indicator
+    if (e.button !== 0 || e.target !== indicator) return;
+
+    // Record starting positions
+    dragStartX = e.clientX;
+    dragStartY = e.clientY;
+    indicatorStartLeft = parseInt(indicator.style.left) || 0;
+    indicatorStartTop = parseInt(indicator.style.top) || 0;
+    hasDragged = false;
+
+    // Attach move and up listeners when starting drag
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    // Start dragging after small delay to distinguish from click
+    dragTimeout = window.setTimeout(() => {
+      isDragging = true;
+      indicator.style.cursor = 'grabbing';
+      indicator.style.zIndex = '1000000'; // Bring to front while dragging
+    }, 150);
+
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isDragging) {
+      // Check if we're moving enough to start dragging immediately
+      const deltaX = Math.abs(e.clientX - dragStartX);
+      const deltaY = Math.abs(e.clientY - dragStartY);
+      if (deltaX > 5 || deltaY > 5) {
+        // User is dragging, start immediately
+        if (dragTimeout) {
+          clearTimeout(dragTimeout);
+          dragTimeout = null;
+        }
+        isDragging = true;
+        indicator.style.cursor = 'grabbing';
+        indicator.style.zIndex = '1000000';
+      } else {
+        return;
+      }
+    }
+
+    hasDragged = true;
+    const deltaX = e.clientX - dragStartX;
+    const deltaY = e.clientY - dragStartY;
+
+    const newLeft = indicatorStartLeft + deltaX;
+    const newTop = indicatorStartTop + deltaY;
+
+    indicator.style.left = `${newLeft}px`;
+    indicator.style.top = `${newTop}px`;
+
+    e.preventDefault();
+  };
+
+  const handleMouseUp = (e: MouseEvent) => {
+    // Clear timeout if clicking without dragging
+    if (dragTimeout) {
+      clearTimeout(dragTimeout);
+      dragTimeout = null;
+    }
+
+    // Remove listeners immediately
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+
+    if (!isDragging) {
+      isDragging = false;
+      return;
+    }
+
+    isDragging = false;
+    indicator.style.cursor = 'grab';
+    indicator.style.zIndex = '999998'; // Reset z-index
+
+    // Only save if actually dragged
+    if (hasDragged) {
+      const currentLeft = parseInt(indicator.style.left) || 0;
+      const currentTop = parseInt(indicator.style.top) || 0;
+
+      chrome.storage.local.get(["indicators"], (result) => {
+        const indicators = result.indicators || {};
+        const pathToUpdate = generateStoragePath(window.location.href);
+        const currentPageIndicators = indicators[pathToUpdate] || [];
+        const ind = currentPageIndicators.find(
+          (i: IndicatorData) => i.id === indicator.dataset.indicatorId
+        );
+        if (ind) {
+          ind.offset = {
+            top: currentTop,
+            left: currentLeft,
+          };
+          chrome.storage.local.set({ indicators }, () => {
+            console.log('✅ Indicator position saved:', { top: currentTop, left: currentLeft });
+          });
+        }
+      });
+    }
+
+    e.preventDefault();
+  };
+
+  // Only attach mousedown to the indicator
+  indicator.addEventListener('mousedown', handleMouseDown);
 
   function calculateTooltipPosition(indicator: any) {
     const rect = indicator.getBoundingClientRect();
@@ -421,6 +540,12 @@ indicator.addEventListener('mouseenter', () => {
 
 let clickTimeout: string | number | NodeJS.Timeout | undefined;
 indicator.addEventListener("click", async () => {
+    // Don't open tooltip if user was dragging
+    if (hasDragged) {
+      hasDragged = false; // Reset for next interaction
+      return;
+    }
+
     clearTimeout(clickTimeout);
     clickTimeout = setTimeout(async () => {
           const tooltipId = `indicator-tooltip-${indicatorData.id}`;
