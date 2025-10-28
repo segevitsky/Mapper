@@ -256,18 +256,34 @@ const handleDeleteIndicator = (indicatorId: string, fromCategory: string) => {
     if (!Array.isArray(allIndicators)) {
       return [];
     }
-    
-    let filtered = allIndicators.filter(ind => 
-      ind && 
-      ind.lastCall && 
-      ind.lastCall.timing && 
-      typeof ind.lastCall.timing.duration === 'number'
+
+    // More lenient filter - only require basic structure, not perfect timing data
+    let filtered = allIndicators.filter(ind =>
+      ind &&
+      ind.lastCall
+      // Don't require timing.duration - some indicators might not have it yet
     );
 
     if (selectedTab === 'errors') {
       filtered = filtered.filter(ind => ind.lastCall.status >= 400);
     } else if (selectedTab === 'slow') {
-      filtered = filtered.filter(ind => ind.lastCall.timing.duration > 1000);
+      // Safely check for slow APIs - handle different timing structures
+      filtered = filtered.filter(ind => {
+        const timing = ind.lastCall?.timing;
+        if (!timing) return false;
+
+        // Handle timing as object with duration
+        if (typeof timing === 'object' && typeof timing.duration === 'number') {
+          return timing.duration > 1000;
+        }
+
+        // Handle timing as number directly
+        if (typeof timing === 'number') {
+          return timing > 1000;
+        }
+
+        return false;
+      });
     }
 
     if (searchTerm) {
@@ -307,7 +323,25 @@ const handleDeleteIndicator = (indicatorId: string, fromCategory: string) => {
   const filteredIndicators = filterIndicators(allIndicators);
   const totalIndicators = allIndicators.length;
   const errorCount = allIndicators.filter(ind => ind?.lastCall?.status >= 400).length;
-  const slowCount = allIndicators.filter(ind => ind?.lastCall?.timing?.duration > 1000).length;
+
+  // Safely count slow indicators - handle different timing structures
+  const slowCount = allIndicators.filter(ind => {
+    const timing = ind?.lastCall?.timing;
+    if (!timing) return false;
+
+    // Handle timing as object with duration
+    if (typeof timing === 'object' && typeof timing.duration === 'number') {
+      return timing.duration > 1000;
+    }
+
+    // Handle timing as number directly
+    if (typeof timing === 'number') {
+      return timing > 1000;
+    }
+
+    return false;
+  }).length;
+
   const availableCategories = indicators ? [...Object.keys(indicators), 'global', 'Create New'] : ['global', 'Create New'];
 
   if (!isVisible) return null;
@@ -444,9 +478,21 @@ const handleDeleteIndicator = (indicatorId: string, fromCategory: string) => {
                           {pageIndicators.filter(ind => ind?.lastCall?.status >= 400).length} errors
                         </span>
                       )}
-                      {pageIndicators.some(ind => ind?.lastCall?.timing?.duration > 1000) && (
+                      {pageIndicators.some(ind => {
+                        const timing = ind?.lastCall?.timing;
+                        if (!timing) return false;
+                        if (typeof timing === 'object' && typeof timing.duration === 'number') return timing.duration > 1000;
+                        if (typeof timing === 'number') return timing > 1000;
+                        return false;
+                      }) && (
                         <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full">
-                          {pageIndicators.filter(ind => ind?.lastCall?.timing?.duration > 1000).length} slow
+                          {pageIndicators.filter(ind => {
+                            const timing = ind?.lastCall?.timing;
+                            if (!timing) return false;
+                            if (typeof timing === 'object' && typeof timing.duration === 'number') return timing.duration > 1000;
+                            if (typeof timing === 'number') return timing > 1000;
+                            return false;
+                          }).length} slow
                         </span>
                       )}
                     </div>

@@ -490,28 +490,54 @@ async function attachDebugger(tabId: number): Promise<void> {
             }
 
             if (requestData.size > 0) {
-              const requestsToSend = Array.from(requestData.values());
-              // Track which request IDs we're sending
-              const sentRequestIds = requestsToSend
-                .map(req => req.request?.requestId)
-                .filter(id => id !== undefined);
-              const success = await sendNetworkIdleMessage(requestsToSend);
+              const allRequests = Array.from(requestData.values());
+              const completedRequests = allRequests.filter(req =>
+                req.response || req.failed || req.cancelled
+              );
+
+              console.log(
+                `Force send: ${completedRequests.length} completed of ${allRequests.length} total`
+              );
+
+              // Send all requests, delete only completed ones
+              const success = await sendNetworkIdleMessage(allRequests);
               if (success) {
-                sentRequestIds.forEach(id => requestData.delete(id));
+                completedRequests.forEach(req => {
+                  if (req.request?.requestId) {
+                    requestData.delete(req.request.requestId);
+                  }
+                });
               }
             } else {
               console.log("No request data to send, skipping NETWORK_IDLE");
             }
           } else {
-            const requestsToSend = Array.from(requestData.values());
-            // Track which request IDs we're sending
-            const sentRequestIds = requestsToSend
-              .map(req => req.request?.requestId)
-              .filter(id => id !== undefined);
-              
-            const success = await sendNetworkIdleMessage(requestsToSend);
+            const allRequests = Array.from(requestData.values());
+
+            // Separate completed from pending requests
+            const completedRequests = allRequests.filter(req =>
+              req.response || req.failed || req.cancelled
+            );
+            const pendingRequests = allRequests.filter(req =>
+              !req.response && !req.failed && !req.cancelled
+            );
+
+            console.log(
+              `Idle check: ${completedRequests.length} completed, ${pendingRequests.length} pending`
+            );
+
+            // Send all requests (for UI updates), but only delete completed ones
+            const success = await sendNetworkIdleMessage(allRequests);
             if (success) {
-              sentRequestIds.forEach(id => requestData.delete(id)); // ✅ FIXED
+              // Only delete completed requests from map
+              completedRequests.forEach(req => {
+                if (req.request?.requestId) {
+                  requestData.delete(req.request.requestId);
+                }
+              });
+              console.log(
+                `Deleted ${completedRequests.length} completed requests, keeping ${pendingRequests.length} pending`
+              );
             }
           }
         } catch (error) {

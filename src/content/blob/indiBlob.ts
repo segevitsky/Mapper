@@ -34,7 +34,8 @@ export class IndiBlob {
   private summaryTooltip: HTMLElement | null = null;
   private currentSummary: string | null = null;
   private speechBubble: any = null;
-   private currentSummaryData: any = null
+  private currentSummaryData: any = null;
+  private tooltipHideTimeout: number | null = null;
 
 
   constructor(parentElement: HTMLElement = document.body) {
@@ -79,7 +80,7 @@ export class IndiBlob {
     opacity: 0;
     transform: translateY(10px);
     transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-    pointer-events: none;
+    pointer-events: auto;
   `;
 
   // Add arrow pointing to blob
@@ -101,9 +102,19 @@ export class IndiBlob {
   // Show tooltip on hover
   this.container.addEventListener('mouseenter', this.showTooltip);
   this.container.addEventListener('mouseleave', this.hideTooltip);
+
+  // Keep tooltip open when hovering over it
+  this.summaryTooltip.addEventListener('mouseenter', this.showTooltip);
+  this.summaryTooltip.addEventListener('mouseleave', this.hideTooltip);
 }
 
 private showTooltip = (): void => {
+  // Clear any pending hide timeout
+  if (this.tooltipHideTimeout) {
+    clearTimeout(this.tooltipHideTimeout);
+    this.tooltipHideTimeout = null;
+  }
+
   if (this.summaryTooltip) {
     this.summaryTooltip.style.opacity = '1';
     this.summaryTooltip.style.transform = 'translateY(0)';
@@ -111,10 +122,13 @@ private showTooltip = (): void => {
 };
 
 private hideTooltip = (): void => {
-  if (this.summaryTooltip) {
-    this.summaryTooltip.style.opacity = '0';
-    this.summaryTooltip.style.transform = 'translateY(10px)';
-  }
+  // Use a small delay to allow mouse to move to tooltip
+  this.tooltipHideTimeout = window.setTimeout(() => {
+    if (this.summaryTooltip) {
+      this.summaryTooltip.style.opacity = '0';
+      this.summaryTooltip.style.transform = 'translateY(10px)';
+    }
+  }, 100);
 };
 
 
@@ -687,8 +701,16 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
         clearInterval(this.blinkInterval);
     }
 
+    // Clear tooltip timeout
+    if (this.tooltipHideTimeout) {
+        clearTimeout(this.tooltipHideTimeout);
+        this.tooltipHideTimeout = null;
+    }
+
     // Remove tooltip
     if (this.summaryTooltip) {
+        this.summaryTooltip.removeEventListener('mouseenter', this.showTooltip);
+        this.summaryTooltip.removeEventListener('mouseleave', this.hideTooltip);
         this.summaryTooltip.remove();
         this.summaryTooltip = null;
     }

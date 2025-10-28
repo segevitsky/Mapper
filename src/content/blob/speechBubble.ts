@@ -118,6 +118,10 @@ export class SpeechBubble {
         line-height: 1.6;
         color: #4b5563;
         white-space: pre-line;
+        word-wrap: break-word;
+        overflow-wrap: break-word;
+        max-width: 100%;
+        overflow: hidden;
       }
 
       .indi-speech-bubble-custom-content {
@@ -344,16 +348,18 @@ export class SpeechBubble {
 // In your SpeechBubble or wherever createIndi() is:
   public createIndi(summary: any): void {
     console.log('🎯 Creating indicator for slow API...', summary);
-    
+    const { slowestApi } = summary;
+
     // ✅ Directly dispatch the event that your content.ts listener handles
+    // Pass the complete slowestApi object which includes url and duration
     const event = new CustomEvent('indi-create-indicator', {
       detail: {
-        // Optional: pass slow API data if needed
-        apiUrl: "www.example.com/slow-endpoint",
-        duration: '2.5s',
+        apiUrl: slowestApi.url,
+        duration: slowestApi.duration,
+        fullSummary: summary // Pass the full summary in case we need more context
       }
     });
-  
+
   document.dispatchEvent(event);
 }
 

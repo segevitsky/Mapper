@@ -7,6 +7,7 @@ interface OnboardingState {
   completed: boolean;
   selectedBackendUrl?: string;
   skipped: boolean;
+  dismissed: boolean;
 }
 
 export class OnboardingFlow {
@@ -27,9 +28,14 @@ export class OnboardingFlow {
   public async startWithNetworkData(networkData: any[]): Promise<void> {
     // Check if already onboarded for this domain
     const state = await this.getOnboardingState();
-    
+
     if (state.completed) {
       console.log('✅ Onboarding already completed for this domain');
+      return;
+    }
+
+    if (state.dismissed) {
+      console.log('🚫 Onboarding was dismissed by user for this domain');
       return;
     }
 
@@ -106,6 +112,7 @@ export class OnboardingFlow {
         },
       ],
       showClose: true,
+      onClose: () => this.dismissOnboarding(),
       persistent: true,
     });
   }
@@ -291,6 +298,21 @@ export class OnboardingFlow {
   }
 
   /**
+   * Dismiss onboarding (user clicked X on welcome)
+   */
+  private dismissOnboarding(): void {
+    console.log('🚫 User dismissed onboarding for this domain');
+
+    this.saveOnboardingState({
+      completed: false,
+      dismissed: true,
+      skipped: false,
+    });
+
+    this.speechBubble.hide();
+  }
+
+  /**
    * Show skip state (user didn't select URL)
    */
   private showSkipState(): void {
@@ -315,6 +337,7 @@ export class OnboardingFlow {
     this.saveOnboardingState({
       completed: false,
       skipped: true,
+      dismissed: false,
     });
   }
 
@@ -327,6 +350,7 @@ export class OnboardingFlow {
       completed: true,
       selectedBackendUrl: this.selectedUrl,
       skipped: false,
+      dismissed: false,
     });
 
     // Hide speech bubble
@@ -347,10 +371,10 @@ export class OnboardingFlow {
    */
   private async getOnboardingState(): Promise<OnboardingState> {
     const key = `indi_onboarding_${window.location.hostname}`;
-    
+
     return new Promise((resolve) => {
       chrome.storage.local.get([key], (result) => {
-        resolve(result[key] || { completed: false, skipped: false });
+        resolve(result[key] || { completed: false, skipped: false, dismissed: false });
       });
     });
   }
@@ -376,10 +400,11 @@ export class OnboardingFlow {
    * Restart onboarding flow
    */
   public async restart(): Promise<void> {
-    // Clear onboarding state
+    // Clear onboarding state (including dismissed flag)
     await this.saveOnboardingState({
       completed: false,
       skipped: false,
+      dismissed: false,
     });
 
     // Restart flow
