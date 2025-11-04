@@ -1091,7 +1091,7 @@ function createFormSection(): HTMLElement {
     ></textarea>
     <div class="api-modal-form-buttons">
       <button class="api-modal-btn api-modal-btn-secondary" id="form-cancel">Cancel</button>
-      <button class="api-modal-btn api-modal-btn-primary" id="form-create-indicator">Create Indicator</button>
+      <button class="api-modal-btn api-modal-btn-primary" id="form-create">Create Indicator</button>
     </div>
   `;
 
