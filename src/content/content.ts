@@ -361,7 +361,26 @@ function showIssuesSummary(summary: PageSummaryData) {
         {
           label: 'Dismiss',
           style: 'secondary',
-          onClick: () => speechBubble?.hide(),
+          onClick: () => {
+            speechBubble?.hide();
+
+            // Decrement badge count by 1
+            if (indiBlob) {
+              const currentCount = indiBlob['notificationCount'] || 0;
+              const newCount = Math.max(0, currentCount - 1);
+              indiBlob.setNotifications(newCount);
+
+              // Update emotion based on new count
+              if (newCount === 0) {
+                indiBlob.setEmotion('happy');
+              } else if (newCount <= 2) {
+                indiBlob.setEmotion('calm');
+              }
+              // Keep current emotion if still many issues
+
+              console.log('🔔 Badge decremented on dismiss:', currentCount, '→', newCount);
+            }
+          },
         },
         {
           label: 'Add An Indi',
@@ -370,6 +389,23 @@ function showIssuesSummary(summary: PageSummaryData) {
         },
       ],
       showClose: true,
+      onClose: () => {
+        // Also decrement badge when user clicks X to close
+        if (indiBlob) {
+          const currentCount = indiBlob['notificationCount'] || 0;
+          const newCount = Math.max(0, currentCount - 1);
+          indiBlob.setNotifications(newCount);
+
+          // Update emotion based on new count
+          if (newCount === 0) {
+            indiBlob.setEmotion('happy');
+          } else if (newCount <= 2) {
+            indiBlob.setEmotion('calm');
+          }
+
+          console.log('🔔 Badge decremented on X close:', currentCount, '→', newCount);
+        }
+      },
       persistent: false, // Auto-dismiss after 10s
     });
   }
@@ -1055,7 +1091,7 @@ function createFormSection(): HTMLElement {
     ></textarea>
     <div class="api-modal-form-buttons">
       <button class="api-modal-btn api-modal-btn-secondary" id="form-cancel">Cancel</button>
-      <button class="api-modal-btn api-modal-btn-primary" id="form-create">Create Indicator</button>
+      <button class="api-modal-btn api-modal-btn-primary" id="form-create-indicator">Create Indicator</button>
     </div>
   `;
 
