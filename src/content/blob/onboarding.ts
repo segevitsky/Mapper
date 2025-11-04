@@ -34,10 +34,10 @@ export class OnboardingFlow {
       return;
     }
 
-    if (state.dismissed) {
-      console.log('🚫 Onboarding was dismissed by user for this domain');
-      return;
-    }
+    // if (state.dismissed) {
+    //   console.log('🚫 Onboarding was dismissed by user for this domain');
+    //   return;
+    // }
 
     // Extract backend URLs from network data
     this.extractBackendUrls(networkData);
@@ -308,6 +308,10 @@ export class OnboardingFlow {
       dismissed: true,
       skipped: false,
     });
+
+    // Reset blob's badge counter and set to happy state
+    this.indiBlob.setNotifications(0);
+    this.indiBlob.setEmotion('happy');
 
     this.speechBubble.hide();
   }

@@ -217,6 +217,32 @@ export class PageSummary {
               <span style="font-weight: 600; color: #ef4444;">${summary.securityIssues}</span>
             </div>
           ` : ''}
+
+          <button
+          style="
+            margin-top: 16px;
+            display: flex;
+            width: 100%;
+            align-items: center;
+            justify-content: center;
+            border-radius: 9999px;   /* rounded-full */
+            padding: 0.75rem 1rem;   /* py-3 px-4 */
+            background: linear-gradient(to right, #f857a6, #ff5858);
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 8px rgba(248, 87, 166, 0.3);
+          "
+          onmouseover="this.style.background='linear-gradient(to right, #ff6aa7, #ff7070)'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(248, 87, 166, 0.4)'"
+          onmouseout="this.style.background='linear-gradient(to right, #f857a6, #ff5858)'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(248, 87, 166, 0.3)'"
+        >
+          Create Indicator
+        </button>
+
+
         </div>
       </div>
     `;

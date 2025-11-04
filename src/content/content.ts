@@ -42,6 +42,7 @@ let indiBlobUrlWithIssue: string | null = null;
 
 
 async function initializeIndi(networkData: NetworkCall[]) {
+  console.log({ networkData });
   if (isIndiInitialized) return;
 
   try {
@@ -60,7 +61,7 @@ async function initializeIndi(networkData: NetworkCall[]) {
 
     // 4. Create onboarding flow
     onboardingFlow = new OnboardingFlow(indiBlob, speechBubble);
-    await onboardingFlow.startWithNetworkData(networkData);
+    // await onboardingFlow.startWithNetworkData(networkData);
 
     // 5. Set up event listeners
     setupIndiEventListeners();
@@ -185,24 +186,27 @@ function setupIndiEventListeners() {
 }
 
 
-function handleBlobClick() {
-  console.log('🫧 Indi blob clicked!');
-  
-  if (speechBubble) {
-    speechBubble.show({
-      title: 'Coming Soon! 🚀',
-      message: 'The expanded panel is under construction.\nStay tuned for awesome insights!',
-      actions: [
-        {
-          label: 'Got it!',
-          style: 'primary',
-          onClick: () => speechBubble?.hide(),
-        },
-      ],
-      showClose: true,
-      persistent: false,
-    });
+async function handleBlobClick() {
+  if (onboardingFlow) {
+    // let's get urls from cache for onboarding
+    const networkData = Array.from(recentCallsCache.values()).flat();
+    await onboardingFlow.startWithNetworkData(networkData);
   }
+  // if (speechBubble) {
+  //   speechBubble.show({
+  //     title: 'Coming Soon! 🚀',
+  //     message: 'The expanded panel is under construction.\nStay tuned for awesome insights!',
+  //     actions: [
+  //       {
+  //         label: 'Got it!',
+  //         style: 'primary',
+  //         onClick: () => speechBubble?.hide(),
+  //       },
+  //     ],
+  //     showClose: true,
+  //     persistent: false,
+  //   });
+  // }
 }
 
 // Track cumulative issues for the current page
@@ -223,17 +227,25 @@ function resetCumulativeTracking() {
 }
 
 async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
-  const result = await chrome.storage.local.get(['userData']);
-  const { domains } = result.userData || {};
-  const urlDomains = domains.map((el: any) => el.value)
-  if (!Array.isArray(urlDomains)) return;
+  if (!indiBlob || !pageSummary) return;
 
-  const matchFound = urlDomains.some((url: string) => {
-    const domain = new URL(url).origin;
-    return window.location.href.includes(domain);
-  });
+  // Check if onboarding exists for this domain - if NOT, don't analyze
+  // This prevents Indi from being intrusive on every website
+  const onboardingKey = `indi_onboarding_${window.location.hostname}`;
+  const onboardingState = await chrome.storage.local.get([onboardingKey]);
+  const state = onboardingState[onboardingKey];
 
-  if (!indiBlob || !pageSummary || !matchFound) return;
+  // If no onboarding data exists, this site is not enabled - return early
+  if (!state) {
+    console.log('⏸️ Network analysis skipped - Indi not enabled for this domain');
+    return;
+  }
+
+  // If onboarding not completed, wait for user to complete it
+  if (!state.completed) {
+    console.log('⏸️ Network analysis skipped - onboarding not completed yet');
+    return;
+  }
 
   // Check if URL changed - if so, reset cumulative tracking
   if (window.location.href !== currentPageUrl) {
@@ -1275,7 +1287,7 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
       if (onboardingFlow) {
         onboardingFlow.restart();
       }
-      break;
+    break;
 
     case 'GET_NETWORK_CALLS':
       // Background is requesting network calls (for onboarding)
@@ -1578,40 +1590,19 @@ function createHighlighter() {
 }
 
 function enableInspectMode(indicatorData?: any) {
-  chrome.storage.local.get(["userData"], (data) => {
-    const user = data.userData;
-    const location = window.location.host;
-    const allowerdDomains = user?.domains ? [...user?.domains, { id: '0', isValid: true, value: 'localhost:3000' }] : [];
-    const isAllowedDomain = allowerdDomains.some((domain: { id: number, isValid: boolean, value: string }) =>
-      domain.value.includes(location)
-    );
-    if (isAllowedDomain) {
-      isInspectMode = true;
-      document.body.style.cursor = "crosshair";
-      createHighlighter();
-    
-      document.addEventListener("mouseover", handleMouseOver);
-      document.addEventListener("mouseout", handleMouseOut);
-      if (indicatorData) {
-        // createIndicatorFromData(indicatorData)
-        document.addEventListener("click", handleIndiBlobRef, true);
-      } else {
-        document.addEventListener("click", handleClick, true);
-      }
-    } else {
-      Swal.fire({
-        title: "Inspect Mode Disabled",
-        text: "This domain is not allowed in your current license.",
-        icon: "error",
-        confirmButtonText: "Upgrade License",
-        showCancelButton: true,
-      }).then((result) => {
-        if (result.isConfirmed) {
-          window.location.href = "https://indi-web.vercel.app/#pricing"; // Redirect to indi.dev
-        }
-      });
-    }
-  });
+  // BYPASS: Skip domain validation - allow inspect mode on any domain
+  isInspectMode = true;
+  document.body.style.cursor = "crosshair";
+  createHighlighter();
+
+  document.addEventListener("mouseover", handleMouseOver);
+  document.addEventListener("mouseout", handleMouseOut);
+  if (indicatorData) {
+    // createIndicatorFromData(indicatorData)
+    document.addEventListener("click", handleIndiBlobRef, true);
+  } else {
+    document.addEventListener("click", handleClick, true);
+  }
 }
 
 function handleMouseOver(e: MouseEvent) {
