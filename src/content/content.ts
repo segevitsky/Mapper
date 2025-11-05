@@ -177,12 +177,29 @@ document.addEventListener('indi-badge-clicked', (e: Event) => {
 });
 
 
+document.addEventListener('indi-create-indicator-from-summary', async () => { 
+  console.log('🎯 Create indicator from summary event received')
+  enableInspectMode();
+});
+
+
 /**
  * Set up Indi-specific event listeners
  */
 function setupIndiEventListeners() {
   // Listen for Indi blob clicks
   document.addEventListener('indi-blob-clicked', handleBlobClick);
+
+  // Listen for "Create Indicator" button clicks in the summary tooltip (event delegation)
+  document.addEventListener('click', (e: MouseEvent) => {
+    const target = e.target as HTMLElement;
+    if (target && target.id === 'indi-summary-create-indicator') {
+      console.log('➕ Create Indicator button clicked from summary tooltip!');
+      // Dispatch the event
+      const event = new CustomEvent('indi-create-indicator-from-summary');
+      document.dispatchEvent(event);
+    }
+  });
 }
 
 
@@ -1043,9 +1060,14 @@ function createCallItemHTML(call: NetworkCall): string {
       const urlObj = new URL(url);
       return urlObj.pathname + urlObj.search;
     } catch {
-      return url;
     }
   };
+
+    console.log('🆔 Creating item for call:', {
+    id: call.id,
+    requestId: call.request?.requestId,
+    fullCall: call
+  });
 
   return `
     <div class="api-call-item" data-call-id="${call.id}">
@@ -1668,17 +1690,35 @@ function handleClick(e: MouseEvent) {
   e.stopPropagation();
 
   if (hoveredElement) {
-    // שליחת מידע על האלמנט שנבחר
-    chrome.runtime.sendMessage({
-      type: "ELEMENT_SELECTED",
-      data: {
+    const data = {
         tagName: hoveredElement.tagName,
         id: hoveredElement.id,
         className: hoveredElement.className,
         path: getElementPath(hoveredElement),
         rect: hoveredElement.getBoundingClientRect(),
-      },
+      }
+    // שליחת מידע על האלמנט שנבחר
+    chrome.runtime.sendMessage({
+      type: "ELEMENT_SELECTED",
+      data
     });
+
+    // lets add here the showModal
+    const cachedCalls = Array.from(recentCallsCache.values()).flat();
+
+    // Ensure calls have IDs for modal display (don't modify cache, just create new array)
+    const callsWithIds = cachedCalls.map((call, index) => {
+      if (call.id) return call;
+      return {
+        ...call,
+        id: call.request?.requestId || `modal-${Date.now()}-${index}`
+      };
+    });
+
+    console.log({ cachedCalls, callsWithIds }, "cached Calls in SHOW_API_MODAL");
+    showModal({data: callsWithIds, id: data.id, path: getElementPath(hoveredElement), rect: hoveredElement.getBoundingClientRect(), tagName: hoveredElement.tagName}, { networkCalls: callsWithIds });
+
+
   }
 
   disableInspectMode();

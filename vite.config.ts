@@ -9,7 +9,7 @@ export default defineConfig({
     terserOptions: {
       sourceMap: true,
     },
-    sourcemap: true,
+    sourcemap: 'inline', // Use inline source maps for content scripts to avoid CSP blocking
     outDir: "dist",
     emptyOutDir: true,
     rollupOptions: {

@@ -35,21 +35,21 @@ export function loadIndicators() {
   chrome.storage.local.get(["indicators", 'userData', 'limits', 'role'], (result) => {
     const { userData, limits, role, indicators } = result;
     console.log('All Indicators from storage:', indicators);
-    const { domains, status } = userData || {};
+    // const { domains, status } = userData || {};
     // lets see if our current location is included in the domains
-    const currentLocationHost = window.location.host;
-    const domainIsAllowed = currentLocationHost.includes('localhost') || domains?.find((d: Domain) => d.value.includes(currentLocationHost));
-    if (!domainIsAllowed) {
-      console.log('Domain not allowed, but attempting to load indicators anyway for debugging');
-      // Don't return early - still try to load indicators for better debugging
-      chrome.runtime.sendMessage({
-        type: "DOMAIN_NOT_ALLOWED",
-        data: {
-          message: `This domain is not allowed. Please contact your administrator.`,
-          status: 403,
-        },
-      });
-    }
+    // const currentLocationHost = window.location.host;
+    // const domainIsAllowed = currentLocationHost.includes('localhost') || domains?.find((d: Domain) => d.value.includes(currentLocationHost));
+    // if (!domainIsAllowed) {
+    //   console.log('Domain not allowed, but attempting to load indicators anyway for debugging');
+    //   // Don't return early - still try to load indicators for better debugging
+    //   chrome.runtime.sendMessage({
+    //     type: "DOMAIN_NOT_ALLOWED",
+    //     data: {
+    //       message: `This domain is not allowed. Please contact your administrator.`,
+    //       status: 403,
+    //     },
+    //   });
+    // }
     
 
     const currentPageIndicators = indicators[storagePath] || [];

@@ -219,6 +219,7 @@ export class PageSummary {
           ` : ''}
 
           <button
+          id="indi-summary-create-indicator"
           style="
             margin-top: 16px;
             display: flex;
@@ -470,4 +471,5 @@ export class PageSummary {
       [key]: Array.from(this.previousApis),
     });
   }
+
 }
