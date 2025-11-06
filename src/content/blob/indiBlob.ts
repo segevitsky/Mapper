@@ -19,6 +19,7 @@ export class IndiBlob {
   private badge: HTMLElement | null = null;
   private aura: HTMLElement | null = null;
   private mouthPath: SVGPathElement | null = null;
+  private zipperMouth: SVGGElement | null = null;
   private eyeContainer: HTMLElement | null = null;
   private colorStop1: SVGStopElement | null = null;
   private colorStop2: SVGStopElement | null = null;
@@ -27,7 +28,7 @@ export class IndiBlob {
   private emotion: EmotionType = 'happy';
   private notificationCount: number = 0;
   private isDragging: boolean = false;
-  private hasDragged: boolean = false; 
+  private hasDragged: boolean = false;
   private dragOffset: Position = { x: 0, y: 0 };
   private position: Position = { x: 0, y: 0 };
   private blinkInterval: number | null = null;
@@ -36,6 +37,8 @@ export class IndiBlob {
   private speechBubble: any = null;
   private currentSummaryData: any = null;
   private tooltipHideTimeout: number | null = null;
+  private isMuted: boolean = false;
+  private muteButton: HTMLElement | null = null;
 
 
   constructor(parentElement: HTMLElement = document.body) {
@@ -166,6 +169,23 @@ private hideTooltip = (): void => {
               stroke-width="2"
               stroke-linecap="round"
             />
+
+            <!-- Zipper mouth (hidden by default) -->
+            <g id="zipperMouth" opacity="0" style="transition: opacity 0.4s ease;">
+              <!-- Main zipper line -->
+              <line x1="35" y1="68" x2="65" y2="68"
+                    stroke="rgba(0, 0, 0, 0.4)"
+                    stroke-width="2.5"
+                    stroke-linecap="round" />
+              <!-- Zipper teeth -->
+              <line x1="38" y1="66" x2="38" y2="70" stroke="rgba(0, 0, 0, 0.3)" stroke-width="1.5" />
+              <line x1="42" y1="66" x2="42" y2="70" stroke="rgba(0, 0, 0, 0.3)" stroke-width="1.5" />
+              <line x1="46" y1="66" x2="46" y2="70" stroke="rgba(0, 0, 0, 0.3)" stroke-width="1.5" />
+              <line x1="50" y1="66" x2="50" y2="70" stroke="rgba(0, 0, 0, 0.3)" stroke-width="1.5" />
+              <line x1="54" y1="66" x2="54" y2="70" stroke="rgba(0, 0, 0, 0.3)" stroke-width="1.5" />
+              <line x1="58" y1="66" x2="58" y2="70" stroke="rgba(0, 0, 0, 0.3)" stroke-width="1.5" />
+              <line x1="62" y1="66" x2="62" y2="70" stroke="rgba(0, 0, 0, 0.3)" stroke-width="1.5" />
+            </g>
           </svg>
 
           <div class="indi-eye-container" id="eyeContainer">
@@ -184,6 +204,10 @@ private hideTooltip = (): void => {
         </div>
 
         <div class="indi-notification-badge" id="notificationBadge">0</div>
+
+        <div class="indi-mute-button" id="muteButton" title="Mute/Unmute Indi">
+          <span class="mute-icon">🔊</span>
+        </div>
       </div>
     `;
 
@@ -376,6 +400,56 @@ private hideTooltip = (): void => {
         display: flex;
       }
 
+      .indi-mute-button {
+        position: absolute;
+        bottom: -8px;
+        right: -8px;
+        width: 32px;
+        height: 32px;
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        border-radius: 50%;
+        border: 3px solid white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        cursor: pointer;
+        z-index: 21;
+        transition: all 0.3s ease;
+      }
+
+      .indi-mute-button:hover {
+        transform: scale(1.1);
+        box-shadow: 0 6px 16px rgba(99, 102, 241, 0.6);
+      }
+
+      .indi-mute-button.muted {
+        background: linear-gradient(135deg, #94a3b8 0%, #64748b 100%);
+        box-shadow: 0 4px 12px rgba(100, 116, 139, 0.4);
+      }
+
+      .mute-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.3s ease;
+      }
+
+      .indi-mute-button:active .mute-icon {
+        transform: scale(0.9);
+      }
+
+      @keyframes mute-button-press {
+        0% { transform: scale(1); }
+        50% { transform: scale(0.85) rotate(15deg); }
+        100% { transform: scale(1) rotate(0deg); }
+      }
+
+      .indi-mute-button.animating {
+        animation: mute-button-press 0.4s ease;
+      }
+
       @keyframes indi-gentle-pulse {
         0%, 100% { 
           transform: scale(1); 
@@ -408,10 +482,12 @@ private hideTooltip = (): void => {
     this.badge = document.getElementById('notificationBadge');
     this.aura = document.getElementById('indiAura');
     this.mouthPath = document.getElementById('mouthPath') as unknown as SVGPathElement;
+    this.zipperMouth = document.getElementById('zipperMouth') as unknown as SVGGElement;
     this.eyeContainer = document.getElementById('eyeContainer');
     this.colorStop1 = document.getElementById('colorStop1') as unknown as SVGStopElement;
     this.colorStop2 = document.getElementById('colorStop2') as unknown as SVGStopElement;
     this.colorStop3 = document.getElementById('colorStop3') as unknown as SVGStopElement;
+    this.muteButton = document.getElementById('muteButton');
   }
 
   private init(): void {
@@ -456,14 +532,28 @@ private hideTooltip = (): void => {
       }
     });
   }
+
+  // Mute button
+  if (this.muteButton) {
+    this.muteButton.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent triggering container click
+      this.toggleMute();
+    });
+  }
+
+  // Load mute state from storage
+  this.loadMuteState();
   }
 
   private handleBadgeClick(): void {
   console.log('🔔 Notification badge clicked!');
-  
-  // Dispatch custom event with the issue count
+
+  // Dispatch custom event with the issue count and summary data
   const event = new CustomEvent('indi-badge-clicked', {
-    detail: { count: this.notificationCount }
+    detail: {
+      count: this.notificationCount,
+      summaryData: this.currentSummaryData
+    }
   });
   document.dispatchEvent(event);
 }
@@ -626,7 +716,18 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
   }
 
   private updateMouth(emotion: EmotionType): void {
-    if (!this.mouthPath) return;
+    if (!this.mouthPath || !this.zipperMouth) return;
+
+    // If muted, show zipper mouth instead of normal mouth
+    if (this.isMuted) {
+      this.mouthPath.setAttribute('opacity', '0');
+      this.zipperMouth.setAttribute('opacity', '1');
+      return;
+    }
+
+    // Normal mouth behavior - show emotion-based mouth
+    this.mouthPath.setAttribute('opacity', '1');
+    this.zipperMouth.setAttribute('opacity', '0');
 
     const mouthShapes: Record<EmotionType, string> = {
       happy: 'M35,65 Q50,72 65,65',
@@ -693,6 +794,64 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
         resolve();
       });
     });
+  }
+
+  // ========== MUTE FUNCTIONALITY ==========
+
+  private async loadMuteState(): Promise<void> {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['indi_global_mute'], (result) => {
+        this.isMuted = result.indi_global_mute || false;
+        this.updateMuteUI();
+        console.log('🔇 Loaded mute state:', this.isMuted);
+        resolve();
+      });
+    });
+  }
+
+  private toggleMute(): void {
+    this.isMuted = !this.isMuted;
+
+    // Save to storage
+    chrome.storage.local.set({
+      indi_global_mute: this.isMuted,
+    });
+
+    // Trigger button press animation
+    if (this.muteButton) {
+      this.muteButton.classList.add('animating');
+      setTimeout(() => {
+        this.muteButton?.classList.remove('animating');
+      }, 400);
+    }
+
+    this.updateMuteUI();
+
+    console.log('🔇 Mute toggled:', this.isMuted);
+  }
+
+  private updateMuteUI(): void {
+    if (!this.muteButton) return;
+
+    const muteIcon = this.muteButton.querySelector('.mute-icon') as HTMLElement;
+    if (!muteIcon) return;
+
+    if (this.isMuted) {
+      this.muteButton.classList.add('muted');
+      muteIcon.textContent = '🔇';
+      this.muteButton.title = 'Unmute Indi';
+    } else {
+      this.muteButton.classList.remove('muted');
+      muteIcon.textContent = '🔊';
+      this.muteButton.title = 'Mute Indi';
+    }
+
+    // Update mouth to show zipper when muted
+    this.updateMouth(this.emotion);
+  }
+
+  public getMuteState(): boolean {
+    return this.isMuted;
   }
 
     public destroy(): void {

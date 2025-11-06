@@ -14,6 +14,7 @@ export interface SpeechBubbleOptions {
   onClose?: () => void;
   customContent?: HTMLElement;
   persistent?: boolean; // If false, auto-dismisses after delay
+  bypassMute?: boolean; // If true, shows even when muted (for manual actions like badge clicks)
 }
 
 export class SpeechBubble {
@@ -21,9 +22,14 @@ export class SpeechBubble {
   private isVisible: boolean = false;
   private autoDismissTimeout: number | null = null;
   private hideTimeout: number | null = null;
+  private indiBlob: any = null; // Reference to IndiBlob for mute state check
 
   constructor() {
     this.injectStyles();
+  }
+
+  public setIndiBlob(indiBlob: any): void {
+    this.indiBlob = indiBlob;
   }
 
   private injectStyles(): void {
@@ -258,7 +264,13 @@ export class SpeechBubble {
   }
 
   public show(options: SpeechBubbleOptions): void {
-    console.log('🟢 SpeechBubble.show() called with:', options.title);
+    console.log('🟢 SpeechBubble.show() called with:', options.title, 'bypassMute:', options.bypassMute);
+
+    // Check if Indi is muted - if so, don't show the bubble (unless bypassMute is true)
+    if (!options.bypassMute && this.indiBlob && this.indiBlob.getMuteState && this.indiBlob.getMuteState()) {
+      console.log('🔇 Indi is muted - speech bubble will not be shown');
+      return;
+    }
 
     // If there's already a bubble showing, hide it first and wait
     if (this.bubble && this.isVisible) {

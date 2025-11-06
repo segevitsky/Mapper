@@ -55,6 +55,7 @@ async function initializeIndi(networkData: NetworkCall[]) {
     // 2. Create speech bubble
     speechBubble = new SpeechBubble();
     indiBlob.setSpeechBubble(speechBubble);
+    speechBubble.setIndiBlob(indiBlob); // Allow SpeechBubble to check mute state
 
     // 3. Create page summary analyzer
     pageSummary = new PageSummary();
@@ -167,10 +168,10 @@ document.addEventListener('indi-badge-clicked', (e: Event) => {
   const customEvent = e as CustomEvent<{ count: number; summaryData: PageSummaryData }>;
   const { count, summaryData } = customEvent.detail;
   console.log('🔔 Badge clicked, showing issues summary:', { count, summaryData });
-  
-  // Call showIssuesSummary with the actual data
+
+  // Call showIssuesSummary with bypassMute=true so it shows even when muted
   if (issuesSummary) {
-    showIssuesSummary(issuesSummary);
+    showIssuesSummary(issuesSummary, true);
   } else {
     console.warn('⚠️ No summary data available or speech bubble not initialized');
   }
@@ -334,7 +335,7 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
 
   // Generate HTML summary for hover tooltip (use cumulative summary)
   const summaryHTML = pageSummary.generateSummaryHTML(cumulativeSummary);
-  indiBlob.showSummaryOnHover(summaryHTML);
+  indiBlob.showSummaryOnHover(summaryHTML, cumulativeSummary);
 
   // If there are NEW issues in this batch, show speech bubble
   if (summary.hasIssues) {
@@ -343,7 +344,7 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
   }
 }
 
-function showIssuesSummary(summary: PageSummaryData) {
+function showIssuesSummary(summary: PageSummaryData, bypassMute: boolean = false) {
   if (!speechBubble) return;
 
   const issueMessages: string[] = [];
@@ -366,6 +367,7 @@ function showIssuesSummary(summary: PageSummaryData) {
     speechBubble.show({
       title: '⚠️ Issues Detected',
       message: issueMessages.join('\n'),
+      bypassMute: bypassMute,
       actions: [
         {
           label: 'View Details',
