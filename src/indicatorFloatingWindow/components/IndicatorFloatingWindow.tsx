@@ -25,6 +25,21 @@ const IndicatorFloatingWindow: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showPanel, setShowPanel] = useState(false);
 
+  // Accordion state for each section
+  const [expandedSections, setExpandedSections] = useState({
+    body: true,      // Body starts open
+    overview: true,  // Overview starts open
+    headers: false,
+    debug: false
+  });
+
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
   useEffect(() => {
     console.log('🚀 Floating window loaded!');
     
@@ -166,105 +181,202 @@ const IndicatorFloatingWindow: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="p-6">
-        <div className="bg-white rounded-xl shadow-lg p-6">
-          <h2 className="text-xl font-bold mb-4 bg-gradient-to-r from-pink-500 to-rose-500 bg-clip-text text-transparent">
-            📊 Request Information
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* URL */}
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">🌐 URL</label>
-              <div className="p-3 bg-gray-50 rounded-lg font-mono text-sm break-all text-red-400">
-                {indicatorData?.request?.request?.url ?? indicatorData?.url ?? 'Unknown URL'}
-              </div>
-            </div>
+      {/* Main Content - Blobi Blob Style! */}
+      <div className="p-6 space-y-4">
 
-            {/* Method */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">🔧 Method</label>
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded font-medium">
-                  {indicatorData?.method ?? 'Unknown Method'}
-                </span>
-              </div>
-            </div>
-
-            {/* Status */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">📈 Status</label>
-              <div className="p-3 bg-green-50 rounded-lg">
-                <span className={`px-3 py-1 rounded font-medium ${getStatusColor(indicatorData.status)}`}>
-                  {indicatorData.status >= 200 && indicatorData.status < 300 && <CheckCircle className="w-4 h-4 inline mr-1" />}
-                  {indicatorData.status >= 400 && <XCircle className="w-4 h-4 inline mr-1" />}
-                  {indicatorData.status}
-                </span>
-              </div>
-            </div>
-
-            {/* Timing */}
-            {indicatorData.timing && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">⏱️ Duration</label>
-                <div className="p-3 bg-yellow-50 rounded-lg">
-                  <span className="px-3 py-1 bg-yellow-100 text-yellow-800 rounded font-medium">
-                    <Clock className="w-4 h-4 inline mr-1" />
-                    {Math.round(indicatorData.duration)}ms
-                  </span>
+        {/* 🎯 RESPONSE BODY ACCORDION - The Star! */}
+        {indicatorData.body && (
+          <div className="group">
+            <button
+              onClick={() => toggleSection('body')}
+              className="w-full bg-gradient-to-r from-pink-400 via-rose-400 to-pink-500 hover:from-pink-500 hover:via-rose-500 hover:to-pink-600 text-white rounded-3xl shadow-2xl p-6 transition-all duration-300 hover:scale-[1.02] hover:shadow-pink-300/50"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center animate-bounce">
+                    <span className="text-3xl">📄</span>
+                  </div>
+                  <div className="text-left">
+                    <h2 className="text-2xl font-bold flex items-center gap-3">
+                      Response Body
+                      <span className="px-3 py-1 bg-white/30 backdrop-blur-sm rounded-full text-xs font-semibold animate-pulse">
+                        ⭐ MAIN
+                      </span>
+                    </h2>
+                    <p className="text-pink-100 text-sm">The juicy data you're looking for!</p>
+                  </div>
+                </div>
+                <div className={`transform transition-transform duration-300 text-4xl ${expandedSections.body ? 'rotate-180' : ''}`}>
+                  ⌄
                 </div>
               </div>
-            )}
-          </div>
+            </button>
 
-          {/* Headers */}
-          {indicatorData.headers && (
-            <div className="mt-6">
-              <JsonViewer 
-                data={indicatorData.headers}
-                viewerId="headers"
-                title="📋 Headers"
-                maxHeight="300px"
-              />
-            </div>
-          )}
-
-          {/* Response */}
-         {indicatorData.body && (
-            <div className="mt-6">
-              <JsonViewer 
-                data={(() => {
-                  // ניסיון לפרסר את ה-body אם הוא string
-                  if (indicatorData.body.body && typeof indicatorData.body.body === 'string') {
-                    try {
-                      return JSON.parse(indicatorData.body.body);
-                    } catch (error) {
-                      console.warn('Could not parse response body as JSON:', error);
-                      return indicatorData.body.body;
+            <div className={`overflow-hidden transition-all duration-500 ${expandedSections.body ? 'max-h-[800px] mt-3' : 'max-h-0'}`}>
+              <div className="bg-white rounded-2xl shadow-xl p-6 border-4 border-pink-200">
+                <JsonViewer
+                  data={(() => {
+                    if (indicatorData.body.body && typeof indicatorData.body.body === 'string') {
+                      try {
+                        return JSON.parse(indicatorData.body.body);
+                      } catch (error) {
+                        return indicatorData.body.body;
+                      }
                     }
-                  }
-                  // אם אין body, להציג את כל ה-response
-                  return indicatorData.response.body || indicatorData.response;
-                })()}
-                viewerId="response"
-                title="📄 Response Body"
-                maxHeight="800px"
+                    return indicatorData.response?.body || indicatorData.response || indicatorData.body;
+                  })()}
+                  viewerId="response"
+                  title=""
+                  maxHeight="700px"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 📊 REQUEST OVERVIEW ACCORDION */}
+        <div className="group">
+          <button
+            onClick={() => toggleSection('overview')}
+            className="w-full bg-gradient-to-r from-purple-400 via-violet-400 to-purple-500 hover:from-purple-500 hover:via-violet-500 hover:to-purple-600 text-white rounded-3xl shadow-2xl p-6 transition-all duration-300 hover:scale-[1.02] hover:shadow-purple-300/50"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                  <span className="text-3xl">📊</span>
+                </div>
+                <div className="text-left">
+                  <h2 className="text-2xl font-bold">Request Overview</h2>
+                  <p className="text-purple-100 text-sm">Method, Status, Timing & URL</p>
+                </div>
+              </div>
+              <div className={`transform transition-transform duration-300 text-4xl ${expandedSections.overview ? 'rotate-180' : ''}`}>
+                ⌄
+              </div>
+            </div>
+          </button>
+
+          <div className={`overflow-hidden transition-all duration-500 ${expandedSections.overview ? 'max-h-[600px] mt-3' : 'max-h-0'}`}>
+            <div className="bg-white rounded-2xl shadow-xl p-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                {/* Method Card */}
+                <div className="bg-gradient-to-br from-blue-100 to-blue-200 rounded-2xl p-6 border-2 border-blue-300 transform hover:scale-105 transition-transform">
+                  <div className="text-xs font-bold text-blue-700 mb-2">🔧 METHOD</div>
+                  <div className="text-2xl font-black text-blue-900">{indicatorData?.method ?? 'UNKNOWN'}</div>
+                </div>
+
+                {/* Status Card */}
+                <div className={`bg-gradient-to-br rounded-2xl p-6 border-2 transform hover:scale-105 transition-transform ${
+                  indicatorData.status >= 200 && indicatorData.status < 300
+                    ? 'from-green-100 to-green-200 border-green-300'
+                    : indicatorData.status >= 400
+                    ? 'from-red-100 to-red-200 border-red-300'
+                    : 'from-yellow-100 to-yellow-200 border-yellow-300'
+                }`}>
+                  <div className={`text-xs font-bold mb-2 ${
+                    indicatorData.status >= 200 && indicatorData.status < 300 ? 'text-green-700' :
+                    indicatorData.status >= 400 ? 'text-red-700' : 'text-yellow-700'
+                  }`}>📈 STATUS</div>
+                  <div className="flex items-center gap-2">
+                    {indicatorData.status >= 200 && indicatorData.status < 300 && <CheckCircle className="w-6 h-6 text-green-600" />}
+                    {indicatorData.status >= 400 && <XCircle className="w-6 h-6 text-red-600" />}
+                    <span className="text-2xl font-black text-gray-900">{indicatorData.status}</span>
+                  </div>
+                </div>
+
+                {/* Duration Card */}
+                {indicatorData.timing && (
+                  <div className="bg-gradient-to-br from-purple-100 to-purple-200 rounded-2xl p-6 border-2 border-purple-300 transform hover:scale-105 transition-transform">
+                    <div className="text-xs font-bold text-purple-700 mb-2">⏱️ DURATION</div>
+                    <div className="flex items-center gap-2">
+                      <Clock className="w-6 h-6 text-purple-600" />
+                      <span className="text-2xl font-black text-purple-900">{Math.round(indicatorData.duration)}ms</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* URL Bubble */}
+              <div className="bg-gradient-to-r from-pink-50 to-rose-50 rounded-2xl p-5 border-2 border-pink-200">
+                <div className="text-xs font-bold text-pink-700 mb-2">🌐 ENDPOINT</div>
+                <div className="font-mono text-sm break-all text-pink-600 font-semibold">
+                  {indicatorData?.request?.request?.url ?? indicatorData?.url ?? 'Unknown URL'}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* 📋 HEADERS ACCORDION */}
+        {indicatorData.headers && (
+          <div className="group">
+            <button
+              onClick={() => toggleSection('headers')}
+              className="w-full bg-gradient-to-r from-blue-400 via-cyan-400 to-blue-500 hover:from-blue-500 hover:via-cyan-500 hover:to-blue-600 text-white rounded-3xl shadow-2xl p-6 transition-all duration-300 hover:scale-[1.02] hover:shadow-blue-300/50"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                    <span className="text-3xl">📋</span>
+                  </div>
+                  <div className="text-left">
+                    <h2 className="text-2xl font-bold">Headers</h2>
+                    <p className="text-blue-100 text-sm">Request & Response headers</p>
+                  </div>
+                </div>
+                <div className={`transform transition-transform duration-300 text-4xl ${expandedSections.headers ? 'rotate-180' : ''}`}>
+                  ⌄
+                </div>
+              </div>
+            </button>
+
+            <div className={`overflow-hidden transition-all duration-500 ${expandedSections.headers ? 'max-h-[500px] mt-3' : 'max-h-0'}`}>
+              <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-blue-200">
+                <JsonViewer
+                  data={indicatorData.headers}
+                  viewerId="headers"
+                  title=""
+                  maxHeight="400px"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 🔍 DEBUG ACCORDION */}
+        <div className="group">
+          <button
+            onClick={() => toggleSection('debug')}
+            className="w-full bg-gradient-to-r from-gray-400 via-slate-400 to-gray-500 hover:from-gray-500 hover:via-slate-500 hover:to-gray-600 text-white rounded-3xl shadow-2xl p-6 transition-all duration-300 hover:scale-[1.02] hover:shadow-gray-300/50"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                  <span className="text-3xl">🔍</span>
+                </div>
+                <div className="text-left">
+                  <h2 className="text-2xl font-bold">Debug Data</h2>
+                  <p className="text-gray-100 text-sm">All raw data for troubleshooting</p>
+                </div>
+              </div>
+              <div className={`transform transition-transform duration-300 text-4xl ${expandedSections.debug ? 'rotate-180' : ''}`}>
+                ⌄
+              </div>
+            </div>
+          </button>
+
+          <div className={`overflow-hidden transition-all duration-500 ${expandedSections.debug ? 'max-h-[600px] mt-3' : 'max-h-0'}`}>
+            <div className="bg-white rounded-2xl shadow-xl p-6 border-2 border-gray-200">
+              <JsonViewer
+                data={indicatorData}
+                viewerId="debug"
+                title=""
+                maxHeight="500px"
               />
             </div>
-          )}
-
-          {/* Raw Data Debug */}
-          <div className="mt-8">
-            <JsonViewer 
-              data={indicatorData}
-              viewerId="debug"
-              title="🔍 All Data (Debug)"
-              maxHeight="500px"
-            />
           </div>
-
         </div>
+
       </div>
     </div>
   );
