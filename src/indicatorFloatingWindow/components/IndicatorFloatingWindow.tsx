@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, CheckCircle, XCircle } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, ChevronDown } from 'lucide-react';
 import JsonViewer from './JsonViewer';
 import logoIcon from "../../assets/bug.png";
 import { Panel } from '../../panel/Panel';
@@ -206,9 +206,12 @@ const IndicatorFloatingWindow: React.FC = () => {
                     <p className="text-pink-100 text-sm">The juicy data you're looking for!</p>
                   </div>
                 </div>
-                <div className={`transform transition-transform duration-300 text-4xl ${expandedSections.body ? 'rotate-180' : ''}`}>
-                  ⌄
-                </div>
+                <ChevronDown
+                  className={`w-8 h-8 transition-all duration-500 ease-in-out ${
+                    expandedSections.body ? 'rotate-180 scale-110' : 'scale-100'
+                  }`}
+                  strokeWidth={3}
+                />
               </div>
             </button>
 
@@ -250,9 +253,12 @@ const IndicatorFloatingWindow: React.FC = () => {
                   <p className="text-purple-100 text-sm">Method, Status, Timing & URL</p>
                 </div>
               </div>
-              <div className={`transform transition-transform duration-300 text-4xl ${expandedSections.overview ? 'rotate-180' : ''}`}>
-                ⌄
-              </div>
+              <ChevronDown
+                className={`w-8 h-8 transition-all duration-500 ease-in-out ${
+                  expandedSections.overview ? 'rotate-180 scale-110' : 'scale-100'
+                }`}
+                strokeWidth={3}
+              />
             </div>
           </button>
 
@@ -324,9 +330,12 @@ const IndicatorFloatingWindow: React.FC = () => {
                     <p className="text-blue-100 text-sm">Request & Response headers</p>
                   </div>
                 </div>
-                <div className={`transform transition-transform duration-300 text-4xl ${expandedSections.headers ? 'rotate-180' : ''}`}>
-                  ⌄
-                </div>
+                <ChevronDown
+                  className={`w-8 h-8 transition-all duration-500 ease-in-out ${
+                    expandedSections.headers ? 'rotate-180 scale-110' : 'scale-100'
+                  }`}
+                  strokeWidth={3}
+                />
               </div>
             </button>
 
@@ -359,9 +368,12 @@ const IndicatorFloatingWindow: React.FC = () => {
                   <p className="text-gray-100 text-sm">All raw data for troubleshooting</p>
                 </div>
               </div>
-              <div className={`transform transition-transform duration-300 text-4xl ${expandedSections.debug ? 'rotate-180' : ''}`}>
-                ⌄
-              </div>
+              <ChevronDown
+                className={`w-8 h-8 transition-all duration-500 ease-in-out ${
+                  expandedSections.debug ? 'rotate-180 scale-110' : 'scale-100'
+                }`}
+                strokeWidth={3}
+              />
             </div>
           </button>
 
