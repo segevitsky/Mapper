@@ -32,6 +32,33 @@ export class SpeechBubble {
     this.indiBlob = indiBlob;
   }
 
+  /**
+   * Position the bubble relative to the blob's current position
+   */
+  private positionBubbleRelativeToBlob(): void {
+    if (!this.bubble || !this.indiBlob || !this.indiBlob.getPosition) return;
+
+    const blobPosition = this.indiBlob.getPosition();
+    const blobSize = 100; // Blob width/height
+
+    // Position bubble to the left of the blob with some spacing
+    const bubbleLeft = blobPosition.x - 340; // 320px bubble width + 20px spacing
+    const bubbleBottom = window.innerHeight - blobPosition.y - blobSize + 60; // Align with bottom of blob
+
+    // Check if bubble would go off-screen on the left
+    if (bubbleLeft < 20) {
+      // Position to the right of the blob instead
+      const bubbleRight = window.innerWidth - (blobPosition.x + blobSize + 20);
+      this.bubble.style.right = `${bubbleRight}px`;
+      this.bubble.style.left = 'auto';
+    } else {
+      this.bubble.style.left = `${bubbleLeft}px`;
+      this.bubble.style.right = 'auto';
+    }
+
+    this.bubble.style.bottom = `${bubbleBottom}px`;
+  }
+
   private injectStyles(): void {
     if (document.getElementById('indi-speech-bubble-styles')) return;
 
@@ -40,8 +67,6 @@ export class SpeechBubble {
     styleElement.textContent = `
       .indi-speech-bubble {
         position: fixed;
-        bottom: 160px;
-        right: 40px;
         background: #fff;
         border-radius: 20px;
         padding: 24px;
@@ -290,6 +315,10 @@ export class SpeechBubble {
 
     // Create new bubble
     this.bubble = this.createBubbleDOM(options);
+
+    // Position bubble relative to blob's current position
+    this.positionBubbleRelativeToBlob();
+
     document.body.appendChild(this.bubble);
 
     console.log('🟢 Bubble added to DOM');
@@ -318,18 +347,12 @@ export class SpeechBubble {
 
   public updatePosition(blobRect: DOMRect): void {
     if (!this.bubble || !this.isVisible) return;
+    console.log({ blobRect });
 
-    // Calculate new position relative to blob
-    const bubbleRect = this.bubble.getBoundingClientRect();
-    
-    // Position above blob with some spacing
-    const newBottom = window.innerHeight - blobRect.top + 10;
-    const newRight = window.innerWidth - blobRect.right + 10;
+    // Use the same smart positioning logic as initial placement
+    this.positionBubbleRelativeToBlob();
 
-    this.bubble.style.bottom = `${newBottom}px`;
-    this.bubble.style.right = `${newRight}px`;
-
-    console.log('🔄 Speech bubble repositioned:', { newBottom, newRight });
+    console.log('🔄 Speech bubble repositioned');
   }
 
   public hide(): void {

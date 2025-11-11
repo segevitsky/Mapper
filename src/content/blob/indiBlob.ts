@@ -39,6 +39,7 @@ export class IndiBlob {
   private tooltipHideTimeout: number | null = null;
   private isMuted: boolean = false;
   private muteButton: HTMLElement | null = null;
+  private originalPosition: Position | null = null; // Saved position before viewport adjustment
 
 
   constructor(parentElement: HTMLElement = document.body) {
@@ -172,6 +173,95 @@ export class IndiBlob {
    */
   public getCurrentSummaryData(): any {
     return this.currentSummaryData;
+  }
+
+  /**
+   * Get current blob position
+   */
+  public getPosition(): Position {
+    return { ...this.position };
+  }
+
+  /**
+   * Check if blob is within viewport bounds and adjust if needed
+   */
+  private adjustPositionToViewport(): void {
+    if (!this.container) return;
+
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const blobSize = 100; // Blob width/height
+
+    // First, if we have a saved original position, try to restore it
+    if (this.originalPosition) {
+      const { x, y } = this.originalPosition;
+
+      // Check if original position would be valid in current viewport
+      const isValid =
+        x >= 20 &&
+        x + blobSize <= viewportWidth - 20 &&
+        y >= 20 &&
+        y + blobSize <= viewportHeight - 20;
+
+      if (isValid) {
+        // Restore original position
+        this.setPosition(x, y);
+        this.savePosition();
+        this.originalPosition = null;
+        console.log('✅ Restored original position:', { x, y });
+        return;
+      }
+      // If not valid, continue to adjustment logic below
+    }
+
+    let { x, y } = this.position;
+    let adjusted = false;
+
+    // Save current position as original before first adjustment
+    const needsSaving = !this.originalPosition;
+
+    // Check right edge
+    if (x + blobSize > viewportWidth - 20) {
+      if (needsSaving) this.originalPosition = { ...this.position };
+      x = viewportWidth - blobSize - 20; // 20px padding
+      adjusted = true;
+    }
+
+    // Check left edge
+    if (x < 20) {
+      if (needsSaving) this.originalPosition = { ...this.position };
+      x = 20;
+      adjusted = true;
+    }
+
+    // Check bottom edge
+    if (y + blobSize > viewportHeight - 20) {
+      if (needsSaving) this.originalPosition = { ...this.position };
+      y = viewportHeight - blobSize - 20;
+      adjusted = true;
+    }
+
+    // Check top edge
+    if (y < 20) {
+      if (needsSaving) this.originalPosition = { ...this.position };
+      y = 20;
+      adjusted = true;
+    }
+
+    if (adjusted) {
+      this.setPosition(x, y);
+      this.savePosition();
+      console.log('⚠️ Adjusted position for viewport:', { x, y });
+      if (this.originalPosition) {
+        console.log('📍 Original position saved:', this.originalPosition);
+      }
+    } else {
+      // Position is within bounds, clear original if we have one
+      if (this.originalPosition) {
+        console.log('✅ Position now valid, clearing original position');
+        this.originalPosition = null;
+      }
+    }
   }
 
 private showTooltip = (): void => {
@@ -604,6 +694,11 @@ private hideTooltip = (): void => {
     });
   }
 
+  // Window resize listener to keep blob visible
+  window.addEventListener('resize', () => {
+    this.adjustPositionToViewport();
+  });
+
   // Load mute state from storage
   this.loadMuteState();
   }
@@ -679,6 +774,9 @@ private hideTooltip = (): void => {
     const x = e.clientX - this.dragOffset.x;
     const y = e.clientY - this.dragOffset.y;
     this.setPosition(x, y);
+
+    // Update bubble positions in real-time while dragging
+    this.updateBubblePositions();
   };
 
   private stopDrag = (): void => {
@@ -687,6 +785,10 @@ private hideTooltip = (): void => {
     this.isDragging = false;
     this.container.classList.remove('dragging');
     this.updateBubblePositions();
+
+    // Clear original position if user manually moved blob
+    this.originalPosition = null;
+
     // Save position to storage
     this.savePosition();
 
