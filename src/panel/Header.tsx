@@ -36,13 +36,13 @@ const CleanHeaderDemo = (props: HeaderProps) => {
 
   return (
     <div>
-      <div className="flex items-center justify-between text-white p-6">
+      <div className="flex items-center justify-between p-6 bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 shadow-xl">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-white/20 rounded backdrop-blur-sm flex items-center justify-center">
-           <img src={logoIcon} alt="Indi API" className="w-8 h-8 rounded drop-shadow-lg transition-transform duration-200 hover:scale-110" />
+          <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform duration-300">
+           <img src={logoIcon} alt="Indi API" className="w-8 h-8 rounded drop-shadow-lg" />
           </div>
-          <h1 className="font-thin text-2xl">
-            INDI API
+          <h1 className="font-headline font-bold text-3xl text-white drop-shadow-lg">
+            INDI MAPPER
           </h1>
         </div>
 

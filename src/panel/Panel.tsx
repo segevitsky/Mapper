@@ -4,9 +4,7 @@ import { Toolbar } from "./components/Toolbar";
 import { useNetworkCalls } from "./hooks/useNetworkCalls";
 import "../index.css";
 import { NetworkCall } from "../types";
-import { GrClear } from "react-icons/gr";
-import { SlRefresh } from "react-icons/sl"
-import { LuToggleLeft, LuToggleRight } from "react-icons/lu";
+import { Trash2, RefreshCw, Eye, EyeOff, Circle, Grid3x3, Search } from "lucide-react";
 import ApiResponsePanel from "./components/ResponseModal";
 import FailedIndicatorsReport from "./components/FailedIndicatorsReport";
 import IndicatorsOverview from "./components/IndicatorsOverview";
@@ -200,118 +198,178 @@ export const Panel: React.FC = () => {
   };
 
   return (
-    <div
-      style={{
-        backgroundImage:
-          "linear-gradient(to right, #ff8177 0%, #ff867a 0%, #ff8c7f 21%, #f99185 52%, #cf556c 78%, #b12a5b 100%)",
-        minWidth: "100vw",
-      }}
-      className="w-full min-h-[100dvh]  max-h-[100dvh] overflow-y-auto bg-gray-100"
-    >
-    <CleanHeaderDemo userDetails={userDetails} />
+    <div className="w-full h-screen flex flex-col overflow-hidden bg-gradient-to-br from-pink-50 via-rose-50 to-purple-50">
+      <CleanHeaderDemo userDetails={userDetails} />
+      <Toolbar />
 
-    <Toolbar />
-      <div className="flex flex-1 overflow-hidden">
-        <div className="w-[50vw] p-4 overflow-auto">
-          <div className="text-white flex flex-1 justify-between items-center">
-            <h2 className="text-lg font-thin mb-4">Network Calls</h2>
-            <div className="flex items-center cursor-pointer">
-              <GrClear
-                // onClick={() => clearAllNewtworkCalls()}
-                style={{ marginRight: ".25rem" }}
+      <div className="flex-1 flex flex-col lg:flex-row gap-4 lg:gap-6 p-4 lg:p-6 overflow-y-auto lg:overflow-hidden">
+        {/* LEFT PANEL - Network Calls */}
+        <div className="w-full lg:w-1/2 flex flex-col gap-4 flex-shrink-0 lg:min-h-0 lg:overflow-hidden">
+          {/* Network Calls Header Card */}
+          <div className="w-full bg-gradient-to-r from-pink-400 via-rose-400 to-pink-500 rounded-3xl shadow-2xl p-6 transition-all duration-300 overflow-hidden flex-shrink-0">
+            <div className="flex justify-between items-center overflow-hidden">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm flex-shrink-0">
+                  <Circle className="w-6 h-6 text-white fill-white animate-pulse" />
+                </div>
+                <h2 className="font-headline text-2xl font-bold text-white truncate">Network Calls</h2>
+              </div>
+              <button className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white font-semibold transition-all duration-300 hover:scale-105 flex-shrink-0">
+                <Trash2 className="w-4 h-4" />
+                Clear
+              </button>
+            </div>
+
+            {/* Search Bar */}
+            <div className="w-full mt-4 relative overflow-hidden">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-pink-400 flex-shrink-0" />
+              <input
+                onChange={(e) => handleSearch(e)}
+                type="text"
+                value={searchTerm}
+                placeholder="Search network calls..."
+                className="w-full pl-12 pr-4 py-3 bg-white rounded-full shadow-lg border-2 border-transparent focus:border-pink-300 focus:ring-4 focus:ring-pink-200 transition-all duration-300 focus:outline-none text-gray-700 placeholder-gray-400"
               />
-              Clear
             </div>
           </div>
-          <input
-            onChange={(e) => {
-              handleSearch(e);
-            }}
-            type="text"
-            value={searchTerm}
-            placeholder="Search..."
-            className=" mb-2 w-full pl-10 pr-4 py-2 bg-white rounded-full shadow-sm border border-gray-300 focus:ring focus:ring-blue-300 focus:border-blue-500 transition duration-300 focus:outline-none text-sm text-gray-700"
-          />
 
-          <NetworkList
-            calls={networkCalls}
-            onSelectCall={(call: any) =>
-              console.log(
-                "we need to add here something that would show the data of the selected network call", call
-              )
-            }
-          />
+          {/* Network List Card */}
+          <div className="w-full flex-1 bg-white rounded-3xl shadow-xl p-6 overflow-hidden min-h-[300px] lg:min-h-0">
+            <NetworkList
+              calls={networkCalls}
+              onSelectCall={(call: any) =>
+                console.log("Selected network call:", call)
+              }
+            />
+          </div>
         </div>
 
-        <div className="w-[50vw] p-4 overflow-auto border-l border-gray-200">
-          <h2 className="color-white text-lg font-thin mb-4 text-white">
-            Mappings
-          </h2>
-          <div> {JSON.stringify(selectedNetworkResponse)} </div>
-          <div className="flex justify-start align-middle">
-            {!showIndicators ? (
-              <LuToggleLeft
-                className="mt-1 text-1xl text-white"
-                onClick={toggleIndiators}
-              />
-            ) : (
-              <LuToggleRight
-                className="mt-1 text-1xl text-white"
-                onClick={toggleIndiators}
-              />
-            )}
-            {showIndicators ? (
-              <span className="ml-1 text-1xl">Hide Indicators</span>
-            ) : (
-              <span className="ml-1 text-1xl">Show Indicators</span>
-            )}
+        {/* RIGHT PANEL - Controls & Mappings */}
+        <div className="w-full lg:w-1/2 flex flex-col gap-4 flex-shrink-0 lg:min-h-0 lg:overflow-y-auto">
+          {/* Mappings Header */}
+          <div className="w-full bg-gradient-to-r from-purple-400 via-violet-400 to-purple-500 rounded-3xl shadow-2xl p-6 overflow-hidden">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+                <Grid3x3 className="w-6 h-6 text-white" />
+              </div>
+              <h2 className="font-headline text-2xl font-bold text-white">Controls</h2>
+            </div>
           </div>
-          <br />
 
-          <div
-            onClick={toggleRecordButton}
-            className="flex justify-start align-middle" style={{ cursor: "pointer" }}> 
-            {!showRecordButton ? (
-              <LuToggleLeft
-                className="mt-1 text-1xl text-white"
-              />
-            ) : (
-              <LuToggleRight
-                className="mt-1 text-1xl text-white"
-              />
-            )}
-            <span className="ml-1 text-1xl"> Toggle Record button  </span>
-          </div>
-          <br />
+          {/* Control Buttons Cards */}
+          <div className="w-full space-y-3 overflow-hidden">
+            {/* Toggle Indicators */}
+            <button
+              onClick={toggleIndiators}
+              className="w-full bg-white rounded-2xl shadow-lg p-5 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 group overflow-hidden"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
+                    showIndicators
+                      ? 'bg-gradient-to-r from-green-400 to-emerald-500'
+                      : 'bg-gradient-to-r from-gray-300 to-gray-400'
+                  }`}>
+                    {showIndicators ? (
+                      <Eye className="w-5 h-5 text-white" />
+                    ) : (
+                      <EyeOff className="w-5 h-5 text-white" />
+                    )}
+                  </div>
+                  <div className="text-left">
+                    <h3 className="text-lg font-bold text-gray-900">
+                      {showIndicators ? 'Hide' : 'Show'} Indicators
+                    </h3>
+                    <p className="text-sm text-gray-500">Toggle visibility on page</p>
+                  </div>
+                </div>
+                <div className={`w-14 h-8 rounded-full transition-all duration-300 ${
+                  showIndicators ? 'bg-green-500' : 'bg-gray-300'
+                } p-1`}>
+                  <div className={`w-6 h-6 bg-white rounded-full transition-transform duration-300 ${
+                    showIndicators ? 'translate-x-6' : 'translate-x-0'
+                  }`} />
+                </div>
+              </div>
+            </button>
 
-          <div className="flex justify-start align-middle">
-            {" "}
-            <GrClear
+            {/* Toggle Record Button */}
+            <button
+              onClick={toggleRecordButton}
+              className="w-full bg-white rounded-2xl shadow-lg p-5 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 overflow-hidden"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-300 ${
+                    showRecordButton
+                      ? 'bg-gradient-to-r from-red-400 to-rose-500'
+                      : 'bg-gradient-to-r from-gray-300 to-gray-400'
+                  }`}>
+                    <Circle className={`w-5 h-5 ${showRecordButton ? 'fill-white text-white' : 'text-white'}`} />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="text-lg font-bold text-gray-900">Record Button</h3>
+                    <p className="text-sm text-gray-500">Toggle recording controls</p>
+                  </div>
+                </div>
+                <div className={`w-14 h-8 rounded-full transition-all duration-300 ${
+                  showRecordButton ? 'bg-red-500' : 'bg-gray-300'
+                } p-1`}>
+                  <div className={`w-6 h-6 bg-white rounded-full transition-transform duration-300 ${
+                    showRecordButton ? 'translate-x-6' : 'translate-x-0'
+                  }`} />
+                </div>
+              </div>
+            </button>
+
+            {/* Clear Indicators */}
+            <button
               onClick={clearIndicator}
-              className="text-1xl mt-[.25rem] text-white"
-            />
-            <span className="ml-1 text-1xl">Clear Indicators</span>
-          </div>
-          <br />
-          <div className="flex justify-start align-middle">
-            {" "}
-            <SlRefresh
+              className="w-full bg-gradient-to-r from-red-100 to-rose-100 hover:from-red-200 hover:to-rose-200 rounded-2xl shadow-lg p-5 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 border-2 border-red-200 overflow-hidden"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-gradient-to-r from-red-400 to-rose-500 rounded-full flex items-center justify-center">
+                  <Trash2 className="w-5 h-5 text-white" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-lg font-bold text-red-900">Clear Indicators</h3>
+                  <p className="text-sm text-red-600">Remove all indicators from page</p>
+                </div>
+              </div>
+            </button>
+
+            {/* Reload Indicators */}
+            <button
               onClick={handleIndicatorsLoad}
-              className="text-1xl mt-[.25rem] text-white"
-            />
-            <span className="ml-1 text-1xl">Reload Indicators</span>
+              className="w-full bg-gradient-to-r from-blue-100 to-cyan-100 hover:from-blue-200 hover:to-cyan-200 rounded-2xl shadow-lg p-5 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 border-2 border-blue-200 overflow-hidden"
+            >
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-cyan-500 rounded-full flex items-center justify-center">
+                  <RefreshCw className="w-5 h-5 text-white" />
+                </div>
+                <div className="text-left">
+                  <h3 className="text-lg font-bold text-blue-900">Reload Indicators</h3>
+                  <p className="text-sm text-blue-600">Refresh all indicators</p>
+                </div>
+              </div>
+            </button>
+
+            {/* Show All Indicators - Featured */}
+            <button
+              onClick={() => setShowOverview(true)}
+              className="w-full bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600 hover:from-pink-600 hover:via-rose-600 hover:to-pink-700 rounded-2xl shadow-2xl p-6 hover:shadow-pink-300/50 hover:scale-[1.03] transition-all duration-300 group overflow-hidden"
+            >
+              <div className="flex items-center justify-center gap-3">
+                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm group-hover:rotate-12 transition-transform duration-300">
+                  <Grid3x3 className="w-6 h-6 text-white" />
+                </div>
+                <div className="text-center">
+                  <h3 className="text-xl font-bold text-white">Show All Indicators</h3>
+                  <p className="text-sm text-pink-100">View complete overview</p>
+                </div>
+              </div>
+            </button>
           </div>
-          <br />
-          <button 
-            className="flex-1 items-center justify-center border-radius-6 bg-gradient-to-r from-[#f857a6] to-[#ff5858] px-4 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
-            onClick={() => setShowOverview(true)}
-          >
-            Show All Indicators
-          </button>
-
-
-          <br />
-          {/* <IndicatorsList currentUrl={currentUrl} /> */}
         </div>
       </div>
       <ApiResponsePanel

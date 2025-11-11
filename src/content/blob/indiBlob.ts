@@ -53,17 +53,26 @@ export class IndiBlob {
   }
 
   // Add this new method to show summary on hover:
-  public showSummaryOnHover(summaryHTML: string, summaryData?: any): void {
+  public async showSummaryOnHover(summaryHTML: string, summaryData?: any): Promise<void> {
   this.currentSummary = summaryHTML;
   this.currentSummaryData = summaryData;
-  
+
   if (!this.container) return;
+
+  // Check if backend is configured
+  const backendConfigured = await this.isBackendConfigured();
 
   // Remove existing tooltip if any
   if (this.summaryTooltip) {
+    this.summaryTooltip.removeEventListener('mouseenter', this.showTooltip);
+    this.summaryTooltip.removeEventListener('mouseleave', this.hideTooltip);
     this.summaryTooltip.remove();
     this.summaryTooltip = null;
   }
+
+  // Always remove old listeners from container first
+  this.container.removeEventListener('mouseenter', this.showTooltip);
+  this.container.removeEventListener('mouseleave', this.hideTooltip);
 
   // Create tooltip
   this.summaryTooltip = document.createElement('div');
@@ -102,14 +111,68 @@ export class IndiBlob {
 
   document.body.appendChild(this.summaryTooltip);
 
-  // Show tooltip on hover
-  this.container.addEventListener('mouseenter', this.showTooltip);
-  this.container.addEventListener('mouseleave', this.hideTooltip);
+  // Only add hover listeners if backend is NOT configured
+  // When configured, summary will show on click instead
+  if (!backendConfigured) {
+    // Show tooltip on hover
+    this.container.addEventListener('mouseenter', this.showTooltip);
+    this.container.addEventListener('mouseleave', this.hideTooltip);
 
-  // Keep tooltip open when hovering over it
-  this.summaryTooltip.addEventListener('mouseenter', this.showTooltip);
-  this.summaryTooltip.addEventListener('mouseleave', this.hideTooltip);
+    // Keep tooltip open when hovering over it
+    this.summaryTooltip.addEventListener('mouseenter', this.showTooltip);
+    this.summaryTooltip.addEventListener('mouseleave', this.hideTooltip);
+  }
 }
+
+  /**
+   * Check if backend is configured for current domain
+   */
+  private async isBackendConfigured(): Promise<boolean> {
+    const key = `indi_onboarding_${window.location.hostname}`;
+
+    return new Promise((resolve) => {
+      chrome.storage.local.get([key], (result) => {
+        const state = result[key];
+        resolve(state?.selectedBackendUrl ? true : false);
+      });
+    });
+  }
+
+  /**
+   * Check if tooltip is currently visible
+   */
+  public isTooltipVisible(): boolean {
+    if (!this.summaryTooltip) return false;
+    return this.summaryTooltip.style.opacity === '1';
+  }
+
+  /**
+   * Toggle tooltip visibility (for click events when backend is configured)
+   */
+  public toggleTooltip(): void {
+    console.log('🎯 toggleTooltip called');
+    console.log('📊 summaryTooltip exists:', !!this.summaryTooltip);
+    console.log('📊 isVisible:', this.isTooltipVisible());
+
+    if (this.summaryTooltip) {
+      if (this.isTooltipVisible()) {
+        // Tooltip is visible, hide it
+        this.hideTooltip();
+      } else {
+        // Tooltip is hidden, show it
+        this.showTooltip();
+      }
+    } else {
+      console.warn('⚠️ No tooltip to toggle - tooltip not initialized');
+    }
+  }
+
+  /**
+   * Get current summary data
+   */
+  public getCurrentSummaryData(): any {
+    return this.currentSummaryData;
+  }
 
 private showTooltip = (): void => {
   // Clear any pending hide timeout

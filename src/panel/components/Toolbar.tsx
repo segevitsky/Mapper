@@ -21,14 +21,28 @@ export const Toolbar: React.FC = () => {
   };
 
   return (
-    <div className="p-4 border-b">
+    <div className="p-4 border-b bg-gradient-to-r from-pink-50 via-rose-50 to-purple-50">
       <button
         onClick={toggleInspecting}
-        style={{ display: "flex" }}
-        className="flex-1 items-center justify-center border-radius-6 fixed bottom-4 right-6 bg-gradient-to-r from-[#f857a6] to-[#ff5858] px-4 py-2 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-colors"
+        className={`
+          flex items-center justify-center gap-2
+          fixed bottom-4 right-4 z-50
+          px-4 py-2.5
+          bg-gradient-to-r from-pink-500 via-rose-500 to-pink-600
+          hover:from-pink-600 hover:via-rose-600 hover:to-pink-700
+          text-white font-semibold text-sm
+          rounded-full shadow-xl
+          transition-all duration-300
+          hover:scale-105 hover:shadow-pink-400/50
+          active:scale-95
+          border-2 border-white
+          ${isInspecting ? 'animate-pulse' : ''}
+        `}
       >
-        <LuInspect style={{ marginRight: ".25rem" }} />
-        Create Indicator
+        <div className="w-6 h-6 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm">
+          <LuInspect className="w-4 h-4" />
+        </div>
+        <span>{isInspecting ? 'Stop Inspecting' : 'Create Indicator'}</span>
       </button>
     </div>
   );

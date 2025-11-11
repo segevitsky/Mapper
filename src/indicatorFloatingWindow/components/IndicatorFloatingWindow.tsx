@@ -171,7 +171,7 @@ const IndicatorFloatingWindow: React.FC = () => {
             src={logoIcon} alt="Indi API" className="w-8 h-8 rounded drop-shadow-lg cursor-pointer" />
             <div>
               {/* // lets add a button to show our panel here */}
-              <h1 className="text-2xl font-bold">🎯 Indicator Details</h1>
+              <h1 className="font-headline text-2xl font-bold">🎯 Indicator Details</h1>
               <h3 onClick={() => setShowPanel(true)} className="cursor-pointer text-white hover:underline">Go back to panel</h3>
               <p className="text-pink-100">
                 {indicatorData.method} • Status: {indicatorData.status}

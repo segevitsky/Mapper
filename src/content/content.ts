@@ -204,27 +204,61 @@ function setupIndiEventListeners() {
 }
 
 
+/**
+ * Check if backend is configured for current domain
+ */
+async function isBackendConfigured(): Promise<boolean> {
+  const key = `indi_onboarding_${window.location.hostname}`;
+
+  return new Promise((resolve) => {
+    chrome.storage.local.get([key], (result) => {
+      const state = result[key];
+      resolve(state?.selectedBackendUrl ? true : false);
+    });
+  });
+}
+
 async function handleBlobClick() {
-  if (onboardingFlow) {
-    // let's get urls from cache for onboarding
-    const networkData = Array.from(recentCallsCache.values()).flat();
-    await onboardingFlow.startWithNetworkData(networkData);
+  // Check if backend is configured
+  const configured = await isBackendConfigured();
+
+  if (configured) {
+    // Backend is configured - toggle summary tooltip on click
+    console.log('🫧 Indi blob clicked - backend configured, toggling summary tooltip');
+
+    if (indiBlob) {
+      // Toggle the tooltip that was prepared by showSummaryOnHover
+      indiBlob.toggleTooltip();
+
+      // If no tooltip exists yet, show a message
+      const summaryData = indiBlob.getCurrentSummaryData();
+      if (!summaryData && speechBubble) {
+        speechBubble.show({
+          title: '✨ All Good!',
+          message: 'No issues detected on this page yet.\n\nI\'m monitoring your APIs and will let you know if anything comes up!',
+          actions: [
+            {
+              label: 'Got it!',
+              style: 'primary',
+              onClick: () => {
+                if (speechBubble) {
+                speechBubble.hide()
+              }},
+            },
+          ],
+          showClose: true,
+          persistent: false,
+        });
+      }
+    }
+  } else {
+    // Backend not configured - show onboarding
+    if (onboardingFlow) {
+      // let's get urls from cache for onboarding
+      const networkData = Array.from(recentCallsCache.values()).flat();
+      await onboardingFlow.startWithNetworkData(networkData);
+    }
   }
-  // if (speechBubble) {
-  //   speechBubble.show({
-  //     title: 'Coming Soon! 🚀',
-  //     message: 'The expanded panel is under construction.\nStay tuned for awesome insights!',
-  //     actions: [
-  //       {
-  //         label: 'Got it!',
-  //         style: 'primary',
-  //         onClick: () => speechBubble?.hide(),
-  //       },
-  //     ],
-  //     showClose: true,
-  //     persistent: false,
-  //   });
-  // }
 }
 
 // Track cumulative issues for the current page
