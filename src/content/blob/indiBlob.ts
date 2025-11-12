@@ -377,8 +377,8 @@ private hideTooltip = (): void => {
     styleElement.textContent = `
       .indi-blob-container {
         position: fixed;
-        width: 100px;
-        height: 100px;
+        width: 80px;
+        height: 80px;
         cursor: grab;
         user-select: none;
         z-index: 999999;
