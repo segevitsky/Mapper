@@ -218,30 +218,250 @@ export class PageSummary {
             </div>
           ` : ''}
 
-          <button
-          id="indi-summary-create-indicator"
-          style="
+          <!-- Action Buttons Row -->
+          <div style="
             margin-top: 16px;
             display: flex;
-            width: 100%;
             align-items: center;
             justify-content: center;
-            border-radius: 9999px;   /* rounded-full */
-            padding: 0.75rem 1rem;   /* py-3 px-4 */
-            background: linear-gradient(to right, #f857a6, #ff5858);
-            color: white;
-            font-weight: 600;
-            font-size: 14px;
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s ease-in-out;
-            box-shadow: 0 2px 8px rgba(248, 87, 166, 0.3);
-          "
-          onmouseover="this.style.background='linear-gradient(to right, #ff6aa7, #ff7070)'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(248, 87, 166, 0.4)'"
-          onmouseout="this.style.background='linear-gradient(to right, #f857a6, #ff5858)'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(248, 87, 166, 0.3)'"
-        >
-          Create Indicator
-        </button>
+            gap: 12px;
+          ">
+            <!-- Create Indicator Button -->
+            <div style="position: relative; display: inline-block;">
+              <button
+                id="indi-summary-create-indicator"
+                style="
+                  width: 48px;
+                  height: 48px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  border-radius: 50%;
+                  background: linear-gradient(to right, #f857a6, #ff5858);
+                  color: white;
+                  font-weight: 600;
+                  font-size: 24px;
+                  border: none;
+                  cursor: pointer;
+                  transition: all 0.2s ease-in-out;
+                  box-shadow: 0 2px 8px rgba(248, 87, 166, 0.3);
+                "
+                onmouseover="this.style.background='linear-gradient(to right, #ff6aa7, #ff7070)'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(248, 87, 166, 0.4)'; this.nextElementSibling.style.opacity='1'; this.nextElementSibling.style.visibility='visible'"
+                onmouseout="this.style.background='linear-gradient(to right, #f857a6, #ff5858)'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(248, 87, 166, 0.3)'; this.nextElementSibling.style.opacity='0'; this.nextElementSibling.style.visibility='hidden'"
+              >
+                +
+              </button>
+              <div style="
+                position: absolute;
+                bottom: -40px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: linear-gradient(135deg, #f857a6, #ff5858);
+                color: white;
+                padding: 8px 16px;
+                border-radius: 12px;
+                font-size: 13px;
+                font-weight: 600;
+                white-space: nowrap;
+                box-shadow: 0 4px 12px rgba(248, 87, 166, 0.5);
+                opacity: 0;
+                visibility: hidden;
+                transition: all 0.2s ease-in-out;
+                z-index: 1000;
+                pointer-events: none;
+              ">
+                Create Indicator
+                <div style="
+                  position: absolute;
+                  top: -6px;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  width: 0;
+                  height: 0;
+                  border-left: 6px solid transparent;
+                  border-right: 6px solid transparent;
+                  border-bottom: 6px solid #f857a6;
+                "></div>
+              </div>
+            </div>
+
+            <!-- Create Flow Button (Disabled) -->
+            <div style="position: relative; display: inline-block;">
+              <button
+                disabled
+                style="
+                  width: 48px;
+                  height: 48px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  border-radius: 50%;
+                  background: linear-gradient(to right, #d1d5db, #9ca3af);
+                  color: white;
+                  font-weight: 600;
+                  font-size: 20px;
+                  border: none;
+                  cursor: not-allowed;
+                  opacity: 0.5;
+                  box-shadow: 0 2px 8px rgba(156, 163, 175, 0.3);
+                "
+                onmouseover="this.nextElementSibling.style.opacity='1'; this.nextElementSibling.style.visibility='visible'"
+                onmouseout="this.nextElementSibling.style.opacity='0'; this.nextElementSibling.style.visibility='hidden'"
+              >
+                ⏺️
+              </button>
+              <div style="
+                position: absolute;
+                bottom: -40px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: linear-gradient(135deg, #6b7280, #4b5563);
+                color: white;
+                padding: 8px 16px;
+                border-radius: 12px;
+                font-size: 13px;
+                font-weight: 600;
+                white-space: nowrap;
+                box-shadow: 0 4px 12px rgba(107, 114, 128, 0.5);
+                opacity: 0;
+                visibility: hidden;
+                transition: all 0.2s ease-in-out;
+                z-index: 1000;
+                pointer-events: none;
+              ">
+                Create Flow (Coming Soon)
+                <div style="
+                  position: absolute;
+                  top: -6px;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  width: 0;
+                  height: 0;
+                  border-left: 6px solid transparent;
+                  border-right: 6px solid transparent;
+                  border-bottom: 6px solid #6b7280;
+                "></div>
+              </div>
+            </div>
+
+            <!-- Play Flow Button (Disabled) -->
+            <div style="position: relative; display: inline-block;">
+              <button
+                disabled
+                style="
+                  width: 48px;
+                  height: 48px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  border-radius: 50%;
+                  background: linear-gradient(to right, #d1d5db, #9ca3af);
+                  color: white;
+                  font-weight: 600;
+                  font-size: 20px;
+                  border: none;
+                  cursor: not-allowed;
+                  opacity: 0.5;
+                  box-shadow: 0 2px 8px rgba(156, 163, 175, 0.3);
+                "
+                onmouseover="this.nextElementSibling.style.opacity='1'; this.nextElementSibling.style.visibility='visible'"
+                onmouseout="this.nextElementSibling.style.opacity='0'; this.nextElementSibling.style.visibility='hidden'"
+              >
+                ▶️
+              </button>
+              <div style="
+                position: absolute;
+                bottom: -40px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: linear-gradient(135deg, #6b7280, #4b5563);
+                color: white;
+                padding: 8px 16px;
+                border-radius: 12px;
+                font-size: 13px;
+                font-weight: 600;
+                white-space: nowrap;
+                box-shadow: 0 4px 12px rgba(107, 114, 128, 0.5);
+                opacity: 0;
+                visibility: hidden;
+                transition: all 0.2s ease-in-out;
+                z-index: 1000;
+                pointer-events: none;
+              ">
+                Play Flow (Coming Soon)
+                <div style="
+                  position: absolute;
+                  top: -6px;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  width: 0;
+                  height: 0;
+                  border-left: 6px solid transparent;
+                  border-right: 6px solid transparent;
+                  border-bottom: 6px solid #6b7280;
+                "></div>
+              </div>
+            </div>
+
+            <!-- Settings Button -->
+            <div style="position: relative; display: inline-block;">
+              <button
+                id="indi-summary-settings"
+                style="
+                  width: 48px;
+                  height: 48px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  border-radius: 50%;
+                  background: linear-gradient(to right, #8b5cf6, #7c3aed);
+                  color: white;
+                  font-weight: 600;
+                  font-size: 20px;
+                  border: none;
+                  cursor: pointer;
+                  transition: all 0.2s ease-in-out;
+                  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+                "
+                onmouseover="this.style.background='linear-gradient(to right, #9d6eff, #8b5cf6)'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(139, 92, 246, 0.4)'; this.nextElementSibling.style.opacity='1'; this.nextElementSibling.style.visibility='visible'"
+                onmouseout="this.style.background='linear-gradient(to right, #8b5cf6, #7c3aed)'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(139, 92, 246, 0.3)'; this.nextElementSibling.style.opacity='0'; this.nextElementSibling.style.visibility='hidden'"
+              >
+                ⚙️
+              </button>
+              <div style="
+                position: absolute;
+                bottom: -40px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+                color: white;
+                padding: 8px 16px;
+                border-radius: 12px;
+                font-size: 13px;
+                font-weight: 600;
+                white-space: nowrap;
+                box-shadow: 0 4px 12px rgba(139, 92, 246, 0.5);
+                opacity: 0;
+                visibility: hidden;
+                transition: all 0.2s ease-in-out;
+                z-index: 1000;
+                pointer-events: none;
+              ">
+                Settings
+                <div style="
+                  position: absolute;
+                  top: -6px;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  width: 0;
+                  height: 0;
+                  border-left: 6px solid transparent;
+                  border-right: 6px solid transparent;
+                  border-bottom: 6px solid #8b5cf6;
+                "></div>
+              </div>
+            </div>
+          </div>
 
 
         </div>

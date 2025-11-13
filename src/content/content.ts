@@ -200,6 +200,22 @@ function setupIndiEventListeners() {
       const event = new CustomEvent('indi-create-indicator-from-summary');
       document.dispatchEvent(event);
     }
+
+    // Listen for Settings button clicks
+    if (target && target.id === 'indi-summary-settings') {
+      console.log('⚙️ Settings button clicked from summary tooltip!');
+
+      // Get network data from cache
+      const networkData = Array.from(recentCallsCache.values()).flat();
+
+      // Update onboarding with current network data
+      if (onboardingFlow) {
+        onboardingFlow.updateNetworkData(networkData);
+
+        // Show backend selection step
+        onboardingFlow.showStep2(true);
+      }
+    }
   });
 }
 

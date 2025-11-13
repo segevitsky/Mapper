@@ -120,7 +120,7 @@ export class OnboardingFlow {
   /**
    * Step 2: URL selection
    */
-  private showStep2(): void {
+  public showStep2(reconfigure?: boolean): void {
     this.currentStep = 2;
 
     if (this.detectedUrls.length === 0) {
@@ -151,7 +151,7 @@ export class OnboardingFlow {
     }
 
     // Show URL selection
-    const urlList = this.createUrlSelectionList();
+    const urlList = this.createUrlSelectionList(reconfigure);
 
     this.speechBubble.show({
       title: 'Let me get to know your app:',
@@ -167,7 +167,7 @@ export class OnboardingFlow {
   /**
    * Create URL selection list with interactive elements
    */
-  private createUrlSelectionList(): HTMLElement {
+  private createUrlSelectionList(reconfigure?: boolean): HTMLElement {
     const container = document.createElement('div');
     container.style.marginBottom = '16px';
 
@@ -242,7 +242,7 @@ export class OnboardingFlow {
       cursor: pointer;
       text-decoration: underline;
     `;
-    skipButton.addEventListener('click', () => this.showSkipState());
+    skipButton.addEventListener('click', reconfigure ? () => this.speechBubble.hide() : () => this.showSkipState());
     container.appendChild(skipButton);
 
     return container;
