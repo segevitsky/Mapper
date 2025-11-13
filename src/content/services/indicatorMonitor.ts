@@ -63,52 +63,44 @@ export class IndicatorMonitor {
     }
   
     // Lets prepare for schema validation
-    let validationResult = null;
     let schemaDiff = null;
-    let backgroundColor = "#f44336"; // ברירת מחדל - אדום
-  
+    let backgroundColor = "#f44336"; // Default - red
+
     // Lets check if we have a schema and body to validate
     if (indicator.body && !indicator.schema) {
-      // יצירת סכמה חדשה - בדיוק כמו בקוד המקורי
+      // Create new schema from the first response
       const typeDefinition = schemaService.generateTypeDefinition(
-        indicator.body?.body, 
-        indicator.name ?? "Indicator-Schema", 
+        indicator.body?.body,
+        indicator.name ?? "Indicator-Schema",
         { format: 'inline' }
       );
       console.log({ typeDefinition }, "typeDefinition for indicator body");
       indicator.schema = typeDefinition;
-      
-    } else if (indicator.schema && indicator.body && newCall?.body) {
-      // this is not good  - since we create a validation from the updated body to the new arrived body which is the same
 
-      const validation = schemaService.validateResponse(
-        newCall?.body?.body,  
-        indicator.body?.body
+    } else if (indicator.schema && newCall?.body) {
+      // Compare existing schema against new incoming response
+      const incomingRequestSchema = schemaService.generateTypeDefinition(
+        newCall?.body?.body,
+        indicator?.name ?? 'Unnamed',
+        { format: 'inline' }
       );
-
-      const incomingRequestSchema = schemaService.generateTypeDefinition(newCall?.body, indicator?.name ?? 'Unnamed');
       schemaDiff = schemaService.compareTypeSchemas(indicator.schema, incomingRequestSchema);
 
-      console.log(
-        { validation, indicator, newCall }, 
-        'validation schema for indicator body'
-      );
-
       console.log({ schemaDiff }, 'Schema differences detected:');
-  
-      validationResult = validation;
     }
   
-    // Set the background color based on the validation result and status code
+    // Set the background color based on the schema diff and status code
     const statusCode = newCall.response?.response?.status;
+    const hasSchemaChanges = schemaDiff && (schemaDiff.added.length > 0 || schemaDiff.removed.length > 0 || schemaDiff.changed.length > 0);
+
     if (statusCode === 200) {
-      if (!validationResult || validationResult.isValid) {
-        backgroundColor = "rgba(25, 200, 50, .75)"; // ירוק - הכל תקין
+      if (!hasSchemaChanges) {
+        backgroundColor = "rgba(25, 200, 50, .75)"; // Green - all good
       } else {
-        backgroundColor = "#ff9800"; // כתום - סטטוס תקין אבל סכמה שגויה
+        backgroundColor = "#ff9800"; // Orange - status OK but schema changed
       }
     } else {
-      backgroundColor = "#f44336"; // אדום - שגיאת סטטוס
+      backgroundColor = "#f44336"; // Red - status error
     }
   
     // Update the indicator element in the DOM
@@ -121,29 +113,29 @@ export class IndicatorMonitor {
       }, 500);
   
       (elementToUpdate as HTMLElement).style.backgroundColor = backgroundColor;
-  
-      if (validationResult && !validationResult.isValid) {
+
+      if (hasSchemaChanges) {
         elementToUpdate.classList.add('schema-error');
-        const firstError = validationResult.errors[0];
-        const shortMessage = `Schema Error (${validationResult.errors.length} issues): ${firstError.path} - expected ${firstError.expected}, got ${firstError.actual}`;
+        const changeCount = (schemaDiff?.added.length || 0) + (schemaDiff?.removed.length || 0) + (schemaDiff?.changed.length || 0);
+        const shortMessage = `Schema Changed (${changeCount} changes): ${schemaDiff?.added.length || 0} added, ${schemaDiff?.removed.length || 0} removed, ${schemaDiff?.changed.length || 0} modified`;
         elementToUpdate.setAttribute('data-schema-status', shortMessage);
-        elementToUpdate.setAttribute('data-validation-errors', JSON.stringify(validationResult.errors));
+        elementToUpdate.setAttribute('data-schema-diff', JSON.stringify(schemaDiff));
       } else {
-        elementToUpdate.classList.remove('schema-error'); 
+        elementToUpdate.classList.remove('schema-error');
         // If the schema is valid, we can add a success class and tooltip
-        if (validationResult && validationResult.isValid) {
+        if (schemaDiff !== null) {
           elementToUpdate.classList.add('schema-valid');
           const successMessage = `✅ Schema validated successfully!`;
           elementToUpdate.setAttribute('data-schema-status', successMessage);
           elementToUpdate.classList.add('schema-success-pulse');
-          
+
           setTimeout(() => {
             elementToUpdate.classList.remove('schema-success-pulse');
           }, 1000);
 
-        } else if (elementToUpdate.hasAttribute('data-validation-errors')) {
-          // אם לא הייתה בדיקה, פשוט נקה את השגיאות הקודמות
-          elementToUpdate.removeAttribute('data-validation-errors');
+        } else if (elementToUpdate.hasAttribute('data-schema-diff')) {
+          // If there was no validation, clear previous errors
+          elementToUpdate.removeAttribute('data-schema-diff');
           elementToUpdate.removeAttribute('data-schema-status');
         }
       }

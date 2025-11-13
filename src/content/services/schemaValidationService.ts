@@ -72,6 +72,13 @@ interface SchemaComparison {
     }[];
   }
 
+  interface DetailedChange {
+    path: string;
+    type: 'added' | 'removed' | 'modified';
+    from?: string;
+    to?: string;
+  }
+
 
 class SchemaValidationService {
   private schemaCache: Map<string, SchemaNode>;
@@ -91,14 +98,75 @@ class SchemaValidationService {
 
     public parseTypeSchema(tsString: string): ParsedSchema {
       const obj: ParsedSchema = {};
-      const regex = /(\w+)\??:\s*([^;]+);/g;
-      let match: RegExpExecArray | null;
-      while ((match = regex.exec(tsString))) {
-        const [_, key, type] = match;
-        const optional = tsString.includes(`${key}?:`);
-        obj[key] = { type: type.trim(), optional };
+
+      // Extract the type definition part: everything between = and final ;
+      // Format: "type Name = { ... };" or "type Name = { ... }"
+      const typeDefMatch = tsString.match(/=\s*(.+?);?\s*$/);
+      if (!typeDefMatch) {
+        console.warn('Could not parse type definition:', tsString);
+        return obj;
       }
+
+      let typeBody = typeDefMatch[1].trim();
+
+      // Remove outer braces if present
+      if (typeBody.startsWith('{') && typeBody.endsWith('}')) {
+        typeBody = typeBody.slice(1, -1).trim();
+      }
+
+      // Parse fields - handle both with and without trailing semicolons
+      // Split by semicolon but be careful with nested objects and arrays
+      const fields = this.splitTypeFields(typeBody);
+
+      for (const field of fields) {
+        const trimmedField = field.trim();
+        if (!trimmedField) continue;
+
+        // Match: "fieldName?: type" or "fieldName: type"
+        const fieldMatch = trimmedField.match(/^(\w+)(\?)?:\s*(.+)$/);
+        if (fieldMatch) {
+          const [_, key, optionalMarker, type] = fieldMatch;
+          obj[key] = {
+            type: type.trim(),
+            optional: !!optionalMarker
+          };
+        }
+      }
+
       return obj;
+    }
+
+    /**
+     * Split type fields by semicolon, respecting nested braces and brackets
+     */
+    private splitTypeFields(typeBody: string): string[] {
+      const fields: string[] = [];
+      let current = '';
+      let braceDepth = 0;
+      let bracketDepth = 0;
+
+      for (let i = 0; i < typeBody.length; i++) {
+        const char = typeBody[i];
+
+        if (char === '{') braceDepth++;
+        else if (char === '}') braceDepth--;
+        else if (char === '[') bracketDepth++;
+        else if (char === ']') bracketDepth--;
+        else if (char === ';' && braceDepth === 0 && bracketDepth === 0) {
+          fields.push(current);
+          current = '';
+          continue;
+        }
+
+        current += char;
+      }
+
+      // Add the last field (might not have trailing semicolon)
+      if (current.trim()) {
+        fields.push(current);
+      }
+
+      return fields;
     }
 
     /**
@@ -108,8 +176,16 @@ class SchemaValidationService {
       schemaStrA: string,
       schemaStrB: string,
     ): SchemaDiff {
+      console.log('🔍 Comparing schemas:');
+      console.log('Schema A:', schemaStrA);
+      console.log('Schema B:', schemaStrB);
+
       const schemaA = this.parseTypeSchema(schemaStrA);
       const schemaB = this.parseTypeSchema(schemaStrB);
+
+      console.log('Parsed Schema A:', schemaA);
+      console.log('Parsed Schema B:', schemaB);
+
       const added: string[] = [];
       const removed: string[] = [];
       const changed: SchemaDiff["changed"] = [];
@@ -117,11 +193,13 @@ class SchemaValidationService {
       for (const key in schemaA) {
         if (!(key in schemaB)) {
           removed.push(key);
+          console.log(`➖ Removed field: ${key}`);
         } else {
           const a = schemaA[key];
           const b = schemaB[key];
           if (a.type !== b.type || a.optional !== b.optional) {
             changed.push({ field: key, from: a, to: b });
+            console.log(`🔄 Changed field: ${key} from ${a.type}${a.optional ? '?' : ''} to ${b.type}${b.optional ? '?' : ''}`);
           }
         }
       }
@@ -129,9 +207,215 @@ class SchemaValidationService {
       for (const key in schemaB) {
         if (!(key in schemaA)) {
           added.push(key);
+          console.log(`➕ Added field: ${key}`);
         }
       }
+
+      console.log('Diff result:', { added, removed, changed });
       return { added, removed, changed };
+    }
+
+    /**
+     * Recursively compare nested object types and return detailed changes
+     */
+    private compareNestedFields(typeA: string, typeB: string, basePath: string = ''): DetailedChange[] {
+      const changes: DetailedChange[] = [];
+
+      // Check if both are object types
+      const isObjectA = typeA.trim().startsWith('{');
+      const isObjectB = typeB.trim().startsWith('{');
+
+      if (!isObjectA || !isObjectB) {
+        // Not nested objects, just a type change
+        if (typeA !== typeB) {
+          changes.push({
+            path: basePath,
+            type: 'modified',
+            from: typeA,
+            to: typeB
+          });
+        }
+        return changes;
+      }
+
+      // Parse both object types
+      const fieldsA = this.splitTypeFields(typeA.slice(1, -1).trim());
+      const fieldsB = this.splitTypeFields(typeB.slice(1, -1).trim());
+
+      const parsedA: Record<string, { type: string; optional: boolean }> = {};
+      const parsedB: Record<string, { type: string; optional: boolean }> = {};
+
+      // Parse fields A
+      fieldsA.forEach(field => {
+        const match = field.trim().match(/^(\w+)(\?)?:\s*(.+)$/);
+        if (match) {
+          const [_, key, optionalMarker, type] = match;
+          parsedA[key] = { type: type.trim(), optional: !!optionalMarker };
+        }
+      });
+
+      // Parse fields B
+      fieldsB.forEach(field => {
+        const match = field.trim().match(/^(\w+)(\?)?:\s*(.+)$/);
+        if (match) {
+          const [_, key, optionalMarker, type] = match;
+          parsedB[key] = { type: type.trim(), optional: !!optionalMarker };
+        }
+      });
+
+      // Find removed fields
+      for (const key in parsedA) {
+        if (!(key in parsedB)) {
+          const fieldPath = basePath ? `${basePath}.${key}` : key;
+          changes.push({
+            path: fieldPath,
+            type: 'removed',
+            from: parsedA[key].type + (parsedA[key].optional ? '?' : '')
+          });
+        }
+      }
+
+      // Find added fields
+      for (const key in parsedB) {
+        if (!(key in parsedA)) {
+          const fieldPath = basePath ? `${basePath}.${key}` : key;
+          changes.push({
+            path: fieldPath,
+            type: 'added',
+            to: parsedB[key].type + (parsedB[key].optional ? '?' : '')
+          });
+        }
+      }
+
+      // Find modified fields (recursively)
+      for (const key in parsedA) {
+        if (key in parsedB) {
+          const fieldA = parsedA[key];
+          const fieldB = parsedB[key];
+          const fieldPath = basePath ? `${basePath}.${key}` : key;
+
+          // Check if nested objects
+          if (fieldA.type.trim().startsWith('{') && fieldB.type.trim().startsWith('{')) {
+            // Recursively compare nested objects
+            const nestedChanges = this.compareNestedFields(fieldA.type, fieldB.type, fieldPath);
+            changes.push(...nestedChanges);
+          } else if (fieldA.type !== fieldB.type || fieldA.optional !== fieldB.optional) {
+            // Simple type change
+            changes.push({
+              path: fieldPath,
+              type: 'modified',
+              from: fieldA.type + (fieldA.optional ? '?' : ''),
+              to: fieldB.type + (fieldB.optional ? '?' : '')
+            });
+          }
+        }
+      }
+
+      return changes;
+    }
+
+    /**
+     * Generate HTML for displaying schema diff details
+     */
+    public generateSchemaDiffHTML(schemaDiff: SchemaDiff, schemaStrA: string, schemaStrB: string): string {
+      const schemaA = this.parseTypeSchema(schemaStrA);
+      const schemaB = this.parseTypeSchema(schemaStrB);
+
+      // Collect all detailed changes (including nested ones)
+      const allChanges: DetailedChange[] = [];
+
+      // Process added fields
+      schemaDiff.added.forEach(field => {
+        const fieldInfo = schemaB[field];
+        // Check if it's a nested object
+        if (fieldInfo.type.trim().startsWith('{')) {
+          // Recursively find all added nested fields
+          const nestedChanges = this.compareNestedFields('{}', fieldInfo.type, field);
+          allChanges.push(...nestedChanges);
+        } else {
+          allChanges.push({
+            path: field,
+            type: 'added',
+            to: fieldInfo.type + (fieldInfo.optional ? '?' : '')
+          });
+        }
+      });
+
+      // Process removed fields
+      schemaDiff.removed.forEach(field => {
+        const fieldInfo = schemaA[field];
+        // Check if it's a nested object
+        if (fieldInfo.type.trim().startsWith('{')) {
+          // Recursively find all removed nested fields
+          const nestedChanges = this.compareNestedFields(fieldInfo.type, '{}', field);
+          allChanges.push(...nestedChanges);
+        } else {
+          allChanges.push({
+            path: field,
+            type: 'removed',
+            from: fieldInfo.type + (fieldInfo.optional ? '?' : '')
+          });
+        }
+      });
+
+      // Process changed fields (with recursive nested comparison)
+      schemaDiff.changed.forEach(change => {
+        const nestedChanges = this.compareNestedFields(change.from.type, change.to.type, change.field);
+        allChanges.push(...nestedChanges);
+      });
+
+      // Group changes by type
+      const added = allChanges.filter(c => c.type === 'added');
+      const removed = allChanges.filter(c => c.type === 'removed');
+      const modified = allChanges.filter(c => c.type === 'modified');
+
+      let html = '<div style="text-align: left; font-family: monospace; font-size: 13px; max-height: 400px; overflow-y: auto;">';
+
+      // Added fields
+      if (added.length > 0) {
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<div style="font-weight: bold; color: #4CAF50; margin-bottom: 8px;">✅ Added Fields (' + added.length + '):</div>';
+        html += '<ul style="margin: 0; padding-left: 20px; list-style: none;">';
+        added.forEach(change => {
+          html += `<li style="margin: 4px 0; color: #2e7d32;">+ <strong>${change.path}</strong>: ${change.to}</li>`;
+        });
+        html += '</ul></div>';
+      }
+
+      // Removed fields
+      if (removed.length > 0) {
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<div style="font-weight: bold; color: #f44336; margin-bottom: 8px;">❌ Removed Fields (' + removed.length + '):</div>';
+        html += '<ul style="margin: 0; padding-left: 20px; list-style: none;">';
+        removed.forEach(change => {
+          html += `<li style="margin: 4px 0; color: #c62828;">- <strong>${change.path}</strong>: ${change.from}</li>`;
+        });
+        html += '</ul></div>';
+      }
+
+      // Modified fields
+      if (modified.length > 0) {
+        html += '<div style="margin-bottom: 20px;">';
+        html += '<div style="font-weight: bold; color: #ff9800; margin-bottom: 8px;">⚠️ Modified Fields (' + modified.length + '):</div>';
+        html += '<ul style="margin: 0; padding-left: 20px; list-style: none;">';
+        modified.forEach(change => {
+          html += `<li style="margin: 4px 0; color: #e65100;">`;
+          html += `~ <strong>${change.path}</strong>: `;
+          html += `<span style="text-decoration: line-through; color: #999;">${change.from}</span>`;
+          html += ` → `;
+          html += `<span style="color: #ff9800;">${change.to}</span>`;
+          html += `</li>`;
+        });
+        html += '</ul></div>';
+      }
+
+      // No changes
+      if (allChanges.length === 0) {
+        html += '<div style="color: #4CAF50; text-align: center; padding: 20px;">✅ Schema is identical - no changes detected</div>';
+      }
+
+      html += '</div>';
+      return html;
     }
 
 
