@@ -891,9 +891,13 @@ function createIndicator(data: any, item: any, element: any, name: string, descr
     const indicators = result.indicators || {};
     indicators[storagePath] = indicators[storagePath] || [];
     indicators[storagePath].push(indicatorData);
-    chrome.storage.local.set({ indicators }, () => {
-      elementByPath.after(indicator);
-    });
+    try {
+      chrome.storage.local.set({ indicators }, () => {
+        elementByPath.after(indicator);
+      });
+    } catch (error) {
+      console.error("Error saving indicator to storage:", error);
+    }
   });
 }
 

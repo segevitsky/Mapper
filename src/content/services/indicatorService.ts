@@ -29,11 +29,12 @@ type TooltipContent = {
   description: string;
 };
 
+
 export function loadIndicators() {
   const storagePath = generateStoragePath(window.location.href);
   
-  chrome.storage.local.get(["indicators", 'userData', 'limits', 'role'], (result) => {
-    const { userData, limits, role, indicators } = result;
+  chrome.storage.local.get(["indicators"], (result) => {
+    const { indicators } = result;
     console.log('All Indicators from storage:', indicators);
     // const { domains, status } = userData || {};
     // lets see if our current location is included in the domains
@@ -1062,16 +1063,38 @@ indicator.addEventListener("click", async () => {
           const ind = currentPageIndicators.find(
             (i: IndicatorData) => i.id === indicator.dataset.indicatorId
           );
-          if (ind && ind.body.body) {
-              const schemaService = new SchemaValidationService();
-              // This doesn't work as intended!
-              const schemaCheck = schemaService.validateResponse(body, ind.body.body);
-              const { isValid, errors } = schemaCheck;
+          if (ind && ind.body.body && ind.schema) {
+            const schemaService = new SchemaValidationService();
+            const incomingRequestSchema = schemaService.generateTypeDefinition(body, dataIndicatorInfo?.name ?? 'Unnamed');
+            const schemaDiff = schemaService.compareTypeSchemas(ind.schema, incomingRequestSchema);
+            console.log({ schemaDiff }, 'schema difference using our new function');
+
+            if (schemaDiff.added.length > 0 || schemaDiff.removed.length > 0 || schemaDiff.changed.length > 0) {
+              console.log('Schema has changed:', schemaDiff);
+              indicator.style.border = "2px solid #f44336";
+              // show a sweet alert to the user about the schema change
+              Swal.fire({
+                title: 'Schema Changed',
+                html: `
+                  <p>The response schema has changed.</p>
+                  <p><strong>Added:</strong> ${schemaDiff.added.length}</p>
+                  <p><strong>Removed:</strong> ${schemaDiff.removed.length}</p>
+                  <p><strong>Modified:</strong> ${schemaDiff.changed.length}</p>
+                `,
+                icon: 'warning',
+                confirmButtonText: 'OK',
+                allowOutsideClick: false,
+                draggable: true,
+                customClass: {
+                  popup: 'jira-popup'
+                }
+              });
+            }
               tooltip.remove();
               Swal.fire({
-              icon: isValid ? 'success' : 'error',
-              title: isValid ? 'Schema Valid' : 'Schema Invalid',
-              text: isValid ? 'The response matches the schema.' : 'The response does not match the schema.',
+                icon: 'success',
+              title: 'Schema Valid',
+              text: 'The response matches the schema.',
               timer: 2000,
               timerProgressBar: true,
               showConfirmButton: false,
@@ -1080,9 +1103,7 @@ indicator.addEventListener("click", async () => {
               }
             });
             // lets update the styling of the indicator based on the schema validation
-            indicator.style.border = isValid
-              ? "2px solid #4CAF50"
-              : "2px solid #f44336";
+            indicator.style.border = "2px solid #4CAF50";
 
             // lets also update the schema in the indicator in storage
 

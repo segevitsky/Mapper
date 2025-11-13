@@ -6,6 +6,7 @@
   "permissions": [
     "storage",
     "webRequest",
+    "unlimitedStorage", 
     "debugger", 
     "activeTab",
     "tabs",

@@ -64,6 +64,7 @@ export class IndicatorMonitor {
   
     // Lets prepare for schema validation
     let validationResult = null;
+    let schemaDiff = null;
     let backgroundColor = "#f44336"; // ברירת מחדל - אדום
   
     // Lets check if we have a schema and body to validate
@@ -74,19 +75,26 @@ export class IndicatorMonitor {
         indicator.name ?? "Indicator-Schema", 
         { format: 'inline' }
       );
-      // console.log({ typeDefinition }, "typeDefinition for indicator body");
+      console.log({ typeDefinition }, "typeDefinition for indicator body");
       indicator.schema = typeDefinition;
       
     } else if (indicator.schema && indicator.body && newCall?.body) {
+      // this is not good  - since we create a validation from the updated body to the new arrived body which is the same
+
       const validation = schemaService.validateResponse(
         newCall?.body?.body,  
         indicator.body?.body
       );
-      
-      // console.log(
-      //   { validation, indicator, newCall }, 
-      //   'validation schema for indicator body'
-      // );
+
+      const incomingRequestSchema = schemaService.generateTypeDefinition(newCall?.body, indicator?.name ?? 'Unnamed');
+      schemaDiff = schemaService.compareTypeSchemas(indicator.schema, incomingRequestSchema);
+
+      console.log(
+        { validation, indicator, newCall }, 
+        'validation schema for indicator body'
+      );
+
+      console.log({ schemaDiff }, 'Schema differences detected:');
   
       validationResult = validation;
     }

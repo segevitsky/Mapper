@@ -54,6 +54,25 @@ interface SchemaComparison {
   newSchema: SchemaNode;
 }
 
+  // Testing functions
+  type ParsedField = {
+    type: string;
+    optional: boolean;
+  };
+
+  type ParsedSchema = Record<string, ParsedField>;
+
+  interface SchemaDiff {
+    added: string[];
+    removed: string[];
+    changed: {
+      field: string;
+      from: ParsedField;
+      to: ParsedField;
+    }[];
+  }
+
+
 class SchemaValidationService {
   private schemaCache: Map<string, SchemaNode>;
 
@@ -68,6 +87,55 @@ class SchemaValidationService {
    * @param options - Generation options (format: 'multiline' | 'inline')
    * @returns TypeScript type definition as string
    */
+
+
+    public parseTypeSchema(tsString: string): ParsedSchema {
+      const obj: ParsedSchema = {};
+      const regex = /(\w+)\??:\s*([^;]+);/g;
+      let match: RegExpExecArray | null;
+      while ((match = regex.exec(tsString))) {
+        const [_, key, type] = match;
+        const optional = tsString.includes(`${key}?:`);
+        obj[key] = { type: type.trim(), optional };
+      }
+      return obj;
+    }
+
+    /**
+     * Compares two TypeScript schemas and returns added, removed, and changed fields.
+     */
+    public compareTypeSchemas(
+      schemaStrA: string,
+      schemaStrB: string,
+    ): SchemaDiff {
+      const schemaA = this.parseTypeSchema(schemaStrA);
+      const schemaB = this.parseTypeSchema(schemaStrB);
+      const added: string[] = [];
+      const removed: string[] = [];
+      const changed: SchemaDiff["changed"] = [];
+      // Find removed or changed fields
+      for (const key in schemaA) {
+        if (!(key in schemaB)) {
+          removed.push(key);
+        } else {
+          const a = schemaA[key];
+          const b = schemaB[key];
+          if (a.type !== b.type || a.optional !== b.optional) {
+            changed.push({ field: key, from: a, to: b });
+          }
+        }
+      }
+      // Find newly added fields
+      for (const key in schemaB) {
+        if (!(key in schemaA)) {
+          added.push(key);
+        }
+      }
+      return { added, removed, changed };
+    }
+
+
+
   public generateTypeDefinition(
     responseBody: any,
     typeName: string,
@@ -392,7 +460,7 @@ class SchemaValidationService {
     return type;
   }
 
-  private performValidation(data: any, schema: SchemaNode): ValidationResult {
+  public performValidation(data: any, schema: SchemaNode): ValidationResult {
     const validation = this.validateAgainstSchema(data, schema);
     
     const result: ValidationResult = {
@@ -421,7 +489,7 @@ class SchemaValidationService {
     return result;
   }
 
-  private validateAgainstSchema(
+  public validateAgainstSchema(
     data: any, 
     schema: SchemaNode, 
     path: string = ''

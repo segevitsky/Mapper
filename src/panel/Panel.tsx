@@ -245,7 +245,7 @@ export const Panel: React.FC = () => {
         </div>
 
         {/* RIGHT PANEL - Controls & Mappings */}
-        <div className="w-full lg:w-1/2 flex flex-col gap-4 flex-shrink-0 lg:min-h-0 lg:overflow-y-auto">
+        <div className="w-full lg:w-1/2 flex flex-col gap-4 flex-shrink-0 lg:min-h-0 lg:overflow-y-auto p-4">
           {/* Mappings Header */}
           <div className="w-full bg-gradient-to-r from-purple-400 via-violet-400 to-purple-500 rounded-3xl shadow-2xl p-6 overflow-hidden">
             <div className="flex items-center gap-3">
@@ -261,7 +261,7 @@ export const Panel: React.FC = () => {
             {/* Toggle Indicators */}
             <button
               onClick={toggleIndiators}
-              className="w-full bg-white rounded-2xl shadow-lg p-5 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 group overflow-hidden"
+              className="w-full bg-white rounded-2xl shadow-lg p-5 hover:shadow-xl transition-all duration-300 group overflow-hidden"
             >
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-4">

@@ -18,6 +18,7 @@ interface IndicatorData {
   body?: any;
   duration: number;
   request: any;
+  schema?: string;
 }
 
 const IndicatorFloatingWindow: React.FC = () => {
@@ -30,7 +31,8 @@ const IndicatorFloatingWindow: React.FC = () => {
     body: true,      // Body starts open
     overview: true,  // Overview starts open
     headers: false,
-    debug: false
+    debug: false,
+    schema: false
   });
 
   const toggleSection = (section: keyof typeof expandedSections) => {
@@ -236,6 +238,50 @@ const IndicatorFloatingWindow: React.FC = () => {
             </div>
           </div>
         )}
+
+        <div className='group'>
+          <button
+            onClick={() => toggleSection('schema')}
+            className="w-full bg-gradient-to-r from-yellow-400 via-violet-400 to-pink-500 hover:from-purple-500 hover:via-violet-500 hover:to-purple-600 text-white rounded-3xl shadow-2xl p-6 transition-all duration-300 hover:scale-[1.02] hover:shadow-purple-300/50"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
+                  <span className="text-3xl">📊</span>
+                </div>
+                <div className="text-left">
+                  <h2 className="text-2xl font-bold">Request Schema</h2>
+                  <p className="text-purple-100 text-sm">Find out the structure of the request body</p>
+                </div>
+              </div>
+              <ChevronDown
+                className={`w-8 h-8 transition-all duration-500 ease-in-out ${
+                  expandedSections?.schema ? 'rotate-180 scale-110' : 'scale-100'
+                }`}
+                strokeWidth={3}
+              />
+            </div>
+          </button>
+
+
+          {/* // Schema Accordion Content */}
+          <div className={`overflow-hidden transition-all duration-500 ${expandedSections.schema ? 'max-h-[600px] mt-3' : 'max-h-0'}`}>
+            <div className="bg-white rounded-2xl shadow-xl p-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                { indicatorData?.schema && (
+                  <div className="bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-2xl p-6 border-2 border-yellow-300 transform hover:scale-105 transition-transform">
+                    <div className="text-xs font-bold text-yellow-700 mb-2">🧩 REQUEST SCHEMA</div>
+                    <div className="text-sm font-black text-yellow-900">
+                      {indicatorData?.schema}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+
+        </div>
 
         {/* 📊 REQUEST OVERVIEW ACCORDION */}
         <div className="group">
