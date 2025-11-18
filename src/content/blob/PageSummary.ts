@@ -285,10 +285,10 @@ export class PageSummary {
               </div>
             </div>
 
-            <!-- Create Flow Button (Disabled) -->
+            <!-- Create Flow Button -->
             <div style="position: relative; display: inline-block;">
               <button
-                disabled
+                id="indi-summary-create-flow"
                 style="
                   width: 48px;
                   height: 48px;
@@ -296,17 +296,17 @@ export class PageSummary {
                   align-items: center;
                   justify-content: center;
                   border-radius: 50%;
-                  background: linear-gradient(to right, #d1d5db, #9ca3af);
+                  background: linear-gradient(to right, #10b981, #059669);
                   color: white;
                   font-weight: 600;
                   font-size: 20px;
                   border: none;
-                  cursor: not-allowed;
-                  opacity: 0.5;
-                  box-shadow: 0 2px 8px rgba(156, 163, 175, 0.3);
+                  cursor: pointer;
+                  transition: all 0.2s ease-in-out;
+                  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
                 "
-                onmouseover="this.nextElementSibling.style.opacity='1'; this.nextElementSibling.style.visibility='visible'"
-                onmouseout="this.nextElementSibling.style.opacity='0'; this.nextElementSibling.style.visibility='hidden'"
+                onmouseover="this.style.background='linear-gradient(to right, #34d399, #10b981)'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(16, 185, 129, 0.4)'; this.nextElementSibling.style.opacity='1'; this.nextElementSibling.style.visibility='visible'"
+                onmouseout="this.style.background='linear-gradient(to right, #10b981, #059669)'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(16, 185, 129, 0.3)'; this.nextElementSibling.style.opacity='0'; this.nextElementSibling.style.visibility='hidden'"
               >
                 ⏺️
               </button>
@@ -315,21 +315,21 @@ export class PageSummary {
                 bottom: -40px;
                 left: 50%;
                 transform: translateX(-50%);
-                background: linear-gradient(135deg, #6b7280, #4b5563);
+                background: linear-gradient(135deg, #10b981, #059669);
                 color: white;
                 padding: 8px 16px;
                 border-radius: 12px;
                 font-size: 13px;
                 font-weight: 600;
                 white-space: nowrap;
-                box-shadow: 0 4px 12px rgba(107, 114, 128, 0.5);
+                box-shadow: 0 4px 12px rgba(16, 185, 129, 0.5);
                 opacity: 0;
                 visibility: hidden;
                 transition: all 0.2s ease-in-out;
                 z-index: 1000;
                 pointer-events: none;
               ">
-                Create Flow (Coming Soon)
+                Create Flow
                 <div style="
                   position: absolute;
                   top: -6px;
@@ -339,15 +339,15 @@ export class PageSummary {
                   height: 0;
                   border-left: 6px solid transparent;
                   border-right: 6px solid transparent;
-                  border-bottom: 6px solid #6b7280;
+                  border-bottom: 6px solid #10b981;
                 "></div>
               </div>
             </div>
 
-            <!-- Play Flow Button (Disabled) -->
+            <!-- Play Flow Button -->
             <div style="position: relative; display: inline-block;">
               <button
-                disabled
+                id="indi-summary-play-flow"
                 style="
                   width: 48px;
                   height: 48px;
@@ -355,17 +355,17 @@ export class PageSummary {
                   align-items: center;
                   justify-content: center;
                   border-radius: 50%;
-                  background: linear-gradient(to right, #d1d5db, #9ca3af);
+                  background: linear-gradient(to right, #3b82f6, #2563eb);
                   color: white;
                   font-weight: 600;
                   font-size: 20px;
                   border: none;
-                  cursor: not-allowed;
-                  opacity: 0.5;
-                  box-shadow: 0 2px 8px rgba(156, 163, 175, 0.3);
+                  cursor: pointer;
+                  transition: all 0.2s ease-in-out;
+                  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
                 "
-                onmouseover="this.nextElementSibling.style.opacity='1'; this.nextElementSibling.style.visibility='visible'"
-                onmouseout="this.nextElementSibling.style.opacity='0'; this.nextElementSibling.style.visibility='hidden'"
+                onmouseover="this.style.background='linear-gradient(to right, #60a5fa, #3b82f6)'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(59, 130, 246, 0.4)'; this.nextElementSibling.style.opacity='1'; this.nextElementSibling.style.visibility='visible'"
+                onmouseout="this.style.background='linear-gradient(to right, #3b82f6, #2563eb)'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(59, 130, 246, 0.3)'; this.nextElementSibling.style.opacity='0'; this.nextElementSibling.style.visibility='hidden'"
               >
                 ▶️
               </button>
@@ -374,21 +374,21 @@ export class PageSummary {
                 bottom: -40px;
                 left: 50%;
                 transform: translateX(-50%);
-                background: linear-gradient(135deg, #6b7280, #4b5563);
+                background: linear-gradient(135deg, #3b82f6, #2563eb);
                 color: white;
                 padding: 8px 16px;
                 border-radius: 12px;
                 font-size: 13px;
                 font-weight: 600;
                 white-space: nowrap;
-                box-shadow: 0 4px 12px rgba(107, 114, 128, 0.5);
+                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.5);
                 opacity: 0;
                 visibility: hidden;
                 transition: all 0.2s ease-in-out;
                 z-index: 1000;
                 pointer-events: none;
               ">
-                Play Flow (Coming Soon)
+                Play Flow
                 <div style="
                   position: absolute;
                   top: -6px;
@@ -398,7 +398,7 @@ export class PageSummary {
                   height: 0;
                   border-left: 6px solid transparent;
                   border-right: 6px solid transparent;
-                  border-bottom: 6px solid #6b7280;
+                  border-bottom: 6px solid #3b82f6;
                 "></div>
               </div>
             </div>

@@ -17,6 +17,9 @@ import { IndiBlob } from './blob/indiBlob';
 import { SpeechBubble } from './blob/speechBubble';
 import { OnboardingFlow } from './blob/onboarding';
 import { PageSummary, PageSummaryData } from './blob/PageSummary';
+import { flowRecorder } from './services/flowRecorder';
+import { FlowStorage } from './services/flowStorage';
+import { flowPlayer } from './services/flowPlayer';
 // import { createAIChatInterface } from './aiChatComponent';
 // אחרי שכל הדף נטען, פשוט להוסיף:
 // createAIChatInterface();
@@ -216,9 +219,608 @@ function setupIndiEventListeners() {
         onboardingFlow.showStep2(true);
       }
     }
+
+    // Listen for Create Flow button clicks
+    if (target && target.id === 'indi-summary-create-flow') {
+      console.log('🔴 Create Flow button clicked!');
+      handleCreateFlowClick(target);
+    }
+
+    // Listen for Play Flow button clicks
+    if (target && target.id === 'indi-summary-play-flow') {
+      console.log('▶️ Play Flow button clicked!');
+      handlePlayFlowClick();
+    }
   });
 }
 
+// ==================== FLOW RECORDING HANDLERS ====================
+
+/**
+ * Handle Create Flow button click - Toggle recording on/off
+ */
+async function handleCreateFlowClick(button: HTMLElement) {
+  if (flowRecorder.isRecording()) {
+    // Stop recording
+    const session = flowRecorder.stopRecording();
+
+    if (!session) return;
+
+    // Update button appearance
+    button.style.background = 'linear-gradient(to right, #10b981, #059669)';
+    button.textContent = '⏺️';
+
+    // Ask user to name and save the flow
+    const { value: flowName } = await Swal.fire({
+      title: '💾 Save Flow',
+      html: `
+        <p>Recording complete! ${session.steps.length} steps captured.</p>
+        <input id="flow-name" class="swal2-input" placeholder="Flow name" value="${session.flowName}">
+        <textarea id="flow-description" class="swal2-textarea" placeholder="Description (optional)"></textarea>
+      `,
+      showCancelButton: true,
+      confirmButtonText: 'Save Flow',
+      cancelButtonText: 'Discard',
+      preConfirm: () => {
+        const nameInput = document.getElementById('flow-name') as HTMLInputElement;
+        const descInput = document.getElementById('flow-description') as HTMLTextAreaElement;
+        return {
+          name: nameInput.value || session.flowName,
+          description: descInput.value
+        };
+      },
+      customClass: {
+        popup: 'jira-popup'
+      }
+    });
+
+    if (flowName) {
+      // Save the flow
+      const flow = await FlowStorage.saveFlow(session, flowName.description);
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Flow Saved!',
+        text: `"${flowName.name}" saved with ${flow.steps.length} steps.`,
+        timer: 2000,
+        timerProgressBar: true,
+        showConfirmButton: false,
+        customClass: {
+          popup: 'jira-popup'
+        }
+      });
+    }
+  } else {
+    // Start recording
+    const { value: flowName } = await Swal.fire({
+      title: '🔴 Start Recording',
+      input: 'text',
+      inputLabel: 'Flow Name',
+      inputPlaceholder: 'e.g., "User Login Flow"',
+      showCancelButton: true,
+      confirmButtonText: 'Start Recording',
+      inputValidator: (value) => {
+        if (!value) {
+          return 'Please enter a flow name';
+        }
+      },
+      customClass: {
+        popup: 'jira-popup'
+      }
+    });
+
+    if (flowName) {
+      try {
+        await flowRecorder.startRecording(flowName);
+      } catch (error: any) {
+        await Swal.fire({
+          icon: 'error',
+          title: 'Cannot Start Recording',
+          text: error.message,
+          customClass: { popup: 'jira-popup' }
+        });
+        return;
+      }
+
+      // Update button appearance to show recording
+      button.style.background = 'linear-gradient(to right, #ef4444, #dc2626)';
+      button.textContent = '⏹️';
+
+      // Show recording indicator
+      showRecordingIndicator();
+    }
+  }
+}
+
+/**
+ * Handle Play Flow button click - Show flow selection and playback
+ */
+async function handlePlayFlowClick() {
+  // Get flows for current domain
+  const flows = await FlowStorage.getFlowsForDomain();
+
+  if (flows.length === 0) {
+    Swal.fire({
+      icon: 'info',
+      title: 'No Flows Found',
+      text: 'Record a flow first by clicking the Create Flow button!',
+      customClass: {
+        popup: 'jira-popup'
+      }
+    });
+    return;
+  }
+
+  // Show flow selection with custom HTML
+  const flowsHTML = generateFlowListHTML(flows);
+
+  const result = await Swal.fire({
+    title: 'Select Flow to Play',
+    html: flowsHTML,
+    showCancelButton: true,
+    showConfirmButton: false,
+    width: '600px',
+    customClass: {
+      popup: 'jira-popup'
+    },
+    didOpen: () => {
+      // Add event listeners for play and delete buttons
+      flows.forEach(flow => {
+        const playBtn = document.getElementById(`play-flow-${flow.id}`);
+        const deleteBtn = document.getElementById(`delete-flow-${flow.id}`);
+
+        if (playBtn) {
+          playBtn.addEventListener('click', async () => {
+            Swal.close();
+            await playSelectedFlow(flow.id);
+          });
+        }
+
+        if (deleteBtn) {
+          deleteBtn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            await deleteFlow(flow.id, flow.name);
+          });
+        }
+      });
+    }
+  });
+
+  return; // Early return since we handle flow playing in the button click handlers
+}
+
+/**
+ * Generate HTML for flow list with play and delete buttons
+ */
+function generateFlowListHTML(flows: any[]): string {
+  if (flows.length === 0) {
+    return '<p style="text-align: center; color: #6b7280;">No flows found</p>';
+  }
+
+  let html = '<div style="max-height: 500px; overflow-y: auto;">';
+
+  flows.forEach(flow => {
+    const createdDate = new Date(flow.createdAt).toLocaleDateString();
+    const lastRun = flow.lastRun
+      ? `<div style="font-size: 11px; color: ${flow.lastRun.passed ? '#10b981' : '#ef4444'}; margin-top: 4px;">
+           Last run: ${flow.lastRun.passed ? '✓' : '✗'} ${new Date(flow.lastRun.timestamp).toLocaleString()}
+         </div>`
+      : '';
+
+    html += `
+      <div style="
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 18px;
+        margin-bottom: 10px;
+        background: linear-gradient(135deg, #fdf2f8, #fce7f3);
+        border-radius: 12px;
+        border: 2px solid #fbcfe8;
+        transition: all 0.2s;
+      " onmouseover="this.style.borderColor='#f472b6'; this.style.background='linear-gradient(135deg, #fce7f3, #fbcfe8)';"
+         onmouseout="this.style.borderColor='#fbcfe8'; this.style.background='linear-gradient(135deg, #fdf2f8, #fce7f3)';">
+        <div style="flex: 1;">
+          <div style="font-weight: 700; font-size: 15px; margin-bottom: 6px; color: #831843;">${flow.name}</div>
+          <div style="font-size: 12px; color: #9ca3af;">
+            ${flow.steps.length} steps • Created ${createdDate}
+          </div>
+          ${lastRun}
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button id="play-flow-${flow.id}" style="
+            padding: 9px 18px;
+            background: linear-gradient(135deg, #ec4899, #db2777);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 8px rgba(236, 72, 153, 0.3);
+            transition: all 0.15s ease;
+          " onmouseover="this.style.background='linear-gradient(135deg, #db2777, #be185d)'; this.style.boxShadow='0 4px 12px rgba(236, 72, 153, 0.4)';"
+             onmouseout="this.style.background='linear-gradient(135deg, #ec4899, #db2777)'; this.style.boxShadow='0 2px 8px rgba(236, 72, 153, 0.3)';">
+            ▶️ Play
+          </button>
+          <button id="delete-flow-${flow.id}" style="
+            padding: 9px 14px;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 13px;
+            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+            transition: all 0.15s ease;
+          " onmouseover="this.style.background='linear-gradient(135deg, #dc2626, #b91c1c)'; this.style.boxShadow='0 4px 12px rgba(239, 68, 68, 0.4)';"
+             onmouseout="this.style.background='linear-gradient(135deg, #ef4444, #dc2626)'; this.style.boxShadow='0 2px 8px rgba(239, 68, 68, 0.3)';">
+            🗑️
+          </button>
+        </div>
+      </div>
+    `;
+  });
+
+  html += '</div>';
+  return html;
+}
+
+/**
+ * Play a selected flow by ID
+ */
+async function playSelectedFlow(flowId: string) {
+  const flow = await FlowStorage.getFlowById(flowId);
+
+  if (!flow) {
+    Swal.fire({
+      icon: 'error',
+      title: 'Flow Not Found',
+      text: 'The selected flow could not be loaded.',
+      customClass: { popup: 'jira-popup' }
+    });
+    return;
+  }
+
+  // Show playback started message
+  showPlaybackProgressUI(flow);
+
+  // Play the flow
+  try {
+    const result = await flowPlayer.playFlow(flow);
+
+    // Update last run info
+    await FlowStorage.updateFlowLastRun(flow.id, {
+      timestamp: Date.now(),
+      passed: result.success
+    });
+
+    // Show results
+    await Swal.fire({
+      icon: result.success ? 'success' : 'error',
+      title: result.success ? '✅ Flow Passed!' : '❌ Flow Failed',
+      html: generatePlaybackResultHTML(result),
+      width: '800px',
+      customClass: {
+        popup: 'jira-popup'
+      }
+    });
+  } catch (error: any) {
+    Swal.fire({
+      icon: 'error',
+      title: 'Playback Error',
+      text: error.message || 'Failed to play flow',
+      customClass: { popup: 'jira-popup' }
+    });
+  }
+}
+
+/**
+ * Delete a flow with confirmation
+ */
+async function deleteFlow(flowId: string, flowName: string) {
+  const confirmed = await Swal.fire({
+    icon: 'warning',
+    title: 'Delete Flow?',
+    html: `Are you sure you want to delete <strong>"${flowName}"</strong>?<br><br>This action cannot be undone.`,
+    showCancelButton: true,
+    confirmButtonText: 'Delete',
+    confirmButtonColor: '#ef4444',
+    cancelButtonText: 'Cancel',
+    customClass: {
+      popup: 'jira-popup'
+    }
+  });
+
+  if (confirmed.isConfirmed) {
+    try {
+      await FlowStorage.deleteFlow(flowId);
+
+      Swal.fire({
+        icon: 'success',
+        title: 'Flow Deleted',
+        text: `"${flowName}" has been deleted successfully.`,
+        timer: 2000,
+        showConfirmButton: false,
+        customClass: {
+          popup: 'jira-popup'
+        }
+      });
+
+      // Reopen the flow selection modal after a brief delay
+      setTimeout(() => {
+        handlePlayFlowClick();
+      }, 2100);
+    } catch (error: any) {
+      Swal.fire({
+        icon: 'error',
+        title: 'Delete Failed',
+        text: error.message || 'Failed to delete flow',
+        customClass: {
+          popup: 'jira-popup'
+        }
+      });
+    }
+  }
+}
+
+/**
+ * Show recording indicator with stop button
+ */
+function showRecordingIndicator() {
+  const indicator = document.createElement('div');
+  indicator.id = 'indi-recording-indicator';
+  indicator.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, #ec4899, #db2777);
+    color: white;
+    padding: 14px 20px;
+    border-radius: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: 0 4px 16px rgba(236, 72, 153, 0.4);
+    z-index: 999998;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  `;
+
+  indicator.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div style="width: 10px; height: 10px; background: white; border-radius: 50%; animation: blink 1s infinite;"></div>
+      <span>Recording Flow</span>
+    </div>
+    <button id="indi-stop-recording-btn" style="
+      padding: 6px 14px;
+      background: rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(8px);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      font-size: 12px;
+      transition: all 0.15s ease;
+    " onmouseover="this.style.background='rgba(255, 255, 255, 0.3)';"
+       onmouseout="this.style.background='rgba(255, 255, 255, 0.2)';">
+      ⏹️ Stop
+    </button>
+  `;
+
+  // Add animations
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0.3; }
+    }
+  `;
+  document.head.appendChild(style);
+
+  document.body.appendChild(indicator);
+
+  // Add stop button click handler
+  const stopBtn = document.getElementById('indi-stop-recording-btn');
+  if (stopBtn) {
+    stopBtn.addEventListener('click', () => {
+      // Trigger stop recording
+      const createFlowBtn = document.getElementById('indi-summary-create-flow');
+      if (createFlowBtn) {
+        createFlowBtn.click();
+      }
+    });
+  }
+
+  // Listen for recording stopped event to remove indicator
+  document.addEventListener('indi-flow-recording-stopped', () => {
+    indicator.remove();
+  }, { once: true });
+}
+
+/**
+ * Show playback progress UI
+ */
+function showPlaybackProgressUI(flow: any) {
+  const progressOverlay = document.createElement('div');
+  progressOverlay.id = 'indi-playback-progress';
+  progressOverlay.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: linear-gradient(135deg, #a855f7, #9333ea);
+    color: white;
+    padding: 16px 24px;
+    border-radius: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: 0 4px 16px rgba(168, 85, 247, 0.4);
+    z-index: 999998;
+    min-width: 280px;
+  `;
+
+  progressOverlay.innerHTML = `
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+      <div style="width: 12px; height: 12px; background: white; border-radius: 50%; animation: pulse 1.5s infinite;"></div>
+      <strong>Playing Flow: ${flow.name}</strong>
+    </div>
+    <div style="font-size: 12px; opacity: 0.9; margin-top: 4px;">
+      Step <span id="indi-current-step">0</span> of ${flow.steps.length}
+    </div>
+    <div style="margin-top: 8px; height: 4px; background: rgba(255,255,255,0.3); border-radius: 2px; overflow: hidden;">
+      <div id="indi-progress-bar" style="height: 100%; background: white; width: 0%; transition: width 0.3s;"></div>
+    </div>
+  `;
+
+  document.body.appendChild(progressOverlay);
+
+  // BUG FIX #8: Listen for resume event to restore UI after navigation
+  const handleResume = (event: any) => {
+    console.log('🎬 Playback resumed event received:', event.detail);
+    const { stepIndex, totalSteps } = event.detail;
+
+    // Re-show the progress overlay if it's not visible
+    const existingOverlay = document.getElementById('indi-playback-progress');
+    if (!existingOverlay) {
+      showPlaybackProgressUI(event.detail.flow);
+    }
+
+    // Update to current step
+    const currentStepEl = document.getElementById('indi-current-step');
+    const progressBar = document.getElementById('indi-progress-bar');
+    if (currentStepEl) currentStepEl.textContent = String(stepIndex + 1);
+    if (progressBar) progressBar.style.width = `${((stepIndex + 1) / totalSteps) * 100}%`;
+  };
+
+  document.addEventListener('indi-flow-playback-resumed', handleResume);
+
+  // Listen for progress updates
+  const updateProgress = (event: any) => {
+    const { stepIndex, totalSteps } = event.detail;
+    const currentStepEl = document.getElementById('indi-current-step');
+    const progressBar = document.getElementById('indi-progress-bar');
+
+    if (currentStepEl) {
+      currentStepEl.textContent = String(stepIndex + 1);
+    }
+
+    if (progressBar) {
+      const percentage = ((stepIndex + 1) / totalSteps) * 100;
+      progressBar.style.width = `${percentage}%`;
+    }
+  };
+
+  document.addEventListener('indi-flow-playback-progress', updateProgress);
+
+  // Listen for completion to remove overlay
+  document.addEventListener('indi-flow-playback-completed', () => {
+    progressOverlay.remove();
+    document.removeEventListener('indi-flow-playback-progress', updateProgress);
+  }, { once: true });
+}
+
+/**
+ * Generate HTML for playback result modal
+ */
+function generatePlaybackResultHTML(result: any): string {
+  const duration = (result.duration / 1000).toFixed(2);
+  const passedSteps = result.results.filter((r: any) => r.passed).length;
+  const failedSteps = result.results.filter((r: any) => !r.passed).length;
+
+  let html = `
+    <div style="text-align: left; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 20px; padding: 16px; background: #f9fafb; border-radius: 8px;">
+        <div>
+          <div style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">Duration</div>
+          <div style="font-size: 20px; font-weight: 600;">${duration}s</div>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">Passed</div>
+          <div style="font-size: 20px; font-weight: 600; color: #10b981;">${passedSteps}</div>
+        </div>
+        <div>
+          <div style="font-size: 12px; color: #6b7280; margin-bottom: 4px;">Failed</div>
+          <div style="font-size: 20px; font-weight: 600; color: #ef4444;">${failedSteps}</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 20px;">
+        <h4 style="margin-bottom: 12px; font-size: 14px; font-weight: 600;">Step Results:</h4>
+  `;
+
+  result.results.forEach((stepResult: any, index: number) => {
+    const icon = stepResult.passed ? '✅' : '❌';
+    const statusColor = stepResult.passed ? '#10b981' : '#ef4444';
+    const stepDuration = stepResult.duration ? `(${stepResult.duration}ms)` : '';
+
+    // Get user-friendly description
+    const stepDescription = FlowStorage.getStepDescription(stepResult.step);
+
+    html += `
+      <div style="padding: 14px; margin-bottom: 10px; border-left: 4px solid ${statusColor}; background: ${stepResult.passed ? '#f0fdf4' : '#fef2f2'}; border-radius: 6px;">
+        <div style="display: flex; justify-content: space-between; align-items: start;">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; font-size: 14px; color: #1f2937; margin-bottom: 4px;">
+              ${icon} ${stepDescription}
+            </div>
+            <div style="font-size: 11px; color: #6b7280;">
+              Step ${index + 1} • ${stepResult.step.action.type} ${stepDuration}
+            </div>
+          </div>
+        </div>
+    `;
+
+    if (!stepResult.passed) {
+      html += `<div style="color: #ef4444; font-size: 12px; margin-top: 8px;">`;
+
+      if (!stepResult.elementFound) {
+        html += `⚠️ Element not found`;
+      } else if (!stepResult.actionPerformed) {
+        html += `⚠️ Action failed: ${stepResult.error || 'Unknown error'}`;
+      } else if (stepResult.apiResults && stepResult.apiResults.length > 0) {
+        const failedAPIs = stepResult.apiResults.filter((a: any) => !a.passed);
+        if (failedAPIs.length > 0) {
+          html += `⚠️ API validation failed:<br/>`;
+          failedAPIs.forEach((api: any) => {
+            html += `&nbsp;&nbsp;• ${api.api.method} ${api.api.url}<br/>`;
+            api.failures.forEach((f: any) => {
+              html += `&nbsp;&nbsp;&nbsp;&nbsp;- ${f.message} (expected: ${f.expected}, got: ${f.actual})<br/>`;
+            });
+          });
+        }
+      }
+
+      html += `</div>`;
+    }
+
+    // Show API results if present
+    if (stepResult.apiResults && stepResult.apiResults.length > 0) {
+      html += `<div style="margin-top: 8px; font-size: 12px; color: #6b7280;">`;
+      stepResult.apiResults.forEach((api: any) => {
+        const apiIcon = api.passed ? '✓' : '✗';
+        const apiColor = api.passed ? '#10b981' : '#ef4444';
+        html += `<div style="color: ${apiColor};">${apiIcon} ${api.api.method} ${api.api.url}</div>`;
+      });
+      html += `</div>`;
+    }
+
+    html += `</div>`;
+  });
+
+  html += `
+      </div>
+    </div>
+  `;
+
+  return html;
+}
 
 /**
  * Check if backend is configured for current domain
@@ -235,46 +837,176 @@ async function isBackendConfigured(): Promise<boolean> {
 }
 
 async function handleBlobClick() {
+  console.log('🫧 Indi blob clicked!');
+
   // Check if backend is configured
   const configured = await isBackendConfigured();
 
   if (configured) {
-    // Backend is configured - toggle summary tooltip on click
-    console.log('🫧 Indi blob clicked - backend configured, toggling summary tooltip');
+    // Backend is configured - show summary if we have data, otherwise show menu
+    console.log('🫧 Indi blob clicked - backend configured');
 
     if (indiBlob) {
-      // Toggle the tooltip that was prepared by showSummaryOnHover
-      indiBlob.toggleTooltip();
-
-      // If no tooltip exists yet, show a message
+      // Check FIRST if we have summary data OR cumulative summary
       const summaryData = indiBlob.getCurrentSummaryData();
-      if (!summaryData && speechBubble) {
-        speechBubble.show({
-          title: '✨ All Good!',
-          message: 'No issues detected on this page yet.\n\nI\'m monitoring your APIs and will let you know if anything comes up!',
-          actions: [
-            {
-              label: 'Got it!',
-              style: 'primary',
-              onClick: () => {
-                if (speechBubble) {
-                speechBubble.hide()
-              }},
-            },
-          ],
-          showClose: true,
-          persistent: false,
-        });
+      const hasSummary = summaryData || cumulativeSummary;
+
+      if (hasSummary) {
+        // We have data - show the tooltip
+        console.log('📊 Showing summary tooltip with data');
+        indiBlob.toggleTooltip();
+      } else {
+        // No data yet - show main menu instead of "All Good" message
+        console.log('📋 No issues detected - showing main menu');
+        showIndiMainMenu();
       }
     }
   } else {
     // Backend not configured - show onboarding
+    console.log('⚙️ Backend not configured - starting onboarding');
     if (onboardingFlow) {
       // let's get urls from cache for onboarding
       const networkData = Array.from(recentCallsCache.values()).flat();
       await onboardingFlow.startWithNetworkData(networkData);
     }
   }
+}
+
+/**
+ * Show Indi main menu with all available actions
+ */
+async function showIndiMainMenu() {
+  if (!speechBubble) return;
+
+  // Get flows count for this domain
+  const flows = await FlowStorage.getFlowsForDomain();
+  const flowsCount = flows.length;
+
+  speechBubble.show({
+    title: '🫧 Indi Menu',
+    message: 'What would you like to do?',
+    actions: [
+      {
+        label: `▶️ Play Flow${flowsCount > 0 ? ` (${flowsCount})` : ''}`,
+        style: 'primary',
+        onClick: async () => {
+          speechBubble?.hide();
+          await handlePlayFlowClick();
+        },
+      },
+      {
+        label: '🔴 Record Flow',
+        style: 'primary',
+        onClick: async () => {
+          speechBubble?.hide();
+
+          const { value: flowName } = await Swal.fire({
+            title: '🔴 Start Recording',
+            input: 'text',
+            inputLabel: 'Flow Name',
+            inputPlaceholder: 'e.g., "User Login Flow"',
+            showCancelButton: true,
+            confirmButtonText: 'Start Recording',
+            inputValidator: (value) => {
+              if (!value) {
+                return 'Please enter a flow name';
+              }
+            },
+            customClass: {
+              popup: 'jira-popup'
+            }
+          });
+
+          if (flowName) {
+            try {
+              await flowRecorder.startRecording(flowName);
+              showRecordingIndicator();
+
+              // Show quick tip
+              await Swal.fire({
+                icon: 'info',
+                title: 'Recording Started!',
+                html: `
+                  <p>I'm now recording your interactions.</p>
+                  <p style="margin-top: 12px; font-size: 14px; color: #6b7280;">
+                    💡 Tip: Click, type, and navigate as you normally would.
+                    Click the recording indicator to stop when done.
+                  </p>
+                `,
+                timer: 4000,
+                timerProgressBar: true,
+                showConfirmButton: false,
+                customClass: { popup: 'jira-popup' }
+              });
+            } catch (error: any) {
+              await Swal.fire({
+                icon: 'error',
+                title: 'Cannot Start Recording',
+                text: error.message,
+                customClass: { popup: 'jira-popup' }
+              });
+            }
+          }
+        },
+      },
+      {
+        label: '➕ Create Indicator',
+        style: 'secondary',
+        onClick: () => {
+          speechBubble?.hide();
+          enableInspectMode();
+        },
+      },
+      {
+        label: '📊 Page Summary',
+        style: 'secondary',
+        onClick: async () => {
+          speechBubble?.hide();
+
+          // Analyze current network data
+          const networkData = Array.from(recentCallsCache.values()).flat();
+          if (networkData.length === 0) {
+            await Swal.fire({
+              icon: 'info',
+              title: 'No API Calls Yet',
+              text: 'No API calls have been detected on this page yet. Try interacting with the page first!',
+              customClass: { popup: 'jira-popup' }
+            });
+            return;
+          }
+
+          if (pageSummary && indiBlob) {
+            const summary = pageSummary.analyze(networkData);
+            const summaryHTML = pageSummary.generateSummaryHTML(summary);
+
+            await Swal.fire({
+              title: '📊 Page Summary',
+              html: summaryHTML,
+              width: '500px',
+              showConfirmButton: false,
+              showCloseButton: true,
+              customClass: { popup: 'jira-popup' }
+            });
+          }
+        },
+      },
+      {
+        label: '⚙️ Settings',
+        style: 'secondary',
+        onClick: async () => {
+          speechBubble?.hide();
+
+          // Show onboarding to reconfigure
+          if (onboardingFlow) {
+            const networkData = Array.from(recentCallsCache.values()).flat();
+            await onboardingFlow.startWithNetworkData(networkData);
+          }
+        },
+      },
+    ],
+    showClose: true,
+    persistent: false,
+  });
 }
 
 // Track cumulative issues for the current page
@@ -649,12 +1381,216 @@ function clearCache() {
   console.log('🧹 Cache cleared');
 }
 
+/**
+ * Inject custom modal styles for Indi Flows
+ */
+function injectCustomModalStyles() {
+  const style = document.createElement('style');
+  style.id = 'indi-custom-modal-styles';
+  style.textContent = `
+    /* Indi Modal Custom Styles - Pink/Rose Theme */
+    .swal2-popup {
+      border-radius: 16px !important;
+      box-shadow: 0 8px 32px rgba(236, 72, 153, 0.12), 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+      border: 1px solid rgba(236, 72, 153, 0.1) !important;
+      animation: indiModalSlideIn 0.2s ease-out !important;
+    }
+
+    /* Remove aggressive animations */
+    .swal2-show {
+      animation: indiModalSlideIn 0.2s ease-out !important;
+    }
+
+    .swal2-hide {
+      animation: indiModalSlideOut 0.15s ease-in !important;
+    }
+
+    /* Subtle slide-in animation */
+    @keyframes indiModalSlideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes indiModalSlideOut {
+      from {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+      to {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.98);
+      }
+    }
+
+    /* Backdrop - very subtle */
+    .swal2-backdrop-show {
+      background: rgba(15, 23, 42, 0.5) !important;
+      backdrop-filter: blur(4px) !important;
+      animation: indiBackdropFadeIn 0.2s ease-out !important;
+    }
+
+    @keyframes indiBackdropFadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    /* Title styling */
+    .swal2-title {
+      color: #1e293b !important;
+      font-size: 20px !important;
+      font-weight: 600 !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+    }
+
+    /* Content text */
+    .swal2-html-container {
+      color: #475569 !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+      line-height: 1.6 !important;
+    }
+
+    /* Buttons - Indi Pink/Rose Theme */
+    .swal2-confirm {
+      background: linear-gradient(135deg, #ec4899, #db2777) !important;
+      border: none !important;
+      border-radius: 8px !important;
+      padding: 10px 24px !important;
+      font-weight: 600 !important;
+      font-size: 14px !important;
+      box-shadow: 0 2px 8px rgba(236, 72, 153, 0.3) !important;
+      transition: all 0.15s ease !important;
+    }
+
+    .swal2-confirm:hover {
+      background: linear-gradient(135deg, #db2777, #be185d) !important;
+      box-shadow: 0 4px 12px rgba(236, 72, 153, 0.4) !important;
+    }
+
+    .swal2-confirm:active {
+      transform: scale(0.98) !important;
+    }
+
+    .swal2-cancel {
+      background: #f1f5f9 !important;
+      color: #64748b !important;
+      border: none !important;
+      border-radius: 8px !important;
+      padding: 10px 24px !important;
+      font-weight: 600 !important;
+      font-size: 14px !important;
+      transition: all 0.15s ease !important;
+    }
+
+    .swal2-cancel:hover {
+      background: #e2e8f0 !important;
+      color: #475569 !important;
+    }
+
+    /* Input fields */
+    .swal2-input, .swal2-select, .swal2-textarea {
+      border: 2px solid #e2e8f0 !important;
+      border-radius: 8px !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+      transition: border-color 0.15s ease !important;
+    }
+
+    .swal2-input:focus, .swal2-select:focus, .swal2-textarea:focus {
+      border-color: #ec4899 !important;
+      box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.1) !important;
+      outline: none !important;
+    }
+
+    /* Icons - softer colors */
+    .swal2-success .swal2-success-ring {
+      border-color: rgba(16, 185, 129, 0.3) !important;
+    }
+
+    .swal2-success .swal2-success-line-tip,
+    .swal2-success .swal2-success-line-long {
+      background-color: #10b981 !important;
+    }
+
+    .swal2-error [class^='swal2-x-mark-line'] {
+      background-color: #ef4444 !important;
+    }
+
+    .swal2-warning {
+      border-color: #f59e0b !important;
+      color: #f59e0b !important;
+    }
+
+    /* Progress steps - Pink theme */
+    .swal2-progress-steps .swal2-progress-step {
+      background: #ec4899 !important;
+    }
+
+    .swal2-progress-steps .swal2-progress-step-line {
+      background: #fce7f3 !important;
+    }
+
+    /* Validation message */
+    .swal2-validation-message {
+      background: #fef2f2 !important;
+      color: #dc2626 !important;
+      border-radius: 6px !important;
+    }
+
+    /* Remove default animations that are too aggressive */
+    .swal2-icon {
+      animation: none !important;
+    }
+  `;
+
+  document.head.appendChild(style);
+  console.log('✨ Indi modal styles injected');
+}
+
 // Clear cache on navigation
 window.addEventListener('beforeunload', clearCache);
 
 createContainers();
 injectStyles();
+injectCustomModalStyles();
 IndicatorLoader.getInstance();
+
+// CRITICAL: Check if there's a recording session in storage (page may have reloaded during recording)
+(async () => {
+  const restored = await flowRecorder.restoreSessionFromStorage();
+  if (restored) {
+    console.log('🎬 Recording session restored! Showing recording indicator...');
+    showRecordingIndicator();
+  }
+})();
+
+// DISABLED: Auto-restore playback session
+// (Needs more thought - complexity with URLs and navigation)
+// TODO: Re-enable when we figure out the right approach
+/*
+(async () => {
+  // Wait for page to be fully loaded
+  if (document.readyState !== 'complete') {
+    await new Promise(resolve => {
+      window.addEventListener('load', resolve, { once: true });
+    });
+  }
+
+  await new Promise(resolve => setTimeout(resolve, 1000));
+
+  console.log('🔍 Checking for pending playback session...');
+
+  const playbackState = await flowPlayer.restorePlaybackState();
+  if (playbackState) {
+    console.log('🎬 Resuming flow playback after page reload...');
+    await flowPlayer.playFlow(playbackState.flow, playbackState.stepIndex);
+  }
+})();
+*/
 
 chrome.runtime.sendMessage({
   type: "DEVTOOLS_OPENED",
@@ -1560,6 +2496,11 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
     case "NEW_NETWORK_CALL":
       // console.log("new network call", message.data);
       updateRelevantIndicators(message.data);
+
+      // Feed to flow recorder if recording
+      if (flowRecorder.isRecording()) {
+        flowRecorder.addAPICall(message.data);
+      }
       break;
   }
 

@@ -786,6 +786,12 @@ private hideTooltip = (): void => {
     this.container.classList.remove('dragging');
     this.updateBubblePositions();
 
+    // CRITICAL FIX: Reset hasDragged after a short delay
+    // This prevents the click event from being blocked forever after dragging
+    setTimeout(() => {
+      this.hasDragged = false;
+    }, 100);
+
     // Clear original position if user manually moved blob
     this.originalPosition = null;
 
