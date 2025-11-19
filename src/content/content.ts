@@ -84,11 +84,51 @@ function isStaticAsset(url: string): boolean {
   try {
     const urlObj = new URL(url);
     const pathname = urlObj.pathname.toLowerCase();
-    const staticExtensions = ['.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.woff', '.woff2', '.ttf', '.ico', '.map'];
+    const staticExtensions = [
+      '.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg',
+      '.woff', '.woff2', '.ttf', '.eot', '.ico', '.map',
+      '.webp', '.avif', '.mp4', '.webm', '.mp3', '.wav',
+      '.pdf', '.zip', '.tar', '.gz'
+    ];
     return staticExtensions.some(ext => pathname.endsWith(ext));
   } catch {
     return false;
   }
+}
+
+/**
+ * Get configured backend URL for current domain
+ */
+async function getConfiguredBackendUrl(): Promise<string | null> {
+  const key = `indi_onboarding_${window.location.hostname}`;
+
+  return new Promise((resolve) => {
+    chrome.storage.local.get([key], (result) => {
+      const state = result[key];
+      resolve(state?.selectedBackendUrl || null);
+    });
+  });
+}
+
+/**
+ * Check if a network call should be stored based on backend config
+ */
+async function shouldStoreCall(url: string): Promise<boolean> {
+  // Filter out static assets immediately
+  if (isStaticAsset(url)) {
+    return false;
+  }
+
+  // Get configured backend URL
+  const backendUrl = await getConfiguredBackendUrl();
+
+  // If no backend configured, don't store anything (onboarding not complete)
+  if (!backendUrl) {
+    return false;
+  }
+
+  // Only store if URL starts with configured backend
+  return url.startsWith(backendUrl);
 }
 
 /**
@@ -1329,37 +1369,62 @@ window.addEventListener('beforeunload', cleanup);
 export const recentCallsCache = new Map<string, NetworkCall[]>();
 const MAX_CALLS_PER_ENDPOINT = 50;
 
-function addToCache(calls: NetworkCall[]) {
-  calls.forEach(call => {
+async function addToCache(calls: NetworkCall[]) {
+  // Filter calls before processing
+  const filteredCalls = [];
+
+  for (const call of calls) {
     try {
       // Extract URL from various possible locations
-      const url = call?.response?.response?.url ?? 
-                  call?.response?.url ?? 
-                  call?.request?.request?.url ?? 
+      const url = call?.response?.response?.url ??
+                  call?.response?.url ??
+                  call?.request?.request?.url ??
                   call?.url;
-      
-      // Extract method
-      const method = call?.request?.request?.method ?? 
-                     call?.method ?? 
-                     'GET';
-      
+
       if (!url) {
         console.warn('Call without URL, skipping cache', call);
-        return;
+        continue;
       }
-      
+
+      // FILTERING: Only store backend calls
+      const shouldStore = await shouldStoreCall(url);
+      if (!shouldStore) {
+        // Silently skip non-backend and static asset calls
+        continue;
+      }
+
+      filteredCalls.push(call);
+    } catch (error) {
+      console.error('Error filtering call:', error, call);
+    }
+  }
+
+  // Now add filtered calls to cache
+  filteredCalls.forEach(call => {
+    try {
+      const url = call?.response?.response?.url ??
+                  call?.response?.url ??
+                  call?.request?.request?.url ??
+                  call?.url;
+
+      const method = call?.request?.request?.method ??
+                     call?.method ??
+                     'GET';
+
       // Strategy 1: Simple path (ignores most params)
       const simpleKey = generateStoragePath(url) + '|' + method;
       addToCacheKey(simpleKey, call);
-      
+
       // Strategy 2: Pattern-based (includes param names)
       const patternKey = generatePatternBasedStoragePath(url) + '|' + method;
       addToCacheKey(patternKey, call);
-      
+
     } catch (error) {
       console.error('Error adding to cache:', error, call);
     }
   });
+
+  console.log(`📊 Filtered network calls: ${calls.length} total → ${filteredCalls.length} backend calls stored`);
 }
 
 function addToCacheKey(key: string, call: NetworkCall) {
@@ -2349,9 +2414,9 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
       if (message.requests.length === 0) {
         return;
       };
-      
-      // Add to cache instead of array
-      addToCache(message.requests);
+
+      // Add to cache instead of array (async now for filtering)
+      await addToCache(message.requests);
       
       // Initialize Indi on first NETWORK_IDLE
       if (!isIndiInitialized) {
