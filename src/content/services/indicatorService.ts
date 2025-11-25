@@ -1981,8 +1981,62 @@ export function injectStyles() {
   const style = document.createElement("style");
   style.textContent = `
 
+  /* ==================== INDI CSS RESET ==================== */
+  /* Force LTR and consistent styling across all websites */
+
+  #api-mapper-modal-container,
+  #api-mapper-indicators-container,
+  .indicator,
+  .modal-content,
+  .indi-blob-container,
+  .indi-speech-bubble,
+  .indi-summary-tooltip,
+  .swal2-popup,
+  .jira-popup,
+  [id^="indi-"],
+  [class*="indi-"] {
+    /* Direction and Text */
+    direction: ltr !important;
+    text-align: left !important;
+    unicode-bidi: normal !important;
+
+    /* Font Override */
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif !important;
+    font-size: 14px !important;
+    font-weight: 400 !important;
+    line-height: 1.5 !important;
+
+    /* Reset common inherited properties */
+    color: inherit !important;
+    letter-spacing: normal !important;
+    word-spacing: normal !important;
+    text-transform: none !important;
+    text-decoration: none !important;
+    white-space: normal !important;
+
+    /* Box model */
+    box-sizing: border-box !important;
+  }
+
+  /* Ensure all child elements inherit LTR */
+  #api-mapper-modal-container *,
+  #api-mapper-indicators-container *,
+  .indicator *,
+  .indi-blob-container *,
+  .indi-speech-bubble *,
+  .swal2-popup *,
+  [id^="indi-"] *,
+  [class*="indi-"] * {
+    direction: ltr !important;
+    text-align: inherit !important;
+    font-family: inherit !important;
+    box-sizing: border-box !important;
+  }
+
+  /* ==================== END CSS RESET ==================== */
+
   // network modal styles
-  
+
    ${jsonViewerStyles}
 
    ${modalStyles}

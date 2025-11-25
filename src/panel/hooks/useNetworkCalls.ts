@@ -66,12 +66,29 @@ async function shouldDisplayCall(url: string): Promise<boolean> {
     return false;
   }
 
-  // Get configured backend URL
-  const backendUrl = await getConfiguredBackendUrl();
+  // Get current tab's hostname to check onboarding state
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tabs[0]?.url) return true; // Allow if can't determine
 
-  // If no backend configured, don't show anything (onboarding not complete)
+  const hostname = new URL(tabs[0].url).hostname;
+  const key = `indi_onboarding_${hostname}`;
+
+  const result = await chrome.storage.local.get([key]);
+  const onboardingState = result[key];
+
+  // CASE 1: Onboarding not started OR not completed yet
+  // → Display ALL non-static calls (user needs to see them to select backend)
+  if (!onboardingState || !onboardingState.completed) {
+    return true; // ✅ Display everything during onboarding
+  }
+
+  // CASE 2: Onboarding completed, backend configured
+  // → Only display calls matching the configured backend
+  const backendUrl = onboardingState.selectedBackendUrl;
+
   if (!backendUrl) {
-    return false;
+    // Onboarding says completed but no backend URL? Allow for safety
+    return true;
   }
 
   // Only display if URL starts with configured backend

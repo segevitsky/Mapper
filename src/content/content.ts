@@ -119,12 +119,24 @@ async function shouldStoreCall(url: string): Promise<boolean> {
     return false;
   }
 
-  // Get configured backend URL
-  const backendUrl = await getConfiguredBackendUrl();
+  // Check onboarding state
+  const key = `indi_onboarding_${window.location.hostname}`;
+  const result = await chrome.storage.local.get([key]);
+  const onboardingState = result[key];
 
-  // If no backend configured, don't store anything (onboarding not complete)
+  // CASE 1: Onboarding not started OR not completed yet
+  // → Store ALL non-static calls (user needs to see them to select backend)
+  if (!onboardingState || !onboardingState.completed) {
+    return true; // ✅ Store everything during onboarding
+  }
+
+  // CASE 2: Onboarding completed, backend configured
+  // → Only store calls matching the configured backend
+  const backendUrl = onboardingState.selectedBackendUrl;
+
   if (!backendUrl) {
-    return false;
+    // Onboarding says completed but no backend URL? Allow for safety
+    return true;
   }
 
   // Only store if URL starts with configured backend
@@ -879,6 +891,7 @@ async function isBackendConfigured(): Promise<boolean> {
 async function handleBlobClick() {
   console.log('🫧 Indi blob clicked!');
 
+
   // Check if backend is configured
   const configured = await isBackendConfigured();
 
@@ -1055,6 +1068,7 @@ let cumulativeErrorCalls = new Set<string>(); // Track unique error URLs
 let cumulativeSlowApis = new Set<string>(); // Track unique slow API URLs
 let cumulativeSecurityIssues = new Set<string>(); // Track unique security issues
 let cumulativeSummary: PageSummaryData | null = null; // Track cumulative summary for badge clicks
+let cumulativeFailedCalls: NetworkCall[] = []; // Track actual failed call objects for detailed view
 
 // Reset cumulative tracking when page changes
 function resetCumulativeTracking() {
@@ -1063,6 +1077,7 @@ function resetCumulativeTracking() {
   cumulativeSlowApis.clear();
   cumulativeSecurityIssues.clear();
   cumulativeSummary = null;
+  cumulativeFailedCalls = []; // Reset failed calls array
   console.log('🔄 Reset cumulative tracking for new page:', currentPageUrl);
 }
 
@@ -1099,11 +1114,16 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
 
   // Update cumulative tracking with NEW issues from this batch
   if (summary.errorCalls > 0) {
-    // Add error URLs to cumulative set
+    // Add error URLs to cumulative set AND store full call objects
     networkData.forEach(call => {
       if (call.status >= 400) {
         const url = extractNetworkCallUrl(call);
         cumulativeErrorCalls.add(url);
+        // Store the full NetworkCall object for detailed view (limit to last 50)
+        cumulativeFailedCalls.unshift(call); // Add to front (newest first)
+        if (cumulativeFailedCalls.length > 50) {
+          cumulativeFailedCalls.pop(); // Remove oldest
+        }
       }
     });
   }
@@ -1169,26 +1189,50 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
 function showIssuesSummary(summary: PageSummaryData, bypassMute: boolean = false) {
   if (!speechBubble) return;
 
-  const issueMessages: string[] = [];
+  // Build simple summary message (Option 3 style)
+  const issueCount = summary.errorCalls + (summary.slowestApi && summary.slowestApi.duration > 1000 ? 1 : 0) + summary.securityIssues;
 
-  if (summary.errorCalls > 0) {
-    issueMessages.push(`❌ ${summary.errorCalls} API${summary.errorCalls > 1 ? 's' : ''} failing`);
+  let message = '';
+
+  // Get most recent error if we have failed calls
+  let mostRecentError = '';
+  if (cumulativeFailedCalls.length > 0 && summary.errorCalls > 0) {
+    const recentCall = cumulativeFailedCalls[0];
+    const url = extractNetworkCallUrl(recentCall);
+    const method = recentCall?.request?.request?.method ?? 'GET';
+    const status = recentCall.status;
+    let error: string = 'Error';
+    const urlDisplay = url.length > 40 ? '...' + url.slice(-37) : url;
+    try {
+      const bodyObj = JSON.parse(recentCall?.body?.body);
+      error = bodyObj.error || 'Error';
+    } catch (e) {
+      console.error('Failed to parse request body for recent error:', e);
+    }
+
+
+    // Get time ago
+    const now = Date.now();
+    const timestamp = recentCall.timestamp || now;
+    const timeAgo = now - timestamp < 5000 ? 'just now' : `${Math.round((now - timestamp) / 1000)}s ago`;
+
+    mostRecentError = `\nMost Recent:\n❌ ${method} ${urlDisplay} → ${status} Error ${error} (${timeAgo})`;
   }
 
-  if (summary.slowestApi && summary.slowestApi.duration > 1000) {
-    issueMessages.push(`⚡ Slow API detected (${summary.slowestApi.duration}ms)`, summary.slowestApi.url);
-    // let offer the user to add an indicator for the slow API
-    issueMessages.push(`👉 Consider adding an indicator for this API to monitor its performance.`);
-  }
+  // Count errors, slow APIs, security issues
+  const errorText = summary.errorCalls > 0 ? `${summary.errorCalls} API${summary.errorCalls > 1 ? 's' : ''} failing` : '';
+  const slowText = summary.slowestApi && summary.slowestApi.duration > 1000 ? '1 slow API' : '';
+  const securityText = summary.securityIssues > 0 ? `${summary.securityIssues} security issue${summary.securityIssues > 1 ? 's' : ''}` : '';
 
-  if (summary.securityIssues > 0) {
-    issueMessages.push(`🔒 ${summary.securityIssues} security issue${summary.securityIssues > 1 ? 's' : ''}`);
-  }
+  const issues = [errorText, slowText, securityText].filter(Boolean);
+  const issuesText = issues.join(', ');
 
-  if (issueMessages.length > 0) {
+  message = `${issuesText}${mostRecentError}`;
+
+  if (message) {
     speechBubble.show({
       title: '⚠️ Issues Detected',
-      message: issueMessages.join('\n'),
+      message: message,
       bypassMute: bypassMute,
       actions: [
         {
@@ -1196,7 +1240,7 @@ function showIssuesSummary(summary: PageSummaryData, bypassMute: boolean = false
           style: 'primary',
           onClick: () => {
             speechBubble?.hide();
-            handleBlobClick();
+            showDetailedIssuesModal(summary);
           },
         },
         {
@@ -1250,6 +1294,213 @@ function showIssuesSummary(summary: PageSummaryData, bypassMute: boolean = false
       persistent: false, // Auto-dismiss after 10s
     });
   }
+}
+
+/**
+ * Show detailed issues modal with full information
+ */
+async function showDetailedIssuesModal(summary: PageSummaryData) {
+  // Build detailed HTML for all issues
+  let html = '<div style="text-align: left; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', sans-serif;">';
+
+  // Failed APIs Section
+  if (summary.errorCalls > 0 && cumulativeFailedCalls.length > 0) {
+    html += `
+      <div style="margin-bottom: 24px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #dc2626; display: flex; align-items: center; gap: 8px;">
+          ❌ Failed APIs (${summary.errorCalls})
+        </h3>
+        <div style="max-height: 300px; overflow-y: auto;">
+    `;
+
+    cumulativeFailedCalls.forEach((call) => {
+      const url = extractNetworkCallUrl(call);
+      const method = call?.request?.request?.method ?? call.method ?? 'GET';
+      const status = call.status;
+      const timestamp = call.timestamp || Date.now();
+      const timeStr = new Date(timestamp).toLocaleTimeString();
+
+      // Determine error type and color
+      let errorType = 'Server Error';
+      let errorColor = '#dc2626';
+      if (status === 409) {
+        if (call.body) {
+          try {
+            const bodyObj = JSON.parse(call?.body?.body);
+            if (bodyObj.error) {
+              errorType = bodyObj.error;
+            }
+          } catch (error) {
+            console.error('Failed to parse request body:', error);
+          }
+        }
+       }
+      if (status === 401 || status === 403) {
+        errorType = 'Auth Error';
+        errorColor = '#ea580c';
+      } else if (status === 404) {
+        errorType = 'Not Found';
+        errorColor = '#ca8a04';
+      } else if (status >= 500) {
+        errorType = 'Server Error';
+        errorColor = '#dc2626';
+      } else if (status === 0 || status === undefined) {
+        errorType = 'Network Error';
+        errorColor = '#7c2d12';
+      }
+
+      html += `
+        <div style="
+          margin-bottom: 10px;
+          padding: 12px;
+          background: linear-gradient(135deg, #fef2f2, #fee2e2);
+          border-left: 4px solid ${errorColor};
+          border-radius: 8px;
+        ">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <strong style="color: ${errorColor}; font-size: 13px;">${method} ${status || 'ERR'}</strong>
+            <span style="font-size: 11px; color: #6b7280;">${timeStr}</span>
+          </div>
+          <div style="font-size: 12px; color: #374151; word-break: break-all; margin-bottom: 4px;">
+            ${url}
+          </div>
+          <div style="font-size: 11px; color: ${errorColor}; font-weight: 600;">
+            ${errorType}
+          </div>
+        </div>
+      `;
+    });
+
+    html += '</div></div>';
+  }
+
+  // Slow APIs Section
+  if (summary.slowestApi && summary.slowestApi.duration > 1000) {
+    html += `
+      <div style="margin-bottom: 24px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #ea580c; display: flex; align-items: center; gap: 8px;">
+          ⚡ Slow APIs
+        </h3>
+        <div style="
+          padding: 12px;
+          background: linear-gradient(135deg, #fff7ed, #ffedd5);
+          border-left: 4px solid #ea580c;
+          border-radius: 8px;
+        ">
+          <div style="font-size: 13px; color: #ea580c; font-weight: 600; margin-bottom: 6px;">
+            ${summary.slowestApi.duration}ms response time
+          </div>
+          <div style="font-size: 12px; color: #374151; word-break: break-all;">
+            ${summary.slowestApi.url}
+          </div>
+          <div style="font-size: 11px; color: #6b7280; margin-top: 8px;">
+            💡 Consider adding an indicator to monitor this API's performance
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Security Issues Section
+  if (summary.securityIssues > 0 && summary.apisWithoutAuth && summary.apisWithoutAuth.length > 0) {
+    html += `
+      <div style="margin-bottom: 16px;">
+        <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #7c2d12; display: flex; align-items: center; gap: 8px;">
+          🔒 Security Issues (${summary.securityIssues})
+        </h3>
+        <div style="max-height: 200px; overflow-y: auto;">
+    `;
+
+    summary.apisWithoutAuth.forEach(url => {
+      html += `
+        <div style="
+          margin-bottom: 8px;
+          padding: 10px;
+          background: linear-gradient(135deg, #fefce8, #fef9c3);
+          border-left: 4px solid #ca8a04;
+          border-radius: 8px;
+          font-size: 12px;
+          color: #374151;
+          word-break: break-all;
+        ">
+          ${url}
+          <div style="font-size: 11px; color: #92400e; margin-top: 4px;">
+            Missing authentication headers
+          </div>
+        </div>
+      `;
+    });
+
+    html += '</div></div>';
+  }
+
+  // Summary Stats
+  html += `
+    <div style="
+      margin-top: 20px;
+      padding: 14px;
+      background: #f9fafb;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #6b7280;
+    ">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+        <div><strong>Total Calls:</strong> ${summary.totalCalls}</div>
+        <div><strong>Success Rate:</strong> ${Math.round((summary.successfulCalls / summary.totalCalls) * 100)}%</div>
+        <div><strong>Avg Response:</strong> ${Math.round(summary.averageResponseTime)}ms</div>
+        <div><strong>Unique Endpoints:</strong> ${summary.uniqueEndpoints}</div>
+      </div>
+    </div>
+  `;
+
+  html += '</div>';
+
+  // Show draggable Swal modal
+  await Swal.fire({
+    title: '📊 Detailed Issues Report',
+    html: html,
+    width: '700px',
+    showConfirmButton: false,
+    showCloseButton: true,
+    customClass: {
+      popup: 'jira-popup',
+      htmlContainer: 'indi-detailed-issues'
+    },
+    didOpen: (popup) => {
+      // Make the modal draggable
+      const title = popup.querySelector('.swal2-title') as HTMLElement;
+      if (title) {
+        title.style.cursor = 'move';
+        title.style.userSelect = 'none';
+
+        let isDragging = false;
+        let currentX = 0;
+        let currentY = 0;
+        let initialX = 0;
+        let initialY = 0;
+
+        title.addEventListener('mousedown', (e: MouseEvent) => {
+          isDragging = true;
+          initialX = e.clientX - currentX;
+          initialY = e.clientY - currentY;
+        });
+
+        document.addEventListener('mousemove', (e: MouseEvent) => {
+          if (isDragging) {
+            e.preventDefault();
+            currentX = e.clientX - initialX;
+            currentY = e.clientY - initialY;
+
+            popup.style.transform = `translate(${currentX}px, ${currentY}px)`;
+          }
+        });
+
+        document.addEventListener('mouseup', () => {
+          isDragging = false;
+        });
+      }
+    }
+  });
 }
 
 /**
@@ -1453,6 +1704,18 @@ function injectCustomModalStyles() {
   const style = document.createElement('style');
   style.id = 'indi-custom-modal-styles';
   style.textContent = `
+    /* ==================== SWAL/MODAL CSS RESET ==================== */
+    .swal2-popup,
+    .swal2-popup *,
+    .jira-popup,
+    .jira-popup * {
+      direction: ltr !important;
+      text-align: left !important;
+      unicode-bidi: normal !important;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif !important;
+      box-sizing: border-box !important;
+    }
+
     /* Indi Modal Custom Styles - Pink/Rose Theme */
     .swal2-popup {
       border-radius: 16px !important;

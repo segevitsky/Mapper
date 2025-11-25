@@ -47,6 +47,7 @@ export class IndiBlob {
     this.initializeReferences();
     this.init();
     this.setInitialPosition();
+    this.setEmotion('happy'); // Initialize iris background color
   }
 
   public setSpeechBubble(speechBubble: any): void {
@@ -93,7 +94,7 @@ export class IndiBlob {
     opacity: 0;
     transform: translateY(10px);
     transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-    pointer-events: auto;
+    pointer-events: none;
   `;
 
   // Add arrow pointing to blob
@@ -274,6 +275,7 @@ private showTooltip = (): void => {
   if (this.summaryTooltip) {
     this.summaryTooltip.style.opacity = '1';
     this.summaryTooltip.style.transform = 'translateY(0)';
+    this.summaryTooltip.style.pointerEvents = 'auto'; // Enable clicks when visible
   }
 };
 
@@ -283,6 +285,7 @@ private hideTooltip = (): void => {
     if (this.summaryTooltip) {
       this.summaryTooltip.style.opacity = '0';
       this.summaryTooltip.style.transform = 'translateY(10px)';
+      this.summaryTooltip.style.pointerEvents = 'none'; // Disable clicks when hidden
     }
   }, 100);
 };
@@ -375,6 +378,24 @@ private hideTooltip = (): void => {
     const styleElement = document.createElement('style');
     styleElement.id = 'indi-blob-styles';
     styleElement.textContent = `
+      /* ==================== INDI BLOB CSS RESET ==================== */
+      .indi-blob-container,
+      .indi-blob-container *,
+      .indi-summary-tooltip,
+      .indi-summary-tooltip *,
+      .indi-notification-badge,
+      .indi-mute-button {
+        direction: ltr !important;
+        text-align: left !important;
+        unicode-bidi: normal !important;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif !important;
+        box-sizing: border-box !important;
+        letter-spacing: normal !important;
+        word-spacing: normal !important;
+        text-transform: none !important;
+      }
+      /* ==================== END CSS RESET ==================== */
+
       .indi-blob-container {
         position: fixed;
         width: 80px;
@@ -464,6 +485,7 @@ private hideTooltip = (): void => {
         height: 60%;
         border-radius: 50%;
         position: relative;
+        background: radial-gradient(circle at 35% 35%, #8b5cf6dd, #7c3aedaa); /* Default purple background */
         box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.3);
         transition: transform 0.15s ease-out;
       }
@@ -846,6 +868,9 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
   }
 
   private handleClick(): void {
+    if (this.speechBubble && this.speechBubble.isShowing()) {
+      this.speechBubble.hide();
+    }
     // This will be used to open the expanded panel
     console.log('Indi blob clicked!');
     // TODO: Dispatch custom event for panel opening

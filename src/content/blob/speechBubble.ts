@@ -65,6 +65,20 @@ export class SpeechBubble {
     const styleElement = document.createElement('style');
     styleElement.id = 'indi-speech-bubble-styles';
     styleElement.textContent = `
+      /* ==================== SPEECH BUBBLE CSS RESET ==================== */
+      .indi-speech-bubble,
+      .indi-speech-bubble * {
+        direction: ltr !important;
+        text-align: left !important;
+        unicode-bidi: normal !important;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif !important;
+        box-sizing: border-box !important;
+        letter-spacing: normal !important;
+        word-spacing: normal !important;
+        text-transform: none !important;
+      }
+      /* ==================== END CSS RESET ==================== */
+
       .indi-speech-bubble {
         position: fixed;
         background: #fff;
