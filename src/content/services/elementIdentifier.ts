@@ -233,15 +233,54 @@ export class ElementIdentifier {
 
   /**
    * Check if ID looks dynamically generated
+   * Returns true if the ID is likely to change between sessions
    */
   private static isDynamicId(id: string): boolean {
     const patterns = [
-      /^\d+$/,                    // Pure numbers
-      /^[a-f0-9]{8,}$/i,         // Hash-like
-      /temp|tmp|gen|random/i,    // Common keywords
-      /:r\w+:/,                   // React generated IDs
-      /mui-\d+/,                  // Material-UI IDs
-      /headlessui-/,              // HeadlessUI IDs
+      // Pure numbers (likely auto-incrementing IDs)
+      /^\d+$/,
+
+      // Long hex strings (hashes, 8+ characters)
+      /^[a-f0-9]{8,}$/i,
+
+      // UUIDs (with or without dashes)
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+      /^[0-9a-f]{32}$/i, // UUID without dashes
+
+      // Timestamps (10+ digits, likely Unix timestamps)
+      /\d{10,}/,
+      /_\d{13,}/, // Underscore + timestamp in milliseconds
+
+      // React IDs (various patterns)
+      /:r\w+:/,                      // React 17: :r1:, :r2:
+      /^react-\w+$/,                 // react-abc123
+      /^__react_\w+$/,               // __react_internal
+
+      // Material-UI IDs
+      /mui-\d+/,                     // mui-123
+      /^Mui[A-Z]\w+-\w+$/,          // MuiButton-root-123
+
+      // HeadlessUI IDs
+      /headlessui-\w+-\d+/,          // headlessui-tabs-1
+
+      // Radix UI IDs
+      /radix-\w+-\d+/,               // radix-dialog-1
+
+      // Next.js IDs
+      /__next-\w+/,
+
+      // Common dynamic patterns
+      /temp|tmp|gen|generated|random|auto/i,
+
+      // IDs with random suffixes
+      /-[a-z0-9]{5,}$/i,             // button-abc123
+      /_[a-z0-9]{5,}$/i,             // button_abc123
+
+      // Base64-like IDs
+      /^[A-Za-z0-9+/]{20,}={0,2}$/,  // Base64 encoded
+
+      // Nano ID patterns (common in modern apps)
+      /^[A-Za-z0-9_-]{21}$/,         // Nano ID default length
     ];
 
     return patterns.some(pattern => pattern.test(id));
@@ -477,8 +516,8 @@ export class ElementFinder {
       return false;
     }
 
-    // Text verification is now more lenient
-    // Only fail if text is completely different (not just partially different)
+    // Text verification with fuzzy matching
+    // Only fail if text is significantly different
     if (verification.textContent && verification.textContent.length > 3) {
       const elementText = element.textContent?.trim() || '';
 
@@ -489,12 +528,17 @@ export class ElementFinder {
 
       const similarity = this.stringSimilarity(elementText, verification.textContent);
 
-      // Very lenient: only fail if text is completely different (< 0.3)
-      if (similarity < 0.3) {
-        console.log(`    ⚠️ Text completely different: ${similarity.toFixed(2)}`);
+      // Fuzzy verification: fail only if text is quite different (< 0.7)
+      // This handles whitespace differences, extra spaces, minor typos
+      if (similarity < 0.7) {
+        console.log(`    ⚠️ Text mismatch - similarity: ${similarity.toFixed(2)}`);
         console.log(`       Expected: "${verification.textContent.substring(0, 50)}..."`);
         console.log(`       Got: "${elementText.substring(0, 50)}..."`);
         return false;
+      }
+
+      if (similarity < 1.0) {
+        console.log(`    ℹ️ Text similar but not identical - similarity: ${similarity.toFixed(2)}`);
       }
     }
 
@@ -502,17 +546,85 @@ export class ElementFinder {
   }
 
   /**
-   * Calculate string similarity (simple Levenshtein ratio)
+   * Calculate Levenshtein distance between two strings
+   */
+  private static levenshteinDistance(a: string, b: string): number {
+    if (a.length === 0) return b.length;
+    if (b.length === 0) return a.length;
+
+    const matrix: number[][] = [];
+
+    // Initialize matrix
+    for (let i = 0; i <= b.length; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= a.length; j++) {
+      matrix[0][j] = j;
+    }
+
+    // Fill matrix
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1, // substitution
+            matrix[i][j - 1] + 1,     // insertion
+            matrix[i - 1][j] + 1      // deletion
+          );
+        }
+      }
+    }
+
+    return matrix[b.length][a.length];
+  }
+
+  /**
+   * Normalize text for comparison (lowercase, trim, normalize whitespace)
+   */
+  private static normalizeText(text: string): string {
+    return text
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, ' ')           // Normalize whitespace
+      .replace(/[^\w\s]/g, '');       // Remove punctuation
+  }
+
+  /**
+   * Calculate string similarity ratio using Levenshtein distance
+   * Returns value between 0 (completely different) and 1 (identical)
    */
   private static stringSimilarity(a: string, b: string): number {
     if (a === b) return 1.0;
     if (a.length === 0 || b.length === 0) return 0.0;
 
-    // Simple approach: check if one contains the other
-    if (a.includes(b) || b.includes(a)) return 0.8;
+    // Normalize both strings
+    const normA = this.normalizeText(a);
+    const normB = this.normalizeText(b);
 
-    // TODO: Implement proper Levenshtein distance for better accuracy
-    return 0.5;
+    // Exact match after normalization
+    if (normA === normB) return 1.0;
+
+    // Contains check (high confidence)
+    if (normA.includes(normB) || normB.includes(normA)) {
+      return 0.85;
+    }
+
+    // Calculate Levenshtein similarity
+    const distance = this.levenshteinDistance(normA, normB);
+    const maxLen = Math.max(normA.length, normB.length);
+    const similarity = 1 - (distance / maxLen);
+
+    return similarity;
+  }
+
+  /**
+   * Fuzzy match two strings with configurable threshold
+   */
+  private static fuzzyMatch(a: string, b: string, threshold: number = 0.75): boolean {
+    const similarity = this.stringSimilarity(a, b);
+    return similarity >= threshold;
   }
 
   /**
@@ -556,12 +668,24 @@ export class ElementFinder {
       });
     }
 
-    // 3. Search through all candidates for matching text
+    // 3. Search through all candidates for matching text (with fuzzy matching)
     for (const el of candidates) {
       const ariaLabel = el.getAttribute('aria-label');
       const textContent = el.textContent?.trim();
 
+      // Try exact match first (fastest)
       if (ariaLabel === text || textContent === text) {
+        return el;
+      }
+
+      // Try fuzzy match (handles whitespace, punctuation, case differences)
+      if (ariaLabel && this.fuzzyMatch(ariaLabel, text, 0.8)) {
+        console.log(`  ✅ Found by fuzzy matching aria-label: "${ariaLabel}" ≈ "${text}"`);
+        return el;
+      }
+
+      if (textContent && this.fuzzyMatch(textContent, text, 0.8)) {
+        console.log(`  ✅ Found by fuzzy matching text content: "${textContent}" ≈ "${text}"`);
         return el;
       }
     }
@@ -600,18 +724,35 @@ export class ElementFinder {
       el => el.textContent?.trim() === text
     );
 
-    // If not found, try partial match (for nested text)
+    // If not found, try fuzzy match
     if (!found) {
       found = Array.from(elements).find(
         el => {
           const elText = el.textContent?.trim() || '';
+
           // Check if element's DIRECT text content matches (not children)
           const directText = Array.from(el.childNodes)
             .filter(node => node.nodeType === Node.TEXT_NODE)
             .map(node => node.textContent?.trim())
             .join(' ');
 
-          return elText === text || directText === text || elText.includes(text);
+          // Exact match
+          if (elText === text || directText === text) {
+            return true;
+          }
+
+          // Contains match
+          if (elText.includes(text) || directText.includes(text)) {
+            return true;
+          }
+
+          // Fuzzy match (handles whitespace, punctuation, case differences)
+          if (this.fuzzyMatch(elText, text, 0.8) || this.fuzzyMatch(directText, text, 0.8)) {
+            console.log(`  ✅ Found by fuzzy text matching: "${elText}" ≈ "${text}"`);
+            return true;
+          }
+
+          return false;
         }
       );
     }

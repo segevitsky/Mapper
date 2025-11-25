@@ -10,6 +10,7 @@ import {
   injectStyles,
   pageIndicators,
   createIndicatorFromData,
+  makeDraggable,
 } from "./services/indicatorService"
 import { waitForIndicator } from "../utils/general";
 import Swal from "sweetalert2";
@@ -642,6 +643,9 @@ function showRecordingIndicator() {
     display: flex;
     align-items: center;
     gap: 14px;
+    cursor: grab;
+    user-select: none;
+    transition: box-shadow 0.2s ease;
   `;
 
   indicator.innerHTML = `
@@ -673,15 +677,30 @@ function showRecordingIndicator() {
       0%, 50% { opacity: 1; }
       51%, 100% { opacity: 0.3; }
     }
+    #indi-recording-indicator:hover {
+      box-shadow: 0 6px 20px rgba(236, 72, 153, 0.5);
+    }
   `;
   document.head.appendChild(style);
 
   document.body.appendChild(indicator);
 
+  // Make indicator draggable (will prevent dragging when clicking the stop button)
+  const cleanupDrag = makeDraggable(indicator, {
+    bounds: true, // Keep within viewport
+    lockDimensions: true, // Prevent distortion from right->left positioning conflict
+  });
+
   // Add stop button click handler
   const stopBtn = document.getElementById('indi-stop-recording-btn');
   if (stopBtn) {
-    stopBtn.addEventListener('click', () => {
+    // Prevent mousedown from triggering drag
+    stopBtn.addEventListener('mousedown', (e) => {
+      e.stopPropagation(); // Prevent drag from starting
+    });
+
+    stopBtn.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent event bubbling
       // Trigger stop recording
       const createFlowBtn = document.getElementById('indi-summary-create-flow');
       if (createFlowBtn) {
@@ -692,6 +711,7 @@ function showRecordingIndicator() {
 
   // Listen for recording stopped event to remove indicator
   document.addEventListener('indi-flow-recording-stopped', () => {
+    cleanupDrag(); // Remove drag event listeners
     indicator.remove();
   }, { once: true });
 }
@@ -1264,6 +1284,22 @@ function showIssuesSummary(summary: PageSummaryData, bypassMute: boolean = false
               // Keep current emotion if still many issues
 
               console.log('🔔 Badge decremented on dismiss:', currentCount, '→', newCount);
+            }
+          },
+        },
+        {
+          label: 'Dismiss All',
+          style: 'secondary',
+          onClick: () => {
+            speechBubble?.hide();
+
+            // Clear all notifications
+            if (indiBlob) {
+              const currentCount = indiBlob['notificationCount'] || 0;
+              indiBlob.setNotifications(0);
+              indiBlob.setEmotion('happy');
+
+              console.log('🔔 All notifications dismissed:', currentCount, '→', 0);
             }
           },
         },

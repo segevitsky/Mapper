@@ -1801,6 +1801,7 @@ function handleTabClick(e: Event, responsePanel: HTMLElement) {
 interface DraggableOptions {
   handle?: string;
   bounds?: boolean;
+  lockDimensions?: boolean; // Lock width/height and convert right/bottom to left/top
   onDragStart?: (position: { x: number; y: number }) => void;
   onDrag?: (position: { x: number; y: number }) => void;
   onDragEnd?: (position: { x: number; y: number }) => void;
@@ -1812,10 +1813,11 @@ interface DragState {
   offsetY: number;
 }
 
-function makeDraggable(element: HTMLElement, options: DraggableOptions = {}): () => void {
+export function makeDraggable(element: HTMLElement, options: DraggableOptions = {}): () => void {
   const {
     handle = null,
     bounds = true,
+    lockDimensions = false,
     onDragStart = null,
     onDrag = null,
     onDragEnd = null
@@ -1841,12 +1843,12 @@ function makeDraggable(element: HTMLElement, options: DraggableOptions = {}): ()
   setupHandleStyles(handleElement);
 
   // Ensure element is positioned
-  ensurePositioned(element);
+  ensurePositioned(element, lockDimensions);
 
   // Event handlers
   const handleMouseDown = (e: MouseEvent) => {
     e.preventDefault();
-    
+
     const rect = element.getBoundingClientRect();
     state.isDragging = true;
     state.offsetX = e.clientX - rect.left;
@@ -1855,6 +1857,7 @@ function makeDraggable(element: HTMLElement, options: DraggableOptions = {}): ()
     // Prepare element for dragging
     element.style.transition = 'none';
     element.style.zIndex = '100000';
+    handleElement.style.cursor = 'grabbing';
 
     if (onDragStart) {
       onDragStart({ x: rect.left, y: rect.top });
@@ -1890,6 +1893,7 @@ function makeDraggable(element: HTMLElement, options: DraggableOptions = {}): ()
     state.isDragging = false;
     element.style.transition = 'box-shadow 0.3s ease';
     element.style.zIndex = '99999';
+    handleElement.style.cursor = 'grab';
 
     const rect = element.getBoundingClientRect();
     if (onDragEnd) {
@@ -1924,10 +1928,36 @@ function setupHandleStyles(element: HTMLElement): void {
   element.style.userSelect = 'none';
 }
 
-function ensurePositioned(element: HTMLElement): void {
+function ensurePositioned(element: HTMLElement, lockDimensions: boolean = false): void {
   const computed = window.getComputedStyle(element);
   if (computed.position === 'static') {
     element.style.position = 'fixed';
+  }
+
+  // Only apply dimension locking and position conversion if explicitly requested
+  if (lockDimensions) {
+    // Convert right/bottom positioning to left/top to avoid conflicts during drag
+    const rect = element.getBoundingClientRect();
+
+    // If element has 'right' set, convert it to 'left'
+    if (element.style.right && !element.style.left) {
+      element.style.left = `${rect.left}px`;
+      element.style.right = 'auto';
+    }
+
+    // If element has 'bottom' set, convert it to 'top'
+    if (element.style.bottom && !element.style.top) {
+      element.style.top = `${rect.top}px`;
+      element.style.bottom = 'auto';
+    }
+
+    // Lock the element's width and height to prevent distortion
+    if (!element.style.width) {
+      element.style.width = `${rect.width}px`;
+    }
+    if (!element.style.height) {
+      element.style.height = `${rect.height}px`;
+    }
   }
 }
 
