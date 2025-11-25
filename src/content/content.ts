@@ -1989,19 +1989,17 @@ function createIndicator(data: any, item: any, element: any, name: string, descr
     (call: any) => call.id === callId
   );
   const elementByPath = document.querySelector(element.path);
-  const elementBefore = elementByPath.previousElementSibling;
-  let originalElementAndElementBeforeAreInline = false;
-
-  if (elementBefore) {
-    originalElementAndElementBeforeAreInline = true;
-  }
 
   if (!elementByPath) return;
+
   const pattern =
     identifyDynamicParams(selectedCall.url) ||
     identifyDynamicParams(window.location.href);
 
   const rect = element.rect;
+
+  // Prepare indicator data - this is all we need!
+  // The actual indicator will be created by createIndicatorFromData() with the better modal
   const indicatorData: IndicatorData = {
     id: Date.now().toString(),
     baseUrl: window.location.href,
@@ -2030,177 +2028,8 @@ function createIndicator(data: any, item: any, element: any, name: string, descr
     indicatorData.pattern = pattern;
   }
 
-  const indicator = document.createElement("div");
-  indicator.className = "indicator";
-  indicator.dataset.indicatorId = indicatorData.id;
-  indicator.style.cssText = `
-          display: inline-block;
-          width: 12px;
-          height: 12px;
-          margin-left: 8px;
-          border-radius: 50%;
-          background-color: ${
-            selectedCall.status === 200 ? "rgba(25,200, 50, .75)" : "#f44336"
-          };
-          cursor: pointer;
-          z-index: 999999;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-          vertical-align: middle;
-              position: ${
-                !originalElementAndElementBeforeAreInline
-                  ? "absolute"
-                  : "relative"
-              };
-          top: 1rem;
-
-        `;
-
-  // Don't add indicator here - it will be added in the storage callback to avoid duplicates
-
-  indicator.addEventListener("click", () => {
-    const tooltip = document.createElement("div");
-    tooltip.style.cssText = `
-              position: fixed;
-              top: 10rem;
-              left: 33%;
-              background: #fff;
-              padding: 12px 16px;
-              border-radius: 8px;
-              font-size: 13px;
-              line-height: 1.4;
-              color: #333;
-              z-index: 999999;
-              box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-              border-left: 3px solid #cf556c;
-              transform-origin: center;
-          `;
-
-    const durationColor =
-      selectedCall.timing.duration < 300
-        ? "#4CAF50"
-        : selectedCall.timing.duration < 1000
-        ? "#FFC107"
-        : "#f44336";
-
-    tooltip.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-              <strong>${selectedCall.method}</strong>
-              <span style="color: ${durationColor}; font-weight: bold;">
-                ${Math.floor(selectedCall.timing.duration)}ms
-              </span>
-            </div>
-            <div style="color: #666; word-break: break-all; margin: 8px 0;">
-              ${selectedCall.url}
-            </div>
-            <div style="color: ${
-              selectedCall.status === 200 ? "#4CAF50" : "#f44336"
-            }">
-              Status: ${
-                selectedCall.status === 0 ? "Pending..." : selectedCall.status
-              }
-            </div>
-            <div style="margin-top: 8px; font-size: 11px; color: #666;">
-              Page: ${new URL(window.location.href).pathname}
-            </div>
-      <button class="create-jira-ticket" style="
-        margin-top: 8px;
-        padding: 4px 8px;
-        background: #0052CC;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        margin-right: 8px;
-      ">
-        Create Jira Ticket
-      </button>
-      <button class="remove-indicator">Remove</button>
-      <button class="change-position change-indicator-position"> Stick </button>
-      <button class="close-indicator-tooltip"> Close </button>
-      <div style="margin-top: 8px; font-size: 12px; color: #666;">
-        Use arrow keys to fine tune your indi's position
-      </div>    
-          `;
-
-    tooltip
-      .querySelector(".remove-indicator")
-      ?.addEventListener("click", () => {
-        indicator.remove();
-        tooltip.remove();
-        chrome.storage.local.get(["indicators"], (result) => {
-          // change this to the new storage structure
-          const indicators = result.indicators || {};
-          const path = generateStoragePath(window.location.href);
-          let currentPageIndicators = indicators[path] || [];
-          if (Object.keys(currentPageIndicators).length > 0) {
-            currentPageIndicators = currentPageIndicators.filter(
-              (ind: IndicatorData) => ind.id !== indicatorData.id
-            );
-            chrome.storage.local.set({ indicators });
-          }
-        });
-      });
-
-    tooltip.querySelector(".change-position")?.addEventListener("click", () => {
-      // toggle position from relative to absolute and vise versa
-      const currentPosition = indicator.style.position;
-      indicator.style.position =
-        currentPosition === "absolute" ? "relative" : "absolute";
-
-      // update the position in the storage
-      // get all indicators from storage
-      chrome.storage.local.get(["indicators"], (result) => {
-        const indicators = result.indicators || {};
-        const pathToUpdate = generateStoragePath(window.location.href);
-        const currentPageIndicators = indicators[pathToUpdate] || [];
-
-        // find the indicator we want to update
-        const indicatorToUpdate = currentPageIndicators.find(
-          (ind: IndicatorData) => ind.id === indicatorData.id
-        );
-        // update the position
-        indicatorToUpdate.updatedPosition = indicator.style.position;
-        // save the updated indicators
-        chrome.storage.local.set({ indicators });
-      });
-    });
-
-    const moveHandler = (e: KeyboardEvent) => {
-      const step = 5; // פיקסלים לכל הזזה
-      const currentTop = parseInt(indicator.style.top) || 0;
-      const currentLeft = parseInt(indicator.style.left) || 0;
-
-      // פעולה רק אם מקש Shift לחוץ יחד עם מקשי החצים
-      if (e.shiftKey) {
-        switch (e.key) {
-          case "ArrowUp":
-            indicator.style.top = `${currentTop - step}px`;
-            break;
-          case "ArrowDown":
-            indicator.style.top = `${currentTop + step}px`;
-            break;
-          case "ArrowLeft":
-            indicator.style.left = `${currentLeft - step}px`;
-            break;
-          case "ArrowRight":
-            indicator.style.left = `${currentLeft + step}px`;
-            break;
-        }
-      }
-      // אם Shift לא לחוץ, לא מתבצעת שום פעולה
-    };
-
-    document.addEventListener("keydown", moveHandler);
-    tooltip
-      .querySelector(".close-indicator-tooltip")
-      ?.addEventListener("click", () => {
-        document.removeEventListener("keydown", moveHandler);
-        tooltip.remove();
-      });
-
-    document.body.appendChild(tooltip);
-  });
-
+  // Save to storage and immediately create the visual indicator
+  // This gives instant feedback instead of waiting for MutationObserver debounce (300ms)
   const storagePath = generateStoragePath(window.location.href);
 
   chrome.storage.local.get(["indicators"], (result) => {
@@ -2209,7 +2038,10 @@ function createIndicator(data: any, item: any, element: any, name: string, descr
     indicators[storagePath].push(indicatorData);
     try {
       chrome.storage.local.set({ indicators }, () => {
-        elementByPath.after(indicator);
+        console.log('✅ Indicator data saved! Creating visual indicator immediately...');
+        // Create indicator immediately for instant feedback (bypasses 300ms debounce)
+        // MutationObserver will call it again but duplicate check will prevent re-creation
+        createIndicatorFromData(indicatorData);
       });
     } catch (error) {
       console.error("Error saving indicator to storage:", error);

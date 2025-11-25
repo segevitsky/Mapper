@@ -797,7 +797,7 @@ indicator.addEventListener("click", async () => {
     gap: 10px;
     margin-bottom: 10px;
   ">
-    <button class="create-jira-ticket btn-primary" style="
+    <button class="create-jira-ticket btn-primary" disabled style="
       padding: 10px 14px;
       background: linear-gradient(135deg, #ff8177, #cf556c);
       color: white;
@@ -813,7 +813,7 @@ indicator.addEventListener("click", async () => {
       position: relative;
       overflow: hidden;
     ">
-      🎫 Jira Ticket
+      🎫 Jira Ticket (Coming Soon)
     </button>
     <button class="remove-indicator btn-danger" style="
       padding: 10px 14px;
