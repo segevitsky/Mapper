@@ -176,15 +176,9 @@ class SchemaValidationService {
       schemaStrA: string,
       schemaStrB: string,
     ): SchemaDiff {
-      console.log('🔍 Comparing schemas:');
-      console.log('Schema A:', schemaStrA);
-      console.log('Schema B:', schemaStrB);
 
       const schemaA = this.parseTypeSchema(schemaStrA);
       const schemaB = this.parseTypeSchema(schemaStrB);
-
-      console.log('Parsed Schema A:', schemaA);
-      console.log('Parsed Schema B:', schemaB);
 
       const added: string[] = [];
       const removed: string[] = [];
@@ -193,13 +187,11 @@ class SchemaValidationService {
       for (const key in schemaA) {
         if (!(key in schemaB)) {
           removed.push(key);
-          console.log(`➖ Removed field: ${key}`);
         } else {
           const a = schemaA[key];
           const b = schemaB[key];
           if (a.type !== b.type || a.optional !== b.optional) {
             changed.push({ field: key, from: a, to: b });
-            console.log(`🔄 Changed field: ${key} from ${a.type}${a.optional ? '?' : ''} to ${b.type}${b.optional ? '?' : ''}`);
           }
         }
       }
@@ -207,11 +199,9 @@ class SchemaValidationService {
       for (const key in schemaB) {
         if (!(key in schemaA)) {
           added.push(key);
-          console.log(`➕ Added field: ${key}`);
         }
       }
 
-      console.log('Diff result:', { added, removed, changed });
       return { added, removed, changed };
     }
 

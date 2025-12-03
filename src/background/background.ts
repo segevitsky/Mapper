@@ -19,6 +19,7 @@ interface NetworkRequestInfo {
   requestInfo?: any;
   bodyError?: string;
   processed?: boolean;
+  mimeType?: string;
 }
 
 interface IdleCheckState {
@@ -579,14 +580,11 @@ async function attachDebugger(tabId: number): Promise<void> {
         case "Network.responseReceived": {
           const requestInfo = requestData.get(params.requestId);
           if (requestInfo && params.response) {
-            console.log(
-              `Response received for ${params.requestId}, URL: ${params.response.url}`
-            );
-
             requestInfo.response = params;
             requestInfo.headers = params.response.headers;
             requestInfo.status = params.response.status;
             requestInfo.statusText = params.response.statusText;
+            requestInfo.mimeType = params.response.mimeType;
 
             // חישוב זמנים - משאירים את זה כאן כי המידע כבר זמין
             if (params.response.timing) {
@@ -631,15 +629,7 @@ async function attachDebugger(tabId: number): Promise<void> {
           const requestInfo = requestData.get(params.requestId);
           if (requestInfo) {
             requestInfo.timing = params.timestamp;
-            console.log(
-              `Loading finished for ${params.requestId}, URL: ${
-                requestInfo.request?.url || "unknown"
-              }`
-            );
 
-
-
-            // כעת מנסים לקבל את ה-body
             try {
               const responseBody = (await chrome.debugger.sendCommand(
                 { tabId },
@@ -648,18 +638,9 @@ async function attachDebugger(tabId: number): Promise<void> {
               )) as { body: string; base64Encoded: boolean };
 
               if (responseBody) {
-                console.log(
-                  `Got body for ${params.requestId}, size: ${responseBody.body.length} and this is the base64Encoded: ${responseBody.base64Encoded} and the body is: ${responseBody.body}`
-                );
-                console.log(params, 'this is the response when loading finished');
-
                 requestInfo.body = responseBody;
-              } else {
-                console.log(`No body returned for ${params.requestId}`);
               }
             } catch (error: any) {
-              console.log(`Failed to get body for ${params.requestId}:`, error);
-              // שומרים מידע על שגיאת ה-body לצורך ניסיון מאוחר יותר
               requestInfo.bodyError = error.toString();
             }
           }

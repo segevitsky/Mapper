@@ -303,17 +303,14 @@ export class SpeechBubble {
   }
 
   public show(options: SpeechBubbleOptions): void {
-    console.log('🟢 SpeechBubble.show() called with:', options.title, 'bypassMute:', options.bypassMute);
 
     // Check if Indi is muted - if so, don't show the bubble (unless bypassMute is true)
     if (!options.bypassMute && this.indiBlob && this.indiBlob.getMuteState && this.indiBlob.getMuteState()) {
-      console.log('🔇 Indi is muted - speech bubble will not be shown');
       return;
     }
 
     // If there's already a bubble showing, hide it first and wait
     if (this.bubble && this.isVisible) {
-      console.log('🟡 Existing bubble found, hiding it first...');
       this.hideImmediate(); // Use immediate hide, not animated
     }
 
@@ -322,8 +319,6 @@ export class SpeechBubble {
   }
 
   private createAndShowBubble(options: SpeechBubbleOptions): void {
-    console.log('🟢 Creating bubble:', options.title);
-
     // Clear any pending timeouts
     this.clearTimeouts();
 
@@ -335,22 +330,17 @@ export class SpeechBubble {
 
     document.body.appendChild(this.bubble);
 
-    console.log('🟢 Bubble added to DOM');
-
     // Trigger animation on next frame
     requestAnimationFrame(() => {
       if (this.bubble) {
         this.bubble.classList.add('visible');
         this.isVisible = true;
-        console.log('🟢 Bubble animated to visible');
       }
     });
 
     // Auto-dismiss if not persistent
     if (!options.persistent) {
-      console.log('🟡 Setting auto-dismiss (10s)');
       this.autoDismissTimeout = window.setTimeout(() => {
-        console.log('⏰ Auto-dismiss triggered');
         this.hide();
         if (options.onClose) options.onClose();
       }, 10000);
@@ -359,35 +349,31 @@ export class SpeechBubble {
     }
   }
 
-  public updatePosition(blobRect: DOMRect): void {
+  public updatePosition(blobRect?: DOMRect): void {
     if (!this.bubble || !this.isVisible) return;
-    console.log({ blobRect });
+
+    if (blobRect) {
+      console.log('🔵 Updating bubble position using provided blobRect', blobRect);
+    }
 
     // Use the same smart positioning logic as initial placement
     this.positionBubbleRelativeToBlob();
-
-    console.log('🔄 Speech bubble repositioned');
   }
 
   public hide(): void {
-    console.log('🔴 SpeechBubble.hide() called');
-
     this.clearTimeouts();
 
     if (!this.bubble) {
-      console.log('🟡 No bubble to hide');
       return;
     }
 
     // Start hide animation
     this.bubble.classList.remove('visible');
-    console.log('🔴 Bubble hiding (animated)');
 
     // Remove from DOM after animation
     this.hideTimeout = window.setTimeout(() => {
       if (this.bubble && this.bubble.parentElement) {
         this.bubble.parentElement.removeChild(this.bubble);
-        console.log('🔴 Bubble removed from DOM');
       }
       this.bubble = null;
       this.isVisible = false;
@@ -419,7 +405,6 @@ export class SpeechBubble {
 
     if (this.bubble && this.bubble.parentElement) {
       this.bubble.parentElement.removeChild(this.bubble);
-      console.log('🔴 Bubble removed immediately (no animation)');
     }
 
     this.bubble = null;

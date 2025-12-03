@@ -573,7 +573,7 @@ const handleDeleteIndicator = (indicatorId: string, fromCategory: string) => {
                           {/* Actions */}
                           <div className="flex flex-col gap-2">
                             {/* Move Button */}
-                            {availableCategories.length > 1 && (
+                            {/* {availableCategories.length > 1 && (
                               <div className="relative">
                                 <button
                                   onClick={() => setOpenMoveDropdown(
@@ -594,7 +594,7 @@ const handleDeleteIndicator = (indicatorId: string, fromCategory: string) => {
                                   onClose={() => setOpenMoveDropdown(null)}
                                 />
                               </div>
-                            )}
+                            )} */}
 
                             <button
                               onClick={() => onNavigateToIndicator(indicator)}

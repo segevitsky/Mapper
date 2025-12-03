@@ -243,6 +243,30 @@ export class FlowPlayer {
         // Highlight element briefly
         this.highlightElement(element);
 
+        // Special handling for Ant Design select - can't programmatically open dropdown
+        if (element.classList.contains('ant-select') || element.closest('.ant-select')) {
+          const selectWrapper = element.classList.contains('ant-select')
+            ? element
+            : element.closest('.ant-select');
+
+          // Find the selector/input inside and click it to trigger dropdown
+          const selector = selectWrapper?.querySelector('.ant-select-selector, input');
+          if (selector) {
+            console.log('🎯 Detected Ant Design select, clicking internal selector to open dropdown');
+            (selector as HTMLElement).click();
+
+            // Wait for dropdown to appear in DOM
+            await this.wait(200);
+            break; // Next action will click the option
+          }
+        }
+
+        // Special handling for native select elements - can't programmatically open dropdown
+        if (element instanceof HTMLSelectElement) {
+          element.focus();
+          break; // The 'change' action that follows will set the value
+        }
+
         // Try native click first, fallback to dispatching MouseEvent
         try {
           if (typeof element.click === 'function') {

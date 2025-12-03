@@ -43,14 +43,33 @@ let isIndiInitialized = false;
 let pageSummary: PageSummary | null = null;
 let issuesSummary: PageSummaryData | null = null;
 let indiBlobUrlWithIssue: string | null = null;
+let slowCallThreshold: number = 1000; // Default slow call threshold, loaded from storage
 
+/**
+ * Load slow call threshold from storage
+ */
+async function loadSlowCallThreshold() {
+  try {
+    const settings = await chrome.storage.local.get(['slowCallThreshold']);
+    if (settings.slowCallThreshold) {
+      slowCallThreshold = settings.slowCallThreshold;
+      // Update pageSummary threshold if it exists
+      if (pageSummary) {
+        pageSummary.setSlowCallThreshold(slowCallThreshold);
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load slow call threshold:', error);
+  }
+}
 
 async function initializeIndi(networkData: NetworkCall[]) {
-  console.log({ networkData });
+  if (networkData) {
+    console.log({ networkData });
+  }
   if (isIndiInitialized) return;
 
   try {
-    console.log('🫧 Initializing Indi with network data...');
 
     // 1. Create Indi blob
     indiBlob = new IndiBlob();
@@ -64,6 +83,9 @@ async function initializeIndi(networkData: NetworkCall[]) {
     // 3. Create page summary analyzer
     pageSummary = new PageSummary();
 
+    // 3.5. Load slow call threshold from storage
+    await loadSlowCallThreshold();
+
     // 4. Create onboarding flow
     onboardingFlow = new OnboardingFlow(indiBlob, speechBubble);
     // await onboardingFlow.startWithNetworkData(networkData);
@@ -72,9 +94,8 @@ async function initializeIndi(networkData: NetworkCall[]) {
     setupIndiEventListeners();
 
     isIndiInitialized = true;
-    console.log('✅ Indi initialized successfully!');
   } catch (error) {
-    console.error('❌ Failed to initialize Indi:', error);
+    console.error('Failed to initialize Indi components:', error);
   }
 }
 
@@ -91,6 +112,19 @@ function isStaticAsset(url: string): boolean {
       '.webp', '.avif', '.mp4', '.webm', '.mp3', '.wav',
       '.pdf', '.zip', '.tar', '.gz'
     ];
+
+    // Filter source files (.tsx, .ts, .jsx, .js from /src/)
+    if (pathname.endsWith('.tsx') || pathname.endsWith('.ts') ||
+        pathname.endsWith('.jsx') || pathname.endsWith('.mjs')) {
+      return true;
+    }
+
+    // Filter webpack/vite dev server requests
+    if (pathname.includes('/src/') || pathname.includes('/@vite') ||
+        pathname.includes('/@react-refresh') || pathname.includes('/node_modules/')) {
+      return true;
+    }
+
     return staticExtensions.some(ext => pathname.endsWith(ext));
   } catch {
     return false;
@@ -186,10 +220,10 @@ function findNetworkCallInCache(targetUrl: string): NetworkCall | null {
 
       if (cachedPath === targetPath && calls.length > 0) {
         foundCall = calls[0];
-        console.log('✅ Found API call in cache:', { url: cachedUrl, method, call: foundCall });
+        // console.log('✅ Found API call in cache:', { url: cachedUrl, method, call: foundCall });
       }
     } catch (error) {
-      console.warn('⚠️ Error processing cache key:', key, error);
+      console.error('Error processing cache key:', key, error);
     }
   });
 
@@ -200,17 +234,9 @@ function findNetworkCallInCache(targetUrl: string): NetworkCall | null {
 document.addEventListener('indi-create-indicator', async (e: Event) => {
   const customEvent = e as CustomEvent<{ apiUrl: string; duration?: number; fullSummary?: any }>;
   const { apiUrl, duration, fullSummary } = customEvent.detail;
-  console.log('🎯 Indi create indicator event received:', { apiUrl, duration, fullSummary });
 
   // Try to find the full NetworkCall data from cache using the safe helper
   const fullNetworkCall = findNetworkCallInCache(apiUrl);
-
-  if (fullNetworkCall) {
-    console.log('✅ Found full network call data from cache:', fullNetworkCall);
-  } else {
-    console.warn('⚠️ Could not find network call in cache for URL:', apiUrl);
-  }
-
   // Store the URL and full data for later use
   indiBlobUrlWithIssue = apiUrl;
   (window as any).__indiBlobNetworkCall = fullNetworkCall; // Store for handleIndiBlobRef
@@ -223,22 +249,244 @@ document.addEventListener('indi-badge-clicked', (e: Event) => {
   // cast the generic Event to our CustomEvent with the expected detail shape
   const customEvent = e as CustomEvent<{ count: number; summaryData: PageSummaryData }>;
   const { count, summaryData } = customEvent.detail;
-  console.log('🔔 Badge clicked, showing issues summary:', { count, summaryData });
 
-  // Call showIssuesSummary with bypassMute=true so it shows even when muted
+  // Show detailed modal with all issues listed individually
   if (issuesSummary) {
-    showIssuesSummary(issuesSummary, true);
+    showDetailedIssuesModal(issuesSummary);
   } else {
-    console.warn('⚠️ No summary data available or speech bubble not initialized');
+    console.warn('Badge clicked but no summary data available');
   }
 });
 
 
 document.addEventListener('indi-create-indicator-from-summary', async () => { 
-  console.log('🎯 Create indicator from summary event received')
   enableInspectMode();
 });
 
+
+/**
+ * Show settings modal with backend URL and slow call threshold
+ */
+async function showSettingsModal() {
+  // Load current settings
+  const settings = await chrome.storage.local.get(['backendUrl', 'slowCallThreshold']);
+  const key = `indi_onboarding_${window.location.hostname}`;
+  const keyResult = await chrome.storage.local.get([key]);
+  const onboardingState = keyResult[key];
+
+  const currentBackendUrl = onboardingState.selectedBackendUrl || '';
+  const currentThreshold = settings.slowCallThreshold || 1000; // Default 1000ms
+
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+      <!-- Backend URL Section -->
+      <div style="margin-bottom: 24px;">
+        <label style="display: block; font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px;">
+          Backend URL
+        </label>
+        <div style="display: flex; gap: 8px;">
+          <input
+            id="indi-settings-backend-url"
+            type="text"
+            value="${currentBackendUrl}"
+            placeholder="No backend configured"
+            disabled
+            style="
+              flex: 1;
+              padding: 10px 12px;
+              border: 2px solid #e5e7eb;
+              border-radius: 8px;
+              font-size: 14px;
+              background: #f9fafb;
+              color: #374151;
+              cursor: not-allowed;
+            "
+          />
+          <button
+            id="indi-settings-reconfigure-backend"
+            style="
+              padding: 10px 16px;
+              background: linear-gradient(to right, rgb(139, 92, 246), rgb(124, 58, 237)) !important;
+              color: white !important;
+              border: none;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: background 0.2s;
+            "
+            onmouseover="this.style.color='white'"
+            onmouseout="this.style.background='linear-gradient(to right, rgb(139, 92, 246), rgb(124, 58, 237)) !important;'"
+          >
+            Reconfigure
+          </button>
+        </div>
+        <p style="font-size: 12px; color: #6b7280; margin-top: 6px;">
+          The API endpoint where your backend is hosted. Click "Reconfigure" to change it.
+        </p>
+      </div>
+
+      <!-- Slow Call Threshold Section -->
+      <div style="margin-bottom: 24px;">
+        <label style="display: block; font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 8px;">
+          Slow Call Threshold: <span id="indi-threshold-value" style="color: #8b5cf6;">${currentThreshold}ms</span>
+        </label>
+        <div style="position: relative; margin-bottom: 12px;">
+          <input
+            id="indi-settings-threshold-slider"
+            type="range"
+            min="100"
+            max="10000"
+            step="100"
+            value="${currentThreshold}"
+            style="
+              width: 100%;
+              height: 8px;
+              border-radius: 4px;
+              background: linear-gradient(to right, #10b981 0%, #f59e0b 50%, #ef4444 100%);
+              outline: none;
+              -webkit-appearance: none;
+              appearance: none;
+            "
+            oninput="document.getElementById('indi-threshold-value').textContent = this.value + 'ms'"
+          />
+          <style>
+            #indi-settings-threshold-slider::-webkit-slider-thumb {
+              -webkit-appearance: none;
+              appearance: none;
+              width: 24px;
+              height: 24px;
+              border-radius: 50%;
+              background: #8b5cf6;
+              cursor: pointer;
+              box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4);
+              transition: all 0.2s;
+            }
+            #indi-settings-threshold-slider::-webkit-slider-thumb:hover {
+              background: #7c3aed;
+              transform: scale(1.1);
+            }
+            #indi-settings-threshold-slider::-moz-range-thumb {
+              width: 24px;
+              height: 24px;
+              border-radius: 50%;
+              background: #8b5cf6;
+              cursor: pointer;
+              border: none;
+              box-shadow: 0 2px 8px rgba(139, 92, 246, 0.4);
+              transition: all 0.2s;
+            }
+            #indi-settings-threshold-slider::-moz-range-thumb:hover {
+              background: #7c3aed;
+              transform: scale(1.1);
+            }
+          </style>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af;">
+          <span>⚡ Fast (100ms)</span>
+          <span>😐 Normal (5000ms)</span>
+          <span>🐌 Very Slow (10000ms)</span>
+        </div>
+        <p style="font-size: 12px; color: #6b7280; margin-top: 8px;">
+          API calls slower than <strong>${currentThreshold}ms</strong> will be flagged as slow and highlighted in blobi reports, summaries, and the logger. This affects issue detection and notifications.
+        </p>
+      </div>
+    </div>
+  `;
+
+  const result = await Swal.fire({
+    title: '⚙️ Indi Settings',
+    html: html,
+    width: '550px',
+    draggable: true,
+    showCancelButton: true,
+    confirmButtonText: 'Save Settings',
+    cancelButtonText: 'Cancel',
+    customClass: {
+      popup: 'jira-popup',
+      confirmButton: 'swal2-confirm-custom',
+      cancelButton: 'swal2-cancel-custom'
+    },
+    didOpen: (popup) => {
+      // Add custom styling for buttons
+      const confirmBtn = Swal.getConfirmButton();
+      const cancelBtn = Swal.getCancelButton();
+
+      if (confirmBtn) {
+        confirmBtn.style.cssText = `
+          background: linear-gradient(to right, #8b5cf6, #7c3aed) !important;
+          border: none !important;
+          padding: 12px 24px !important;
+          border-radius: 8px !important;
+          font-weight: 600 !important;
+          transition: all 0.2s !important;
+        `;
+      }
+
+      if (cancelBtn) {
+        cancelBtn.style.cssText = `
+          background: #f3f4f6 !important;
+          color: #374151 !important;
+          border: none !important;
+          padding: 12px 24px !important;
+          border-radius: 8px !important;
+          font-weight: 600 !important;
+          transition: all 0.2s !important;
+        `;
+      }
+
+      // Add event listener for reconfigure button - query within popup element
+      const reconfigureBtn = popup.querySelector('#indi-settings-reconfigure-backend') as HTMLButtonElement;
+      if (reconfigureBtn) {
+        reconfigureBtn.addEventListener('click', async () => {
+          // Close the settings modal
+          Swal.close();
+
+          // Open onboarding flow to reconfigure backend
+          if (onboardingFlow) {
+            const networkData = Array.from(recentCallsCache.values()).flat();
+            await onboardingFlow.startWithNetworkData(networkData, true);
+          }
+        });
+      }
+    },
+    preConfirm: () => {
+      const thresholdSlider = document.getElementById('indi-settings-threshold-slider') as HTMLInputElement;
+
+      return {
+        slowCallThreshold: parseInt(thresholdSlider?.value || '1000')
+      };
+    }
+  });
+
+  if (result.isConfirmed && result.value) {
+    const { slowCallThreshold: newThreshold } = result.value;
+
+    // Save slow call threshold
+    await chrome.storage.local.set({
+      slowCallThreshold: newThreshold
+    });
+
+    // Update global threshold variable
+    slowCallThreshold = newThreshold;
+
+    // Update pageSummary threshold
+    if (pageSummary) {
+      pageSummary.setSlowCallThreshold(newThreshold);
+    }
+
+    // Show success message
+    await Swal.fire({
+      icon: 'success',
+      title: 'Settings Saved!',
+      text: `Slow Call Threshold: ${newThreshold}ms`,
+      timer: 2000,
+      timerProgressBar: true,
+      showConfirmButton: false,
+      customClass: { popup: 'jira-popup' }
+    });
+  }
+}
 
 /**
  * Set up Indi-specific event listeners
@@ -251,7 +499,6 @@ function setupIndiEventListeners() {
   document.addEventListener('click', (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target && target.id === 'indi-summary-create-indicator') {
-      console.log('➕ Create Indicator button clicked from summary tooltip!');
       // Dispatch the event
       const event = new CustomEvent('indi-create-indicator-from-summary');
       document.dispatchEvent(event);
@@ -259,29 +506,20 @@ function setupIndiEventListeners() {
 
     // Listen for Settings button clicks
     if (target && target.id === 'indi-summary-settings') {
-      console.log('⚙️ Settings button clicked from summary tooltip!');
-
-      // Get network data from cache
-      const networkData = Array.from(recentCallsCache.values()).flat();
-
-      // Update onboarding with current network data
-      if (onboardingFlow) {
-        onboardingFlow.updateNetworkData(networkData);
-
-        // Show backend selection step
-        onboardingFlow.showStep2(true);
+      // Hide the summary tooltip if it's visible
+      if (indiBlob && indiBlob.isTooltipVisible()) {
+        indiBlob.toggleTooltip();
       }
+      showSettingsModal();
     }
 
     // Listen for Create Flow button clicks
     if (target && target.id === 'indi-summary-create-flow') {
-      console.log('🔴 Create Flow button clicked!');
       handleCreateFlowClick(target);
     }
 
     // Listen for Play Flow button clicks
     if (target && target.id === 'indi-summary-play-flow') {
-      console.log('▶️ Play Flow button clicked!');
       handlePlayFlowClick();
     }
   });
@@ -452,67 +690,91 @@ function generateFlowListHTML(flows: any[]): string {
 
   let html = '<div style="max-height: 500px; overflow-y: auto;">';
 
-  flows.forEach(flow => {
+  flows.forEach((flow, index) => {
     const createdDate = new Date(flow.createdAt).toLocaleDateString();
+    const isLastItem = index === flows.length - 1;
     const lastRun = flow.lastRun
-      ? `<div style="font-size: 11px; color: ${flow.lastRun.passed ? '#10b981' : '#ef4444'}; margin-top: 4px;">
-           Last run: ${flow.lastRun.passed ? '✓' : '✗'} ${new Date(flow.lastRun.timestamp).toLocaleString()}
+      ? `<div style="
+           display: inline-block;
+           padding: 4px 10px;
+           background: ${flow.lastRun.passed ? 'linear-gradient(135deg, #d1fae5, #a7f3d0)' : 'linear-gradient(135deg, #fee2e2, #fecaca)'};
+           border-radius: 20px;
+           font-size: 11px;
+           font-weight: 600;
+           color: ${flow.lastRun.passed ? '#065f46' : '#991b1b'};
+           margin-top: 8px;
+         ">
+           ${flow.lastRun.passed ? '✓ Passed' : '✗ Failed'} • ${new Date(flow.lastRun.timestamp).toLocaleTimeString()}
          </div>`
       : '';
 
     html += `
       <div style="
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 14px 18px;
-        margin-bottom: 10px;
-        background: linear-gradient(135deg, #fdf2f8, #fce7f3);
-        border-radius: 12px;
-        border: 2px solid #fbcfe8;
-        transition: all 0.2s;
-      " onmouseover="this.style.borderColor='#f472b6'; this.style.background='linear-gradient(135deg, #fce7f3, #fbcfe8)';"
-         onmouseout="this.style.borderColor='#fbcfe8'; this.style.background='linear-gradient(135deg, #fdf2f8, #fce7f3)';">
-        <div style="flex: 1;">
-          <div style="font-weight: 700; font-size: 15px; margin-bottom: 6px; color: #831843;">${flow.name}</div>
-          <div style="font-size: 12px; color: #9ca3af;">
-            ${flow.steps.length} steps • Created ${createdDate}
+        margin-bottom: ${isLastItem ? '0' : '18px'};
+        padding: 14px 16px;
+        background: linear-gradient(135deg, #ffffff, #f9fafb);
+        border-left: 4px solid #a78bfa;
+        border-right: 4px solid #a78bfa;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      ">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+          <div style="flex: 1; min-width: 0; padding-right: 12px;">
+            <div style="font-weight: 700; font-size: 15px; margin-bottom: 6px; color: #1f2937; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              ${flow.name}
+            </div>
+            <div style="font-size: 12px; color: #6b7280; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              ${flow.steps.length} steps • Created ${createdDate}
+            </div>
+            ${lastRun}
           </div>
-          ${lastRun}
         </div>
-        <div style="display: flex; gap: 8px;">
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
           <button id="play-flow-${flow.id}" style="
-            padding: 9px 18px;
-            background: linear-gradient(135deg, #ec4899, #db2777);
+            padding: 6px 14px;
+            background: linear-gradient(135deg, #a78bfa, #8b5cf6);
             color: white;
             border: none;
-            border-radius: 8px;
-            font-weight: 600;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
             cursor: pointer;
-            font-size: 13px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            box-shadow: 0 2px 8px rgba(236, 72, 153, 0.3);
-            transition: all 0.15s ease;
-          " onmouseover="this.style.background='linear-gradient(135deg, #db2777, #be185d)'; this.style.boxShadow='0 4px 12px rgba(236, 72, 153, 0.4)';"
-             onmouseout="this.style.background='linear-gradient(135deg, #ec4899, #db2777)'; this.style.boxShadow='0 2px 8px rgba(236, 72, 153, 0.3)';">
-            ▶️ Play
+            box-shadow: 0 3px 10px rgba(139, 92, 246, 0.3);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            letter-spacing: 0.01em;
+          " onmouseover="
+            this.style.background='linear-gradient(135deg, #8b5cf6, #7c3aed)';
+            this.style.boxShadow='0 5px 15px rgba(139, 92, 246, 0.5)';
+            this.style.transform='scale(1.05)';
+          " onmouseout="
+            this.style.background='linear-gradient(135deg, #a78bfa, #8b5cf6)';
+            this.style.boxShadow='0 3px 10px rgba(139, 92, 246, 0.3)';
+            this.style.transform='scale(1)';
+          ">
+            ▶️ Play Flow
           </button>
           <button id="delete-flow-${flow.id}" style="
-            padding: 9px 14px;
+            padding: 6px 14px;
             background: linear-gradient(135deg, #ef4444, #dc2626);
             color: white;
             border: none;
-            border-radius: 8px;
-            font-weight: 600;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
             cursor: pointer;
-            font-size: 13px;
-            box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
-            transition: all 0.15s ease;
-          " onmouseover="this.style.background='linear-gradient(135deg, #dc2626, #b91c1c)'; this.style.boxShadow='0 4px 12px rgba(239, 68, 68, 0.4)';"
-             onmouseout="this.style.background='linear-gradient(135deg, #ef4444, #dc2626)'; this.style.boxShadow='0 2px 8px rgba(239, 68, 68, 0.3)';">
-            🗑️
+            box-shadow: 0 3px 10px rgba(239, 68, 68, 0.3);
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            letter-spacing: 0.01em;
+          " onmouseover="
+            this.style.background='linear-gradient(135deg, #dc2626, #b91c1c)';
+            this.style.boxShadow='0 5px 15px rgba(239, 68, 68, 0.5)';
+            this.style.transform='scale(1.05)';
+          " onmouseout="
+            this.style.background='linear-gradient(135deg, #ef4444, #dc2626)';
+            this.style.boxShadow='0 3px 10px rgba(239, 68, 68, 0.3)';
+            this.style.transform='scale(1)';
+          ">
+            🗑️ Delete
           </button>
         </div>
       </div>
@@ -755,7 +1017,6 @@ function showPlaybackProgressUI(flow: any) {
 
   // BUG FIX #8: Listen for resume event to restore UI after navigation
   const handleResume = (event: any) => {
-    console.log('🎬 Playback resumed event received:', event.detail);
     const { stepIndex, totalSteps } = event.detail;
 
     // Re-show the progress overlay if it's not visible
@@ -909,36 +1170,27 @@ async function isBackendConfigured(): Promise<boolean> {
 }
 
 async function handleBlobClick() {
-  console.log('🫧 Indi blob clicked!');
+  // Immediate response - check data availability first
+  if (indiBlob) {
+    const summaryData = indiBlob.getCurrentSummaryData();
+    const hasSummary = summaryData || cumulativeSummary;
 
+    if (hasSummary) {
+      // We have data - show the tooltip immediately
+      indiBlob.toggleTooltip();
+      return;
+    }
+  }
 
-  // Check if backend is configured
+  // No summary data - check backend configuration
   const configured = await isBackendConfigured();
 
   if (configured) {
-    // Backend is configured - show summary if we have data, otherwise show menu
-    console.log('🫧 Indi blob clicked - backend configured');
-
-    if (indiBlob) {
-      // Check FIRST if we have summary data OR cumulative summary
-      const summaryData = indiBlob.getCurrentSummaryData();
-      const hasSummary = summaryData || cumulativeSummary;
-
-      if (hasSummary) {
-        // We have data - show the tooltip
-        console.log('📊 Showing summary tooltip with data');
-        indiBlob.toggleTooltip();
-      } else {
-        // No data yet - show main menu instead of "All Good" message
-        console.log('📋 No issues detected - showing main menu');
-        showIndiMainMenu();
-      }
-    }
+    // Backend is configured but no data - show main menu
+    showIndiMainMenu();
   } else {
     // Backend not configured - show onboarding
-    console.log('⚙️ Backend not configured - starting onboarding');
     if (onboardingFlow) {
-      // let's get urls from cache for onboarding
       const networkData = Array.from(recentCallsCache.values()).flat();
       await onboardingFlow.startWithNetworkData(networkData);
     }
@@ -1068,12 +1320,9 @@ async function showIndiMainMenu() {
         style: 'secondary',
         onClick: async () => {
           speechBubble?.hide();
-
-          // Show onboarding to reconfigure
-          if (onboardingFlow) {
-            const networkData = Array.from(recentCallsCache.values()).flat();
-            await onboardingFlow.startWithNetworkData(networkData);
-          }
+          Swal.close();
+          // Show settings modal
+          await showSettingsModal();
         },
       },
     ],
@@ -1089,6 +1338,10 @@ let cumulativeSlowApis = new Set<string>(); // Track unique slow API URLs
 let cumulativeSecurityIssues = new Set<string>(); // Track unique security issues
 let cumulativeSummary: PageSummaryData | null = null; // Track cumulative summary for badge clicks
 let cumulativeFailedCalls: NetworkCall[] = []; // Track actual failed call objects for detailed view
+let cumulativeSlowCalls: NetworkCall[] = []; // Track actual slow call objects for detailed view
+let notifiedErrorUrls = new Set<string>(); // Track which error URLs we've already notified about
+let notifiedSlowUrls = new Set<string>(); // Track which slow URLs we've already notified about
+let notifiedSecurityUrls = new Set<string>(); // Track which security URLs we've already notified about
 
 // Reset cumulative tracking when page changes
 function resetCumulativeTracking() {
@@ -1098,7 +1351,10 @@ function resetCumulativeTracking() {
   cumulativeSecurityIssues.clear();
   cumulativeSummary = null;
   cumulativeFailedCalls = []; // Reset failed calls array
-  console.log('🔄 Reset cumulative tracking for new page:', currentPageUrl);
+  cumulativeSlowCalls = []; // Reset slow calls array
+  notifiedErrorUrls.clear(); // Reset notified errors
+  notifiedSlowUrls.clear(); // Reset notified slow calls
+  notifiedSecurityUrls.clear(); // Reset notified security issues
 }
 
 async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
@@ -1112,13 +1368,11 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
 
   // If no onboarding data exists, this site is not enabled - return early
   if (!state) {
-    console.log('⏸️ Network analysis skipped - Indi not enabled for this domain');
     return;
   }
 
   // If onboarding not completed, wait for user to complete it
   if (!state.completed) {
-    console.log('⏸️ Network analysis skipped - onboarding not completed yet');
     return;
   }
 
@@ -1130,7 +1384,6 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
   // Analyze current batch
   const summary = pageSummary.analyze(networkData);
 
-  console.log('📊 Current Batch Summary:', summary);
 
   // Update cumulative tracking with NEW issues from this batch
   if (summary.errorCalls > 0) {
@@ -1148,9 +1401,19 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
     });
   }
 
-  if (summary.slowestApi && summary.slowestApi.duration > 1000) {
-    cumulativeSlowApis.add(summary.slowestApi.url);
-  }
+  // Track slow API URLs AND store full call objects
+  networkData.forEach(call => {
+    const duration = call?.response?.response?.timing?.receiveHeadersEnd ?? call?.duration ?? 0;
+    if (duration > slowCallThreshold) {
+      const url = extractNetworkCallUrl(call);
+      cumulativeSlowApis.add(url);
+      // Store the full NetworkCall object for detailed view (limit to last 50)
+      cumulativeSlowCalls.unshift(call); // Add to front (newest first)
+      if (cumulativeSlowCalls.length > 50) {
+        cumulativeSlowCalls.pop(); // Remove oldest
+      }
+    }
+  });
 
   if (summary.apisWithoutAuth && summary.apisWithoutAuth.length > 0) {
     summary.apisWithoutAuth.forEach((url: string) => cumulativeSecurityIssues.add(url));
@@ -1161,14 +1424,6 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
     cumulativeErrorCalls.size +
     cumulativeSlowApis.size +
     cumulativeSecurityIssues.size;
-
-  console.log('📊 Cumulative Issues for Page:', {
-    pageUrl: currentPageUrl,
-    errors: cumulativeErrorCalls.size,
-    slowApis: cumulativeSlowApis.size,
-    security: cumulativeSecurityIssues.size,
-    total: totalIssueCount
-  });
 
   // Build cumulative summary for badge clicks
   if (!cumulativeSummary) {
@@ -1199,10 +1454,104 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
   const summaryHTML = pageSummary.generateSummaryHTML(cumulativeSummary);
   indiBlob.showSummaryOnHover(summaryHTML, cumulativeSummary);
 
-  // If there are NEW issues in this batch, show speech bubble
-  if (summary.hasIssues) {
-    showIssuesSummary(cumulativeSummary); // Show cumulative summary
-    issuesSummary = cumulativeSummary; // Store cumulative summary for badge clicks
+  // Store cumulative summary for badge clicks
+  issuesSummary = cumulativeSummary;
+
+  // Show individual notifications for NEW specific API issues
+  showIndividualNotifications(networkData);
+}
+
+/**
+ * Show individual notifications for each NEW API issue (one at a time)
+ */
+function showIndividualNotifications(networkData: NetworkCall[]) {
+  if (!speechBubble) return;
+
+  // Find first NEW error to notify about
+  for (const call of networkData) {
+    const url = extractNetworkCallUrl(call);
+    const method = call?.request?.request?.method ?? call.method ?? 'GET';
+    const status = call.status;
+    const duration = call?.response?.response?.timing?.receiveHeadersEnd ?? call?.duration ?? 0;
+
+    // Check for error (status >= 400)
+    if (status >= 400 && !notifiedErrorUrls.has(url)) {
+      notifiedErrorUrls.add(url);
+
+      // Determine error type
+      let errorType = 'Error';
+      if (status === 401 || status === 403) errorType = 'Auth Error';
+      else if (status === 404) errorType = 'Not Found';
+      else if (status >= 500) errorType = 'Server Error';
+      else if (status === 0) errorType = 'Network Error';
+
+      const urlDisplay = url.length > 50 ? '...' + url.slice(-47) : url;
+
+      speechBubble!.show({
+        title: '❌ API Error Detected',
+        message: `${method} ${urlDisplay}\n${status} ${errorType}`,
+        bypassMute: false,
+        actions: [
+          {
+            label: '➕ Create Indicator',
+            style: 'primary',
+            onClick: () => {
+              speechBubble?.hide();
+              // Store API URL and trigger inspect mode
+              (window as any).__indiBlobNetworkCall = { url, method, status, duration };
+              enableInspectMode();
+            },
+          },
+          {
+            label: 'Dismiss',
+            style: 'secondary',
+            onClick: () => speechBubble?.hide(),
+          },
+        ],
+      });
+
+      return; // Only show first new error
+    }
+  }
+
+  // If no new errors, check for first NEW slow call
+  for (const call of networkData) {
+    const url = extractNetworkCallUrl(call);
+    const method = call?.request?.request?.method ?? call.method ?? 'GET';
+    const status = call.status;
+    const duration = call?.response?.response?.timing?.receiveHeadersEnd ?? call?.duration ?? 0;
+
+    // Check for slow call (duration > threshold)
+    if (duration > slowCallThreshold && !notifiedSlowUrls.has(url)) {
+      notifiedSlowUrls.add(url);
+
+      const urlDisplay = url.length > 50 ? '...' + url.slice(-47) : url;
+
+      speechBubble!.show({
+        title: '⚡ Slow API Detected',
+        message: `${method} ${urlDisplay}\n${Math.round(duration)}ms (>${slowCallThreshold}ms)`,
+        bypassMute: false,
+        actions: [
+          {
+            label: '➕ Create Indicator',
+            style: 'primary',
+            onClick: () => {
+              speechBubble?.hide();
+              // Store API URL and trigger inspect mode
+              (window as any).__indiBlobNetworkCall = { url, method, status, duration };
+              enableInspectMode();
+            },
+          },
+          {
+            label: 'Dismiss',
+            style: 'secondary',
+            onClick: () => speechBubble?.hide(),
+          },
+        ],
+      });
+
+      return; // Only show first new slow call
+    }
   }
 }
 
@@ -1210,7 +1559,7 @@ function showIssuesSummary(summary: PageSummaryData, bypassMute: boolean = false
   if (!speechBubble) return;
 
   // Build simple summary message (Option 3 style)
-  const issueCount = summary.errorCalls + (summary.slowestApi && summary.slowestApi.duration > 1000 ? 1 : 0) + summary.securityIssues;
+  const issueCount = summary.errorCalls + (summary.slowestApi && summary.slowestApi.duration > slowCallThreshold ? 1 : 0) + summary.securityIssues;
 
   let message = '';
 
@@ -1241,7 +1590,19 @@ function showIssuesSummary(summary: PageSummaryData, bypassMute: boolean = false
 
   // Count errors, slow APIs, security issues
   const errorText = summary.errorCalls > 0 ? `${summary.errorCalls} API${summary.errorCalls > 1 ? 's' : ''} failing` : '';
-  const slowText = summary.slowestApi && summary.slowestApi.duration > 1000 ? '1 slow API' : '';
+
+  // Count slow calls and show URL
+  const slowCalls = summary.durations.filter(d => d > slowCallThreshold).length;
+  let slowText = '';
+  if (slowCalls > 0 && summary.slowestApi) {
+    const slowUrl = summary.slowestApi.url.length > 60
+      ? summary.slowestApi.url.substring(0, 60) + '...'
+      : summary.slowestApi.url;
+    slowText = slowCalls === 1
+      ? `1 slow API (${Math.round(summary.slowestApi.duration)}ms): ${slowUrl}`
+      : `${slowCalls} slow APIs (slowest: ${Math.round(summary.slowestApi.duration)}ms)`;
+  }
+
   const securityText = summary.securityIssues > 0 ? `${summary.securityIssues} security issue${summary.securityIssues > 1 ? 's' : ''}` : '';
 
   const issues = [errorText, slowText, securityText].filter(Boolean);
@@ -1283,7 +1644,6 @@ function showIssuesSummary(summary: PageSummaryData, bypassMute: boolean = false
               }
               // Keep current emotion if still many issues
 
-              console.log('🔔 Badge decremented on dismiss:', currentCount, '→', newCount);
             }
           },
         },
@@ -1299,7 +1659,6 @@ function showIssuesSummary(summary: PageSummaryData, bypassMute: boolean = false
               indiBlob.setNotifications(0);
               indiBlob.setEmotion('happy');
 
-              console.log('🔔 All notifications dismissed:', currentCount, '→', 0);
             }
           },
         },
@@ -1324,12 +1683,40 @@ function showIssuesSummary(summary: PageSummaryData, bypassMute: boolean = false
             indiBlob.setEmotion('calm');
           }
 
-          console.log('🔔 Badge decremented on X close:', currentCount, '→', newCount);
         }
       },
       persistent: false, // Auto-dismiss after 10s
     });
   }
+}
+
+/**
+ * Generate cURL command from NetworkCall
+ */
+function generateCurlCommand(call: NetworkCall): string {
+  const url = extractNetworkCallUrl(call);
+  const method = call?.request?.request?.method ?? call.method ?? 'GET';
+  const headers = call?.request?.request?.headers || {};
+
+  let curl = `curl -X ${method} '${url}'`;
+
+  // Add headers
+  Object.entries(headers).forEach(([key, value]) => {
+    // Skip some headers that curl adds automatically or are problematic
+    if (!['host', 'connection', 'content-length'].includes(key.toLowerCase())) {
+      curl += ` \\\n  -H '${key}: ${value}'`;
+    }
+  });
+
+  // Add body if present (POST/PUT/PATCH)
+  if (call.body?.body && ['POST', 'PUT', 'PATCH'].includes(method)) {
+    const bodyStr = typeof call.body.body === 'string'
+      ? call.body.body
+      : JSON.stringify(call.body.body);
+    curl += ` \\\n  --data '${bodyStr.replace(/'/g, "'\\''")}'`;
+  }
+
+  return curl;
 }
 
 /**
@@ -1397,11 +1784,73 @@ async function showDetailedIssuesModal(summary: PageSummaryData) {
             <strong style="color: ${errorColor}; font-size: 13px;">${method} ${status || 'ERR'}</strong>
             <span style="font-size: 11px; color: #6b7280;">${timeStr}</span>
           </div>
-          <div style="font-size: 12px; color: #374151; word-break: break-all; margin-bottom: 4px;">
+          <div style="font-size: 12px; color: #374151; word-break: break-all; margin-bottom: 8px;">
             ${url}
           </div>
-          <div style="font-size: 11px; color: ${errorColor}; font-weight: 600;">
-            ${errorType}
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 11px; color: ${errorColor}; font-weight: 600;">
+              ${errorType}
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button
+                class="indi-copy-curl"
+                data-call='${JSON.stringify(call).replace(/'/g, '&#39;')}'
+                style="
+                  padding: 6px 14px;
+                  background: linear-gradient(135deg, #60a5fa, #3b82f6);
+                  color: white !important;
+                  border: none;
+                  border-radius: 10px;
+                  font-size: 11px;
+                  font-weight: 700;
+                  cursor: pointer;
+                  box-shadow: 0 3px 10px rgba(59, 130, 246, 0.3);
+                  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                  letter-spacing: 0.01em;
+                "
+                onmouseover="
+                  this.style.background='linear-gradient(135deg, #3b82f6, #2563eb)';
+                  this.style.boxShadow='0 5px 15px rgba(59, 130, 246, 0.5)';
+                  this.style.transform='scale(1.05)';
+                "
+                onmouseout="
+                  this.style.background='linear-gradient(135deg, #60a5fa, #3b82f6)';
+                  this.style.boxShadow='0 3px 10px rgba(59, 130, 246, 0.3)';
+                  this.style.transform='scale(1)';
+                "
+              >
+                📋 Copy cURL
+              </button>
+              <button
+                class="indi-create-from-api"
+                data-url="${url.replace(/"/g, '&quot;')}"
+                style="
+                  padding: 6px 14px;
+                  background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+                  color: white !important;
+                  border: none;
+                  border-radius: 10px;
+                  font-size: 11px;
+                  font-weight: 700;
+                  cursor: pointer;
+                  box-shadow: 0 3px 10px rgba(139, 92, 246, 0.3);
+                  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                  letter-spacing: 0.01em;
+                "
+                onmouseover="
+                  this.style.background='linear-gradient(135deg, #8b5cf6, #7c3aed)';
+                  this.style.boxShadow='0 5px 15px rgba(139, 92, 246, 0.5)';
+                  this.style.transform='scale(1.05)';
+                "
+                onmouseout="
+                  this.style.background='linear-gradient(135deg, #a78bfa, #8b5cf6)';
+                  this.style.boxShadow='0 3px 10px rgba(139, 92, 246, 0.3)';
+                  this.style.transform='scale(1)';
+                "
+              >
+                ➕ Create Indicator
+              </button>
+            </div>
           </div>
         </div>
       `;
@@ -1411,27 +1860,106 @@ async function showDetailedIssuesModal(summary: PageSummaryData) {
   }
 
   // Slow APIs Section
-  if (summary.slowestApi && summary.slowestApi.duration > 1000) {
+  if (cumulativeSlowCalls.length > 0) {
+    const slowCount = cumulativeSlowCalls.length;
     html += `
       <div style="margin-bottom: 24px;">
         <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #ea580c; display: flex; align-items: center; gap: 8px;">
-          ⚡ Slow APIs
+          ⚡ Slow APIs (${slowCount}) <span style="font-size: 12px; font-weight: normal; color: #6b7280;">>&nbsp;${slowCallThreshold}ms</span>
         </h3>
+        <div style="max-height: 300px; overflow-y: auto;">
+    `;
+
+    cumulativeSlowCalls.forEach((call) => {
+      const url = extractNetworkCallUrl(call);
+      const method = call?.request?.request?.method ?? call.method ?? 'GET';
+      const duration = call?.response?.response?.timing?.receiveHeadersEnd ?? call?.duration ?? 0;
+      const timestamp = call.timestamp || Date.now();
+      const timeStr = new Date(timestamp).toLocaleTimeString();
+
+      html += `
         <div style="
+          margin-bottom: 10px;
           padding: 12px;
           background: linear-gradient(135deg, #fff7ed, #ffedd5);
           border-left: 4px solid #ea580c;
           border-radius: 8px;
         ">
-          <div style="font-size: 13px; color: #ea580c; font-weight: 600; margin-bottom: 6px;">
-            ${summary.slowestApi.duration}ms response time
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <strong style="color: #ea580c; font-size: 13px;">${method} ${Math.round(duration)}ms</strong>
+            <span style="font-size: 11px; color: #6b7280;">${timeStr}</span>
           </div>
-          <div style="font-size: 12px; color: #374151; word-break: break-all;">
-            ${summary.slowestApi.url}
+          <div style="font-size: 12px; color: #374151; word-break: break-all; margin-bottom: 8px;">
+            ${url}
           </div>
-          <div style="font-size: 11px; color: #6b7280; margin-top: 8px;">
-            💡 Consider adding an indicator to monitor this API's performance
+          <div style="display: flex; justify-content: flex-end; gap: 8px;">
+            <button
+              class="indi-copy-curl"
+              data-call='${JSON.stringify(call).replace(/'/g, '&#39;')}'
+              style="
+                padding: 6px 14px;
+                background: linear-gradient(135deg, #60a5fa, #3b82f6);
+                color: white !important;
+                border: none;
+                border-radius: 10px;
+                font-size: 11px;
+                font-weight: 700;
+                cursor: pointer;
+                box-shadow: 0 3px 10px rgba(59, 130, 246, 0.3);
+                transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                letter-spacing: 0.01em;
+              "
+              onmouseover="
+                this.style.background='linear-gradient(135deg, #3b82f6, #2563eb)';
+                this.style.boxShadow='0 5px 15px rgba(59, 130, 246, 0.5)';
+                this.style.transform='scale(1.05)';
+              "
+              onmouseout="
+                this.style.background='linear-gradient(135deg, #60a5fa, #3b82f6)';
+                this.style.boxShadow='0 3px 10px rgba(59, 130, 246, 0.3)';
+                this.style.transform='scale(1)';
+              "
+            >
+              📋 Copy cURL
+            </button>
+            <button
+              class="indi-create-from-api"
+              data-url="${url.replace(/"/g, '&quot;')}"
+              style="
+                padding: 6px 14px;
+                background: linear-gradient(135deg, #a78bfa, #8b5cf6);
+                color: white !important;
+                border: none;
+                border-radius: 10px;
+                font-size: 11px;
+                font-weight: 700;
+                cursor: pointer;
+                box-shadow: 0 3px 10px rgba(139, 92, 246, 0.3);
+                transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+                letter-spacing: 0.01em;
+              "
+              onmouseover="
+                this.style.background='linear-gradient(135deg, #8b5cf6, #7c3aed)';
+                this.style.boxShadow='0 5px 15px rgba(139, 92, 246, 0.5)';
+                this.style.transform='scale(1.05)';
+              "
+              onmouseout="
+                this.style.background='linear-gradient(135deg, #a78bfa, #8b5cf6)';
+                this.style.boxShadow='0 3px 10px rgba(139, 92, 246, 0.3)';
+                this.style.transform='scale(1)';
+              "
+            >
+              ➕ Create Indicator
+            </button>
           </div>
+        </div>
+      `;
+    });
+
+    html += `
+        </div>
+        <div style="font-size: 11px; color: #6b7280; margin-top: 12px;">
+          💡 Consider adding indicators to monitor these APIs' performance
         </div>
       </div>
     `;
@@ -1492,11 +2020,16 @@ async function showDetailedIssuesModal(summary: PageSummaryData) {
   html += '</div>';
 
   // Show draggable Swal modal
-  await Swal.fire({
+  const result = await Swal.fire({
     title: '📊 Detailed Issues Report',
     html: html,
     width: '700px',
-    showConfirmButton: false,
+    showConfirmButton: true,
+    confirmButtonText: '🗑️ Clear All Issues',
+    confirmButtonColor: '#ef4444',
+    showCancelButton: true,
+    cancelButtonText: 'Close',
+    cancelButtonColor: '#64748b',
     showCloseButton: true,
     customClass: {
       popup: 'jira-popup',
@@ -1535,8 +2068,64 @@ async function showDetailedIssuesModal(summary: PageSummaryData) {
           isDragging = false;
         });
       }
+
+      // Add event listeners for "Create Indicator" buttons
+      const createButtons = popup.querySelectorAll('.indi-create-from-api');
+      createButtons.forEach(button => {
+        button.addEventListener('click', () => {
+          const url = button.getAttribute('data-url');
+          if (url) {
+            Swal.close();
+            // Store API URL and trigger inspect mode
+            (window as any).__indiBlobNetworkCall = { url };
+            enableInspectMode();
+          }
+        });
+      });
+
+      // Add event listeners for "Copy cURL" buttons
+      const curlButtons = popup.querySelectorAll('.indi-copy-curl');
+      curlButtons.forEach(button => {
+        button.addEventListener('click', async () => {
+          const callData = button.getAttribute('data-call');
+          if (callData) {
+            try {
+              const call = JSON.parse(callData);
+              const curlCommand = generateCurlCommand(call);
+              await navigator.clipboard.writeText(curlCommand);
+
+              // Show success feedback
+              const originalText = button.textContent;
+              button.textContent = '✅ Copied!';
+              setTimeout(() => {
+                button.textContent = originalText;
+              }, 2000);
+            } catch (error) {
+              console.error('Failed to copy cURL command:', error);
+              button.textContent = '❌ Failed';
+              setTimeout(() => {
+                button.textContent = '📋 Copy cURL';
+              }, 2000);
+            }
+          }
+        });
+      });
     }
   });
+
+  // If user clicked "Clear All Issues" button
+  if (result.isConfirmed) {
+    // Reset all cumulative tracking
+    resetCumulativeTracking();
+
+    // Clear badge
+    if (indiBlob) {
+      indiBlob.setNotifications(0);
+    }
+
+    // Clear stored summary
+    issuesSummary = null;
+  }
 }
 
 /**
@@ -1599,16 +2188,6 @@ window.addEventListener('beforeunload', () => {
   cleanupIndi();
   clearCache(); // Your existing cache clear
 });
-
-// Export for debugging
-(window as any).indi = {
-  blob: () => indiBlob,
-  speech: () => speechBubble,
-  onboarding: () => onboardingFlow,
-  restart: () => onboardingFlow?.restart(),
-  cache: () => recentCallsCache,
-  urls: () => getUrlsFromCache(),
-};
 
 /**
  * Get insight title based on type
@@ -1711,7 +2290,6 @@ async function addToCache(calls: NetworkCall[]) {
     }
   });
 
-  console.log(`📊 Filtered network calls: ${calls.length} total → ${filteredCalls.length} backend calls stored`);
 }
 
 function addToCacheKey(key: string, call: NetworkCall) {
@@ -1912,7 +2490,6 @@ function injectCustomModalStyles() {
   `;
 
   document.head.appendChild(style);
-  console.log('✨ Indi modal styles injected');
 }
 
 // Clear cache on navigation
@@ -1927,7 +2504,6 @@ IndicatorLoader.getInstance();
 (async () => {
   const restored = await flowRecorder.restoreSessionFromStorage();
   if (restored) {
-    console.log('🎬 Recording session restored! Showing recording indicator...');
     showRecordingIndicator();
   }
 })();
@@ -2038,7 +2614,6 @@ function createIndicator(data: any, item: any, element: any, name: string, descr
     indicators[storagePath].push(indicatorData);
     try {
       chrome.storage.local.set({ indicators }, () => {
-        console.log('✅ Indicator data saved! Creating visual indicator immediately...');
         // Create indicator immediately for instant feedback (bypasses 300ms debounce)
         // MutationObserver will call it again but duplicate check will prevent re-creation
         createIndicatorFromData(indicatorData);
@@ -2250,12 +2825,6 @@ function createCallItemHTML(call: NetworkCall): string {
     } catch {
     }
   };
-
-    console.log('🆔 Creating item for call:', {
-    id: call.id,
-    requestId: call.request?.requestId,
-    fullCall: call
-  });
 
   return `
     <div class="api-call-item" data-call-id="${call.id}">
@@ -2560,7 +3129,7 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
       
       
       const monitor = IndicatorMonitor.getInstance();
-      monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache, message.requests);
+      monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache);
       
       // lets check if we have any indicators that did not update
       const failedIndicators: any[] = [];
@@ -2572,7 +3141,7 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
         if (!indicatorIsUpdated) {
           failedIndicators.push(indicator);
           if (failedIndicators.length > 0) {
-            monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache, message.requests);
+            monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache);
           }
           // chrome.runtime.sendMessage({
           //   type: "INDICATOR_FAILED",
@@ -2996,6 +3565,16 @@ function disableInspectMode() {
   indiBlobUrlWithIssue = null;
   delete (window as any).__indiBlobNetworkCall;
 }
+
+// Export for debugging - available in content script context
+(window as any).indi = {
+  blob: () => indiBlob,
+  speech: () => speechBubble,
+  onboarding: () => onboardingFlow,
+  restart: () => onboardingFlow?.restart(),
+  cache: () => recentCallsCache,
+  urls: () => getUrlsFromCache(),
+};
 
 // content.ts
 

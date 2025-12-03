@@ -74,7 +74,6 @@ export class IndicatorMonitor {
         indicator.name ?? "Indicator-Schema",
         { format: 'inline' }
       );
-      console.log({ typeDefinition }, "typeDefinition for indicator body");
       indicator.schema = typeDefinition;
 
     } else if (indicator.schema && newCall?.body) {
@@ -85,8 +84,6 @@ export class IndicatorMonitor {
         { format: 'inline' }
       );
       schemaDiff = schemaService.compareTypeSchemas(indicator.schema, incomingRequestSchema);
-
-      console.log({ schemaDiff }, 'Schema differences detected:');
     }
   
     // Set the background color based on the schema diff and status code
@@ -264,12 +261,10 @@ export class IndicatorMonitor {
 
   public checkIndicatorsUpdate(
   indicators: IndicatorData[],
-  recentCalls: Map<string, NetworkCall[]>,
-  currentMessages?: any
+  recentCalls: Map<string, NetworkCall[]>
 ): void | IndicatorData[] {
 
   const indicatorsThatDidNotUpdate: IndicatorData[] = [];
-  console.log({ currentMessages });
 
   if (indicators.length > 0) {
     // Update indicators on current page
@@ -278,17 +273,17 @@ export class IndicatorMonitor {
         // Create keys using same logic as cache
         const normalKey = generateStoragePath(indicator.lastCall?.url) + '|' + indicator.method;
         const patternKey = generatePatternBasedStoragePath(indicator.lastCall?.url) + '|' + indicator.method;
-        
+
         // Get recent calls for both keys
         const normalCalls = recentCalls.get(normalKey) || [];
         const patternCalls = recentCalls.get(patternKey) || [];
-        
+
         // Combine and deduplicate by requestId
         const allMatches = [...normalCalls, ...patternCalls];
         const uniqueMatches = Array.from(
           new Map(allMatches.map(call => [call.request?.requestId, call])).values()
         );
-        
+
         // Find best match using fallback chain
         let matchingCall = null;
         
@@ -321,17 +316,9 @@ export class IndicatorMonitor {
           this.updateIndicatorContent(indicator, matchingCall as any);
         } else {
           indicatorsThatDidNotUpdate.push(indicator);
-          console.warn('No match found for indicator:', {
-            indicator: indicator.id,
-            url: indicator.lastCall?.url,
-            method: indicator.method,
-            normalKey,
-            patternKey,
-            cacheSize: recentCalls.size
-          });
         }
       } catch (error) {
-        console.error('Error updating indicator:', error, indicator);
+        console.error(`Failed to update indicator ${indicator.id}:`, error);
         indicatorsThatDidNotUpdate.push(indicator);
       }
     });

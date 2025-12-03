@@ -25,20 +25,15 @@ export class OnboardingFlow {
   /**
    * Start onboarding with network data from NETWORK_IDLE
    */
-  public async startWithNetworkData(networkData: any[]): Promise<void> {
+  public async startWithNetworkData(networkData: any[], restart?: boolean): Promise<void> {
     // Check if already onboarded for this domain
     const state = await this.getOnboardingState();
-
-    if (state.completed) {
-      console.log('✅ Onboarding already completed for this domain');
-      return;
+    if (!restart) {
+      if (state.completed) {
+        console.log('✅ Onboarding already completed for this domain');
+        return;
+      }
     }
-
-    // if (state.dismissed) {
-    //   console.log('🚫 Onboarding was dismissed by user for this domain');
-    //   return;
-    // }
-
     // Extract backend URLs from network data
     this.extractBackendUrls(networkData);
 
@@ -247,6 +242,9 @@ export class OnboardingFlow {
 
     return container;
   }
+
+  
+
 
   /**
    * Step 3: Confirmation

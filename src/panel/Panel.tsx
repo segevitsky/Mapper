@@ -294,7 +294,7 @@ export const Panel: React.FC = () => {
             </button>
 
             {/* Toggle Record Button */}
-            <button
+            {/* <button
               onClick={toggleRecordButton}
               className="w-full bg-white rounded-2xl shadow-lg p-5 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 overflow-hidden"
             >
@@ -320,7 +320,7 @@ export const Panel: React.FC = () => {
                   }`} />
                 </div>
               </div>
-            </button>
+            </button> */}
 
             {/* Clear Indicators */}
             <button
@@ -339,7 +339,7 @@ export const Panel: React.FC = () => {
             </button>
 
             {/* Reload Indicators */}
-            <button
+            {/* <button
               onClick={handleIndicatorsLoad}
               className="w-full bg-gradient-to-r from-blue-100 to-cyan-100 hover:from-blue-200 hover:to-cyan-200 rounded-2xl shadow-lg p-5 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 border-2 border-blue-200 overflow-hidden"
             >
@@ -352,7 +352,7 @@ export const Panel: React.FC = () => {
                   <p className="text-sm text-blue-600">Refresh all indicators</p>
                 </div>
               </div>
-            </button>
+            </button> */}
 
             {/* Show All Indicators - Featured */}
             <button

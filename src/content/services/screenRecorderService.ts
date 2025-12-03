@@ -49,9 +49,6 @@ export class ScreenRecorderService {
           });
         });
 
-        console.log(
-          `Captured ${message.requests.length} network calls at ${elapsedTime}ms into recording`
-        );
       }
     });
   }
@@ -102,9 +99,7 @@ export class ScreenRecorderService {
       this.mediaRecorder.start(1000); // איסוף מידע כל שנייה
       this.isRecording = true;
 
-      console.log("הקלטת מסך החלה");
     } catch (error) {
-      console.error("שגיאה בהתחלת הקלטת מסך:", error);
       this.cleanupRecording();
       throw error;
     }

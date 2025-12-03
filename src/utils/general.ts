@@ -19,7 +19,6 @@ export function waitForElement(selector: string, timeout: number = 10000): Promi
     // Set up timeout to prevent infinite waiting
     timeoutId = setTimeout(() => {
       observer.disconnect();
-      console.warn(`Element not found within ${timeout}ms: ${selector}`);
       resolve(null);
     }, timeout);
 

@@ -43,22 +43,17 @@ const IndicatorFloatingWindow: React.FC = () => {
   };
 
   useEffect(() => {
-    console.log('🚀 Floating window loaded!');
     
     // קבלת הדאטה מה-URL
     const urlParams = new URLSearchParams(window.location.search);
     const dataParam = urlParams.get('data');
-    
-    console.log('🔍 URL Parameters:', dataParam?.substring(0, 100) + '...');
-    
+
     if (dataParam) {
       try {
         // ניסיון ראשון - פרסור רגיל
         const parsedData = JSON.parse(decodeURIComponent(dataParam));
-        console.log('📦 Received raw data:', parsedData);
         
         const actualIndicatorData = parsedData.indicatorData || parsedData;
-        console.log('📊 Extracted indicator data:', actualIndicatorData);
         
         setIndicatorData(actualIndicatorData);
         setIsLoading(false);
@@ -103,7 +98,6 @@ const IndicatorFloatingWindow: React.FC = () => {
   }, []);
 
   const closeWindow = () => {
-    console.log('🔴 Closing window');
     window.close();
   };
 

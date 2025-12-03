@@ -152,10 +152,6 @@ export class IndiBlob {
    * Toggle tooltip visibility (for click events when backend is configured)
    */
   public toggleTooltip(): void {
-    console.log('🎯 toggleTooltip called');
-    console.log('📊 summaryTooltip exists:', !!this.summaryTooltip);
-    console.log('📊 isVisible:', this.isTooltipVisible());
-
     if (this.summaryTooltip) {
       if (this.isTooltipVisible()) {
         // Tooltip is visible, hide it
@@ -165,6 +161,7 @@ export class IndiBlob {
         this.showTooltip();
       }
     } else {
+      // Tooltip not initialized - lets initiate it - this needs solving
       console.warn('⚠️ No tooltip to toggle - tooltip not initialized');
     }
   }
@@ -209,7 +206,6 @@ export class IndiBlob {
         this.setPosition(x, y);
         this.savePosition();
         this.originalPosition = null;
-        console.log('✅ Restored original position:', { x, y });
         return;
       }
       // If not valid, continue to adjustment logic below
@@ -252,14 +248,12 @@ export class IndiBlob {
     if (adjusted) {
       this.setPosition(x, y);
       this.savePosition();
-      console.log('⚠️ Adjusted position for viewport:', { x, y });
       if (this.originalPosition) {
         console.log('📍 Original position saved:', this.originalPosition);
       }
     } else {
       // Position is within bounds, clear original if we have one
       if (this.originalPosition) {
-        console.log('✅ Position now valid, clearing original position');
         this.originalPosition = null;
       }
     }
@@ -726,7 +720,6 @@ private hideTooltip = (): void => {
   }
 
   private handleBadgeClick(): void {
-  console.log('🔔 Notification badge clicked!');
 
   // Dispatch custom event with the issue count and summary data
   const event = new CustomEvent('indi-badge-clicked', {
@@ -871,8 +864,6 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
     if (this.speechBubble && this.speechBubble.isShowing()) {
       this.speechBubble.hide();
     }
-    // This will be used to open the expanded panel
-    console.log('Indi blob clicked!');
     // TODO: Dispatch custom event for panel opening
     const event = new CustomEvent('indi-blob-clicked');
     document.dispatchEvent(event);
@@ -999,7 +990,6 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
       chrome.storage.local.get(['indi_global_mute'], (result) => {
         this.isMuted = result.indi_global_mute || false;
         this.updateMuteUI();
-        console.log('🔇 Loaded mute state:', this.isMuted);
         resolve();
       });
     });
@@ -1023,7 +1013,6 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
 
     this.updateMuteUI();
 
-    console.log('🔇 Mute toggled:', this.isMuted);
   }
 
   private updateMuteUI(): void {
