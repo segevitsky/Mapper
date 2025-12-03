@@ -37,15 +37,52 @@ export interface PageSummaryData {
   // Issues Summary
   hasIssues: boolean;
   issueCount: number;
+  durations: number[];
 }
 
 export class PageSummary {
   private pageLoadStart: number = Date.now();
   private previousApis: Set<string> = new Set();
+  private slowCallThreshold: number = 1000; // Default threshold
 
   constructor() {
     this.pageLoadStart = Date.now();
     this.loadPreviousApis();
+    this.loadSlowCallThreshold();
+    this.getConfiguredBackendUrl();
+  }
+
+  /**
+   * Load slow call threshold from storage
+   */
+  private async loadSlowCallThreshold(): Promise<void> {
+    try {
+      const settings = await chrome.storage.local.get(['slowCallThreshold']);
+      if (settings.slowCallThreshold) {
+        this.slowCallThreshold = settings.slowCallThreshold;
+      }
+    } catch (error) {
+      console.error('Failed to load slow call threshold:', error);
+    }
+  };
+  
+  private async getConfiguredBackendUrl(): Promise<string | null> {
+  const key = `indi_onboarding_${window.location.hostname}`;
+  try {
+    const backendUrl = await chrome.storage.local.get([key]);
+    return backendUrl[key]?.selectedBackendUrl || null;
+    // this actually does nothing for now - we fetch the backend url but don't use it
+  } catch (error) {
+    console.error('Failed to get configured backend URL:', error);
+    return null;
+  }
+}
+
+  /**
+   * Update threshold (called when settings change)
+   */
+  public setSlowCallThreshold(threshold: number): void {
+    this.slowCallThreshold = threshold;
   }
 
   /**
@@ -56,8 +93,6 @@ export class PageSummary {
       return this.getEmptySummary();
     }
 
-    console.log('📊 PageSummary analyzing:', networkData.length, 'calls');
-    console.log('📊 Sample call structure:', networkData[0]);
 
     // Extract timing info
     const timestamps = this.extractTimestamps(networkData);
@@ -102,20 +137,9 @@ export class PageSummary {
     const securityIssues = apisWithoutAuth.length;
 
     // Issues summary
-    const slowAPIs = durations.filter(d => d > 1000).length;
+    const slowAPIs = durations.filter(d => d > this.slowCallThreshold).length;
     const issueCount = errors.length + slowAPIs + securityIssues;
     const hasIssues = issueCount > 0;
-
-    console.log('📊 Analysis complete:', {
-      totalCalls: networkData.length,
-      successful: successful.length,
-      errorsCount: errors.length,
-      issueCount,
-      errors,
-      slowAPIs,
-      securityIssues,
-
-    });
 
     return {
       totalTime,
@@ -137,6 +161,7 @@ export class PageSummary {
       apisWithoutAuth,
       hasIssues,
       issueCount,
+      durations,
     };
   }
 
@@ -171,7 +196,7 @@ export class PageSummary {
           
           <div style="display: flex; justify-content: space-between;">
             <span style="color: #6b7280;">⚡ Avg Response:</span>
-            <span style="font-weight: 600; color: ${summary.averageResponseTime > 1000 ? '#f59e0b' : '#10b981'};">
+            <span style="font-weight: 600; color: ${summary.averageResponseTime > this.slowCallThreshold ? '#f59e0b' : '#10b981'};">
               ${summary.averageResponseTime}ms
             </span>
           </div>
@@ -492,6 +517,7 @@ export class PageSummary {
       apisWithoutAuth: [],
       hasIssues: false,
       issueCount: 0,
+      durations: [],
     };
   }
 

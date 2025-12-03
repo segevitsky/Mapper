@@ -35,7 +35,6 @@ export function loadIndicators() {
   
   chrome.storage.local.get(["indicators"], (result) => {
     const { indicators } = result;
-    console.log('All Indicators from storage:', indicators);
     // const { domains, status } = userData || {};
     // lets see if our current location is included in the domains
     // const currentLocationHost = window.location.host;
@@ -56,6 +55,11 @@ export function loadIndicators() {
     const currentPageIndicators = indicators[storagePath] || [];
     pageIndicators = currentPageIndicators.slice();
 
+    // Calculate total indicators across all pages
+    const totalIndicators = Object.values(indicators || {}).reduce((acc: number, pageIndis: any) => {
+      return acc + (Array.isArray(pageIndis) ? pageIndis.length : 0);
+    }, 0);
+
     if (currentPageIndicators.length === 0) {
       return;
     }
@@ -66,13 +70,11 @@ export function loadIndicators() {
       try {
         const indicatorElement = await waitForIndicator(indicator.id, 3000);
         if (!indicatorElement) {
-          console.log(`Indicator ${indicator.id} not found, creating with delay ${index * 200}ms`);
           setTimeout(() => {
             createIndicatorFromData(indicator);
           }, 500 + (index * 200)); // Stagger indicator creation
         }
       } catch (error) {
-        console.error(`Error loading indicator ${indicator.id}:`, error);
         // Try to create the indicator anyway
         setTimeout(() => {
           createIndicatorFromData(indicator);
@@ -146,7 +148,6 @@ export async function createIndicatorFromData(
   );
   
   if (indicatorPagePath !== currentPagePath && indicatorData.baseUrl !== 'global') { 
-    console.log(`Skipping indicator ${indicatorData.id}: page mismatch (${indicatorPagePath} !== ${currentPagePath})`);
     return; 
   }
   
@@ -162,7 +163,6 @@ export async function createIndicatorFromData(
 
   const elementByPath = await waitForElement(indicatorData.elementInfo.path);
   if (!elementByPath) {
-    console.warn(`Element not found for path: ${indicatorData.elementInfo.path}`);
     return;
   }
   
@@ -1040,7 +1040,8 @@ indicator.addEventListener("click", async () => {
       bounds: false,
       onDragEnd: (position) => {
         // Think about an option to save the position in storage
-        console.log("Final position:", position);
+        // console.log("Final position:", position);
+        return position;
       },
     });
 
@@ -1066,10 +1067,8 @@ indicator.addEventListener("click", async () => {
             const schemaService = new SchemaValidationService();
             const incomingRequestSchema = schemaService.generateTypeDefinition(body, dataIndicatorInfo?.name ?? 'Unnamed', { format: 'inline' });
             const schemaDiff = schemaService.compareTypeSchemas(ind.schema, incomingRequestSchema);
-            console.log({ schemaDiff }, 'schema difference using our new function');
 
             if (schemaDiff.added.length > 0 || schemaDiff.removed.length > 0 || schemaDiff.changed.length > 0) {
-              console.log('Schema has changed:', schemaDiff);
               indicator.style.border = "2px solid #f44336";
 
               // Generate detailed diff HTML
@@ -1136,7 +1135,6 @@ indicator.addEventListener("click", async () => {
             }
 
           } else {
-            console.warn("No schema found for this indicator");
             tooltip.remove();
             Swal.fire({
               icon: 'info',

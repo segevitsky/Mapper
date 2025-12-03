@@ -10,12 +10,6 @@ interface LoginResponse {
   error?: string;
 }
 
-console.log("login methods", {
-  initializeApp,
-  getAuth,
-  signInWithEmailAndPassword,
-});
-
 function createLoginModal() {
   // הוספת סטיילים
   const style = document.createElement("style");
@@ -149,8 +143,7 @@ function createLoginModal() {
   document.body.appendChild(overlay);
 
   const closeButton = modal.querySelector(".close-login-modal");
-  closeButton?.addEventListener("click", (e: unknown) => {
-    console.log("close", e);
+  closeButton?.addEventListener("click", () => {
     overlay.remove();
   });
 
@@ -198,7 +191,6 @@ async function handleLogin(
     
     // התחברות עם אימייל וסיסמה
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    console.log("userCredential", userCredential);
     const user = userCredential.user;
 
     // lets fetch all the user's data from firestore
@@ -207,7 +199,6 @@ async function handleLogin(
     const userDoc = await getDoc(userDocRef);
     const userData = userDoc.exists() ? userDoc.data() : {};
     
-    console.log("Full user data:", userData);
     
     // שמירת הטוקן בסטורג'
     await chrome.storage.local.set({
@@ -224,7 +215,6 @@ async function handleLogin(
       jiraConfig: userData.jiraConfig || {}
     });
     
-    console.log("User logged in successfully:", user.uid);
     // lets close the modal
     const modal = document.querySelector(".indi-modal-overlay");
     if (modal) {
@@ -290,9 +280,9 @@ export async function logout(): Promise<void> {
     const auth = getAuth();
     await auth.signOut();
     await chrome.storage.local.remove(['authToken', 'userId', 'userEmail', 'lastLogin']);
-    console.log("User logged out successfully");
   } catch (error) {
     console.error("Error during logout:", error);
+    
   }
 }
 // פונקציה ראשית שעוטפת את loadIndicators
