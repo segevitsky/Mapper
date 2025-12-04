@@ -414,7 +414,7 @@ indicator.addEventListener('mouseenter', () => {
             .indi-tooltip {
                 position: fixed;
                 background: linear-gradient(to right, rgb(255, 129, 119) 0%, rgb(255, 134, 122) 0%, rgb(255, 140, 127) 21%, rgb(249, 145, 133) 52%, rgb(207, 85, 108) 78%, rgb(177, 42, 91) 100%);
-                color: white;
+                color: white !important;
                 padding: 12px 20px;
                 border-radius: 10px;
                 max-width: 200px;

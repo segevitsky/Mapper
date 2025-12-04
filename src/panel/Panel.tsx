@@ -4,7 +4,7 @@ import { Toolbar } from "./components/Toolbar";
 import { useNetworkCalls } from "./hooks/useNetworkCalls";
 import "../index.css";
 import { NetworkCall } from "../types";
-import { Trash2, RefreshCw, Eye, EyeOff, Circle, Grid3x3, Search } from "lucide-react";
+import { Trash2, RefreshCw, Eye, EyeOff, Circle, Grid3x3, Search, ChevronDown } from "lucide-react";
 import ApiResponsePanel from "./components/ResponseModal";
 import FailedIndicatorsReport from "./components/FailedIndicatorsReport";
 import IndicatorsOverview from "./components/IndicatorsOverview";
@@ -30,6 +30,7 @@ export const Panel: React.FC = () => {
   const [allNetworkCalls, setAllNetworkCalls] = useState<NetworkCall[]>([]);
   const [showOverview, setShowOverview] = useState(false);
   const [indicators, setIndicators] = useState<Record<string, any>>({});
+  const [isNetworkCallsExpanded, setIsNetworkCallsExpanded] = useState(true);
 
   // useEffect(() => {
   //   // lets fetch the indicators from storage
@@ -206,7 +207,10 @@ export const Panel: React.FC = () => {
         {/* LEFT PANEL - Network Calls */}
         <div className="w-full lg:w-1/2 flex flex-col gap-4 flex-shrink-0 lg:min-h-0 lg:overflow-hidden">
           {/* Network Calls Header Card */}
-          <div className="w-full bg-gradient-to-r from-pink-400 via-rose-400 to-pink-500 rounded-3xl shadow-2xl p-6 transition-all duration-300 overflow-hidden flex-shrink-0">
+          <button
+            onClick={() => setIsNetworkCallsExpanded(!isNetworkCallsExpanded)}
+            className="w-full bg-gradient-to-r from-pink-400 via-rose-400 to-pink-500 hover:from-pink-500 hover:via-rose-500 hover:to-pink-600 rounded-3xl shadow-2xl p-6 transition-all duration-300 overflow-hidden flex-shrink-0 hover:scale-[1.02]"
+          >
             <div className="flex justify-between items-center overflow-hidden">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center backdrop-blur-sm flex-shrink-0">
@@ -214,14 +218,19 @@ export const Panel: React.FC = () => {
                 </div>
                 <h2 className="font-headline text-2xl font-bold text-white truncate">Network Calls</h2>
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-full text-white font-semibold transition-all duration-300 hover:scale-105 flex-shrink-0">
-                <Trash2 className="w-4 h-4" />
-                Clear
-              </button>
+              <ChevronDown
+                className={`w-8 h-8 text-white transition-all duration-500 ease-in-out ${
+                  isNetworkCallsExpanded ? 'rotate-180 scale-110' : 'scale-100'
+                }`}
+                strokeWidth={3}
+              />
             </div>
+          </button>
 
+          {/* Collapsible Content */}
+          <div className={`overflow-hidden transition-all duration-500 ${isNetworkCallsExpanded ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
             {/* Search Bar */}
-            <div className="w-full mt-4 relative overflow-hidden">
+            <div className="w-full mb-4 relative overflow-hidden">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-pink-400 flex-shrink-0" />
               <input
                 onChange={(e) => handleSearch(e)}
@@ -231,16 +240,16 @@ export const Panel: React.FC = () => {
                 className="w-full pl-12 pr-4 py-3 bg-white rounded-full shadow-lg border-2 border-transparent focus:border-pink-300 focus:ring-4 focus:ring-pink-200 transition-all duration-300 focus:outline-none text-gray-700 placeholder-gray-400"
               />
             </div>
-          </div>
 
-          {/* Network List Card */}
-          <div className="w-full flex-1 bg-white rounded-3xl shadow-xl p-6 overflow-hidden min-h-[300px] lg:min-h-0">
-            <NetworkList
-              calls={networkCalls}
-              onSelectCall={(call: any) =>
-                console.log("Selected network call:", call)
-              }
-            />
+            {/* Network List Card */}
+            <div className="w-full flex-1 bg-white rounded-3xl shadow-xl p-6 overflow-hidden min-h-[300px] lg:min-h-0">
+              <NetworkList
+                calls={networkCalls}
+                onSelectCall={(call: any) =>
+                  console.log("Selected network call:", call)
+                }
+              />
+            </div>
           </div>
         </div>
 

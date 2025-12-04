@@ -36,10 +36,10 @@ export class IndiBlob {
   private currentSummary: string | null = null;
   private speechBubble: any = null;
   private currentSummaryData: any = null;
-  private tooltipHideTimeout: number | null = null;
   private isMuted: boolean = false;
   private muteButton: HTMLElement | null = null;
   private originalPosition: Position | null = null; // Saved position before viewport adjustment
+  private _backendConfigured: boolean = false; // Cached backend config status
 
 
   constructor(parentElement: HTMLElement = document.body) {
@@ -48,96 +48,139 @@ export class IndiBlob {
     this.init();
     this.setInitialPosition();
     this.setEmotion('happy'); // Initialize iris background color
+    this.initializeTooltip(); // Initialize tooltip async
   }
 
   public setSpeechBubble(speechBubble: any): void {
     this.speechBubble = speechBubble;
   }
 
-  // Add this new method to show summary on hover:
-  public async showSummaryOnHover(summaryHTML: string, summaryData?: any): Promise<void> {
-  this.currentSummary = summaryHTML;
-  this.currentSummaryData = summaryData;
+  /**
+   * Initialize tooltip once - check backend config and create tooltip element
+   */
+  private async initializeTooltip(): Promise<void> {
+    // Check backend config once and cache it
+    const key = `indi_onboarding_${window.location.hostname}`;
+    const result = await chrome.storage.local.get([key]);
+    const state = result[key];
+    this._backendConfigured = state?.selectedBackendUrl ? true : false;
 
-  if (!this.container) return;
-
-  // Check if backend is configured
-  const backendConfigured = await this.isBackendConfigured();
-
-  // Remove existing tooltip if any
-  if (this.summaryTooltip) {
-    this.summaryTooltip.removeEventListener('mouseenter', this.showTooltip);
-    this.summaryTooltip.removeEventListener('mouseleave', this.hideTooltip);
-    this.summaryTooltip.remove();
-    this.summaryTooltip = null;
+    // Create tooltip element once (hidden by default)
+    this.createTooltipElement();
   }
-
-  // Always remove old listeners from container first
-  this.container.removeEventListener('mouseenter', this.showTooltip);
-  this.container.removeEventListener('mouseleave', this.hideTooltip);
-
-  // Create tooltip
-  this.summaryTooltip = document.createElement('div');
-  this.summaryTooltip.className = 'indi-summary-tooltip';
-  this.summaryTooltip.innerHTML = summaryHTML;
-  this.summaryTooltip.style.cssText = `
-    position: fixed;
-    bottom: 160px;
-    right: 40px;
-    background: #fff;
-    border-radius: 16px;
-    padding: 16px;
-    min-width: 280px;
-    max-width: 350px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-    z-index: 999997;
-    opacity: 0;
-    transform: translateY(10px);
-    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-    pointer-events: none;
-  `;
-
-  // Add arrow pointing to blob
-  const arrow = document.createElement('div');
-  arrow.style.cssText = `
-    position: absolute;
-    bottom: -6px;
-    right: 40px;
-    width: 12px;
-    height: 12px;
-    background: #fff;
-    transform: rotate(45deg);
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
-  `;
-  this.summaryTooltip.appendChild(arrow);
-
-  document.body.appendChild(this.summaryTooltip);
-
-  // Only add hover listeners if backend is NOT configured
-  // When configured, summary will show on click instead
-  if (!backendConfigured) {
-    // Show tooltip on hover
-    this.container.addEventListener('mouseenter', this.showTooltip);
-    this.container.addEventListener('mouseleave', this.hideTooltip);
-
-    // Keep tooltip open when hovering over it
-    this.summaryTooltip.addEventListener('mouseenter', this.showTooltip);
-    this.summaryTooltip.addEventListener('mouseleave', this.hideTooltip);
-  }
-}
 
   /**
-   * Check if backend is configured for current domain
+   * Create the tooltip DOM element once (called only during initialization)
    */
-  private async isBackendConfigured(): Promise<boolean> {
-    const key = `indi_onboarding_${window.location.hostname}`;
+  private createTooltipElement(): void {
+    if (this.summaryTooltip) return; // Already created
 
-    return new Promise((resolve) => {
-      chrome.storage.local.get([key], (result) => {
-        const state = result[key];
-        resolve(state?.selectedBackendUrl ? true : false);
-      });
-    });
+    this.summaryTooltip = document.createElement('div');
+    this.summaryTooltip.className = 'indi-summary-tooltip';
+    this.summaryTooltip.style.cssText = `
+      position: fixed;
+      bottom: 160px;
+      right: 40px;
+      background: #fff;
+      border-radius: 16px;
+      padding: 16px;
+      min-width: 280px;
+      max-width: 350px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      z-index: 999997;
+      display: none;
+      transform: translateY(10px);
+      transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+    `;
+
+    // Add arrow pointing to blob
+    const arrow = document.createElement('div');
+    arrow.style.cssText = `
+      position: absolute;
+      bottom: -6px;
+      right: 40px;
+      width: 12px;
+      height: 12px;
+      background: #fff;
+      transform: rotate(45deg);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    `;
+    this.summaryTooltip.appendChild(arrow);
+
+    // Default content
+    this.summaryTooltip.innerHTML = '<div style="text-align: center; padding: 12px;">Loading...</div>' + arrow.outerHTML;
+
+    document.body.appendChild(this.summaryTooltip);
+  }
+
+  /**
+   * Update tooltip content (replaces showSummaryOnHover)
+   */
+  public updateContent(summaryHTML: string, summaryData?: any): void {
+    this.currentSummary = summaryHTML;
+    this.currentSummaryData = summaryData;
+
+    if (!this.summaryTooltip) {
+      this.createTooltipElement();
+    }
+
+    if (this.summaryTooltip) {
+      // Get the arrow element before updating
+      const arrow = this.summaryTooltip.querySelector('div[style*="bottom: -6px"]');
+
+      // Update innerHTML
+      this.summaryTooltip.innerHTML = summaryHTML;
+
+      // Re-add arrow
+      if (arrow) {
+        this.summaryTooltip.appendChild(arrow);
+      }
+    }
+  }
+
+  /**
+   * Simple toggle - show or hide tooltip (replaces toggleTooltip)
+   */
+  public toggle(): void {
+    if (!this.summaryTooltip) return;
+
+    const isHidden = this.summaryTooltip.style.display === 'none';
+
+    if (isHidden) {
+      // Show
+      this.summaryTooltip.style.display = 'block';
+      // Trigger reflow for animation
+      this.summaryTooltip.offsetHeight;
+      this.summaryTooltip.style.opacity = '1';
+      this.summaryTooltip.style.transform = 'translateY(0)';
+    } else {
+      // Hide
+      this.summaryTooltip.style.opacity = '0';
+      this.summaryTooltip.style.transform = 'translateY(10px)';
+      // Wait for animation then hide
+      setTimeout(() => {
+        if (this.summaryTooltip) {
+          this.summaryTooltip.style.display = 'none';
+        }
+      }, 300);
+    }
+  }
+
+  /**
+   * Check if backend is configured (cached value)
+   */
+  public isConfigured(): boolean {
+    return this._backendConfigured;
+  }
+
+  /**
+   * Update backend configured status (call this after onboarding completes)
+   */
+  public setConfigured(configured: boolean): void {
+    this._backendConfigured = configured;
+    if (configured && !this.summaryTooltip) {
+      this.createTooltipElement();
+    }
   }
 
   /**
@@ -145,25 +188,15 @@ export class IndiBlob {
    */
   public isTooltipVisible(): boolean {
     if (!this.summaryTooltip) return false;
-    return this.summaryTooltip.style.opacity === '1';
+    return this.summaryTooltip.style.display !== 'none';
   }
 
   /**
-   * Toggle tooltip visibility (for click events when backend is configured)
+   * Legacy method for backwards compatibility - will be removed
+   * @deprecated Use toggle() instead
    */
   public toggleTooltip(): void {
-    if (this.summaryTooltip) {
-      if (this.isTooltipVisible()) {
-        // Tooltip is visible, hide it
-        this.hideTooltip();
-      } else {
-        // Tooltip is hidden, show it
-        this.showTooltip();
-      }
-    } else {
-      // Tooltip not initialized - lets initiate it - this needs solving
-      console.warn('⚠️ No tooltip to toggle - tooltip not initialized');
-    }
+    this.toggle();
   }
 
   /**
@@ -259,30 +292,6 @@ export class IndiBlob {
     }
   }
 
-private showTooltip = (): void => {
-  // Clear any pending hide timeout
-  if (this.tooltipHideTimeout) {
-    clearTimeout(this.tooltipHideTimeout);
-    this.tooltipHideTimeout = null;
-  }
-
-  if (this.summaryTooltip) {
-    this.summaryTooltip.style.opacity = '1';
-    this.summaryTooltip.style.transform = 'translateY(0)';
-    this.summaryTooltip.style.pointerEvents = 'auto'; // Enable clicks when visible
-  }
-};
-
-private hideTooltip = (): void => {
-  // Use a small delay to allow mouse to move to tooltip
-  this.tooltipHideTimeout = window.setTimeout(() => {
-    if (this.summaryTooltip) {
-      this.summaryTooltip.style.opacity = '0';
-      this.summaryTooltip.style.transform = 'translateY(10px)';
-      this.summaryTooltip.style.pointerEvents = 'none'; // Disable clicks when hidden
-    }
-  }, 100);
-};
 
 
   private createBlobDOM(parent: HTMLElement): void {
@@ -1045,24 +1054,10 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
         clearInterval(this.blinkInterval);
     }
 
-    // Clear tooltip timeout
-    if (this.tooltipHideTimeout) {
-        clearTimeout(this.tooltipHideTimeout);
-        this.tooltipHideTimeout = null;
-    }
-
     // Remove tooltip
     if (this.summaryTooltip) {
-        this.summaryTooltip.removeEventListener('mouseenter', this.showTooltip);
-        this.summaryTooltip.removeEventListener('mouseleave', this.hideTooltip);
         this.summaryTooltip.remove();
         this.summaryTooltip = null;
-    }
-
-    // Remove event listeners
-    if (this.container) {
-        this.container.removeEventListener('mouseenter', this.showTooltip);
-        this.container.removeEventListener('mouseleave', this.hideTooltip);
     }
 
     document.removeEventListener('mousemove', this.followCursor);

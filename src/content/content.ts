@@ -3,6 +3,7 @@ import { IndicatorData, NetworkCall } from "../types";
 // import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
 import { generatePatternBasedStoragePath, generateStoragePath } from "../utils/storage";
 import { identifyDynamicParams } from "../utils/urlUrils";
+import { getRandomTip } from "../utils/loadingTips";
 import { IndicatorMonitor } from "./services/indicatorMonitor";
 import { IndicatorLoader } from "./services/indicatorLoader";
 import {
@@ -1170,165 +1171,74 @@ async function isBackendConfigured(): Promise<boolean> {
 }
 
 async function handleBlobClick() {
-  // Immediate response - check data availability first
-  if (indiBlob) {
-    const summaryData = indiBlob.getCurrentSummaryData();
-    const hasSummary = summaryData || cumulativeSummary;
+  if (!indiBlob) return;
 
-    if (hasSummary) {
-      // We have data - show the tooltip immediately
-      indiBlob.toggleTooltip();
-      return;
-    }
-  }
-
-  // No summary data - check backend configuration
-  const configured = await isBackendConfigured();
-
-  if (configured) {
-    // Backend is configured but no data - show main menu
-    showIndiMainMenu();
-  } else {
+  // Check cached backend config (no async needed!)
+  if (!indiBlob.isConfigured()) {
     // Backend not configured - show onboarding
     if (onboardingFlow) {
       const networkData = Array.from(recentCallsCache.values()).flat();
       await onboardingFlow.startWithNetworkData(networkData);
     }
+    return;
   }
-}
 
-/**
- * Show Indi main menu with all available actions
- */
-async function showIndiMainMenu() {
-  if (!speechBubble) return;
+  // Backend is configured - check if we need to show loading state
+  const summaryData = indiBlob.getCurrentSummaryData();
+  const hasSummary = summaryData || cumulativeSummary;
 
-  // Get flows count for this domain
-  const flows = await FlowStorage.getFlowsForDomain();
-  const flowsCount = flows.length;
+  if (!hasSummary) {
+    // No data yet - update tooltip with loading state
+    const randomTip = getRandomTip();
 
-  speechBubble.show({
-    title: '🫧 Indi Menu',
-    message: 'What would you like to do?',
-    actions: [
-      {
-        label: `▶️ Play Flow${flowsCount > 0 ? ` (${flowsCount})` : ''}`,
-        style: 'primary',
-        onClick: async () => {
-          speechBubble?.hide();
-          await handlePlayFlowClick();
-        },
-      },
-      {
-        label: '🔴 Record Flow',
-        style: 'primary',
-        onClick: async () => {
-          speechBubble?.hide();
+    const loadingHTML = `
+      <style>
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .hourglass-spin {
+          display: inline-block;
+          animation: spin 2s linear infinite;
+        }
+      </style>
+      <div style="text-align: center; padding: 16px;">
+        <div class="hourglass-spin" style="font-size: 32px; margin-bottom: 12px;">⏳</div>
+        <div style="font-weight: 700; font-size: 15px; color: #1f2937; margin-bottom: 8px;">
+          Analyzing network...
+        </div>
+        <div style="
+          background: linear-gradient(135deg, #f3e8ff, #e9d5ff);
+          border-left: 3px solid #a78bfa;
+          border-radius: 8px;
+          padding: 12px;
+          margin-top: 12px;
+          text-align: left;
+          box-shadow: 0 2px 8px rgba(167, 139, 250, 0.15);
+        ">
+          <div style="font-size: 11px; font-weight: 600; color: #7c3aed; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+            💡 Pro Tip
+          </div>
+          <div style="font-size: 13px; color: #374151; line-height: 1.5;">
+            ${randomTip}
+          </div>
+        </div>
+      </div>
+    `;
 
-          const { value: flowName } = await Swal.fire({
-            title: '🔴 Start Recording',
-            input: 'text',
-            inputLabel: 'Flow Name',
-            inputPlaceholder: 'e.g., "User Login Flow"',
-            showCancelButton: true,
-            confirmButtonText: 'Start Recording',
-            inputValidator: (value) => {
-              if (!value) {
-                return 'Please enter a flow name';
-              }
-            },
-            customClass: {
-              popup: 'jira-popup'
-            }
-          });
+    const emptySummary = {
+      totalCalls: 0,
+      errorCalls: 0,
+      slowApis: 0,
+      securityIssues: 0,
+      hasIssues: false
+    };
 
-          if (flowName) {
-            try {
-              await flowRecorder.startRecording(flowName);
-              showRecordingIndicator();
+    indiBlob.updateContent(loadingHTML, emptySummary);
+  }
 
-              // Show quick tip
-              await Swal.fire({
-                icon: 'info',
-                title: 'Recording Started!',
-                html: `
-                  <p>I'm now recording your interactions.</p>
-                  <p style="margin-top: 12px; font-size: 14px; color: #6b7280;">
-                    💡 Tip: Click, type, and navigate as you normally would.
-                    Click the recording indicator to stop when done.
-                  </p>
-                `,
-                timer: 4000,
-                timerProgressBar: true,
-                showConfirmButton: false,
-                customClass: { popup: 'jira-popup' }
-              });
-            } catch (error: any) {
-              await Swal.fire({
-                icon: 'error',
-                title: 'Cannot Start Recording',
-                text: error.message,
-                customClass: { popup: 'jira-popup' }
-              });
-            }
-          }
-        },
-      },
-      {
-        label: '➕ Create Indicator',
-        style: 'secondary',
-        onClick: () => {
-          speechBubble?.hide();
-          enableInspectMode();
-        },
-      },
-      {
-        label: '📊 Page Summary',
-        style: 'secondary',
-        onClick: async () => {
-          speechBubble?.hide();
-
-          // Analyze current network data
-          const networkData = Array.from(recentCallsCache.values()).flat();
-          if (networkData.length === 0) {
-            await Swal.fire({
-              icon: 'info',
-              title: 'No API Calls Yet',
-              text: 'No API calls have been detected on this page yet. Try interacting with the page first!',
-              customClass: { popup: 'jira-popup' }
-            });
-            return;
-          }
-
-          if (pageSummary && indiBlob) {
-            const summary = pageSummary.analyze(networkData);
-            const summaryHTML = pageSummary.generateSummaryHTML(summary);
-
-            await Swal.fire({
-              title: '📊 Page Summary',
-              html: summaryHTML,
-              width: '500px',
-              showConfirmButton: false,
-              showCloseButton: true,
-              customClass: { popup: 'jira-popup' }
-            });
-          }
-        },
-      },
-      {
-        label: '⚙️ Settings',
-        style: 'secondary',
-        onClick: async () => {
-          speechBubble?.hide();
-          Swal.close();
-          // Show settings modal
-          await showSettingsModal();
-        },
-      },
-    ],
-    showClose: true,
-    persistent: false,
-  });
+  // Simple toggle
+  indiBlob.toggle();
 }
 
 // Track cumulative issues for the current page
@@ -1450,9 +1360,9 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
   // Update Indi's notification count with cumulative count
   indiBlob.setNotifications(totalIssueCount);
 
-  // Generate HTML summary for hover tooltip (use cumulative summary)
+  // Generate HTML summary and update tooltip content (use cumulative summary)
   const summaryHTML = pageSummary.generateSummaryHTML(cumulativeSummary);
-  indiBlob.showSummaryOnHover(summaryHTML, cumulativeSummary);
+  indiBlob.updateContent(summaryHTML, cumulativeSummary);
 
   // Store cumulative summary for badge clicks
   issuesSummary = cumulativeSummary;
@@ -2080,7 +1990,7 @@ async function showDetailedIssuesModal(summary: PageSummaryData) {
             (window as any).__indiBlobNetworkCall = { url };
             enableInspectMode();
           }
-        });
+        }, { once: true });
       });
 
       // Add event listeners for "Copy cURL" buttons

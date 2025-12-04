@@ -164,7 +164,11 @@ export class OnboardingFlow {
    */
   private createUrlSelectionList(reconfigure?: boolean): HTMLElement {
     const container = document.createElement('div');
-    container.style.marginBottom = '16px';
+    container.style.cssText = `
+      margin-bottom: 16px;
+      max-height: 500px;
+      overflow-y: auto;
+    `;
 
     this.detectedUrls.forEach((url) => {
       const urlOption = document.createElement('div');
@@ -354,6 +358,9 @@ export class OnboardingFlow {
       skipped: false,
       dismissed: false,
     });
+
+    // Update cached backend config in IndiBlob
+    this.indiBlob.setConfigured(true);
 
     // Hide speech bubble
     this.speechBubble.hide();
