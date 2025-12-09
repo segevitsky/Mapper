@@ -33,9 +33,6 @@ export class FlowStorage {
 
     // Save to Chrome storage
     await chrome.storage.local.set({ [STORAGE_KEY]: flows });
-
-    console.log(`💾 Saved flow: "${flow.name}" (${flow.steps.length} steps)`);
-
     return flow;
   }
 

@@ -12,13 +12,6 @@ export class ElementIdentifier {
    * This is what makes or breaks flow replay reliability
    */
   static captureElement(element: HTMLElement): ElementFingerprint {
-    console.log('📸 Capturing element:', {
-      tag: element.tagName,
-      id: element.id,
-      className: element.className,
-      text: element.textContent?.substring(0, 50)
-    });
-
     const locators: Locator[] = [];
 
     // STRATEGY 1: ARIA Role + Name (BEST - 10/10 confidence)

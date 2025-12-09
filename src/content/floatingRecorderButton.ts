@@ -204,9 +204,7 @@ class FloatingRecorderButton {
     videoBlob: Blob;
     metadata: any;
   }): void {
-    console.log({ recordingData });
     const duration = this.formatDuration(recordingData.metadata.endTime - recordingData.metadata.startTime);
-    console.log(recordingData?.metadata?.networkCalls);
     const requestCount = recordingData?.metadata?.networkCalls?.length || 0;
     const fileSize = this.formatFileSize(recordingData.videoBlob.size);
     

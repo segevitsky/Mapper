@@ -56,10 +56,8 @@ const pendingRequests = new Map();
 let envsArray: string[] = [];
 
 //JIRA START + MESSAGES LISTENER
-chrome.runtime.onMessage.addListener(async  (message, sender, sendResponse) => {
-  console.log({ message, sender }, "this is the message in background.ts");
+chrome.runtime.onMessage.addListener(async  (message, _sender, sendResponse) => {
   if (message.type === "CREATE_JIRA_TICKET") {
-    console.log("Creating Jira ticket with data:", message.data);
     createJiraTicket(message.data)
       .then((response) => sendResponse({ success: true, data: response }))
       .catch((error) =>
@@ -72,7 +70,6 @@ chrome.runtime.onMessage.addListener(async  (message, sender, sendResponse) => {
     const allowedDomains = message.data.domains.map((el: any) => el.value) || [];
     envsArray = [...envsArray, ...allowedDomains];
     envsArray = Array.from(new Set(envsArray)); // להסיר כפילויות
-    console.log("Updated envsArray with authenticated user domains:", envsArray);
     return true; // חשוב בשביל sendResponse אסינכרוני
   }
 
@@ -125,24 +122,6 @@ chrome.runtime.onMessage.addListener(async  (message, sender, sendResponse) => {
 async function createJiraTicket(messageData: any) {
   const { userData, data } = messageData;
   const { domain, email, apiToken, projectKey } = userData.jiraConfig || {};
-  
-
-  console.log("About to make Jira API call with:", {
-    url: `https://${domain}/rest/api/3/issue`,
-    headers: {
-      Authorization: "Basic " + btoa(email + ":" + apiToken),
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: {
-      fields: {
-        project: { key: projectKey },
-        summary: data.summary,
-        description: data.description,
-        issuetype: { name: data.issueType || "Bug" },
-      },
-    },
-  });
 
   const response = await fetch(`https://${domain}/rest/api/3/issue`, {
     method: "POST",
@@ -196,7 +175,6 @@ async function createJiraTicket(messageData: any) {
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "URL_CHANGED") {
-    console.log("URL changed to:", message.url);
     // שליחת הודעה לפאנל (אם הוא פתוח)
     chrome.runtime.sendMessage({
       type: "REFRESH_PANEL",
@@ -207,7 +185,6 @@ chrome.runtime.onMessage.addListener((message) => {
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "RELAY_TO_CONTENT") {
-    console.log("Relaying message to content script:", message.data);
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]?.id) {
         chrome.tabs.sendMessage(tabs[0].id, {
@@ -222,8 +199,6 @@ chrome.runtime.onMessage.addListener((message) => {
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
     if (details.type === "xmlhttprequest") {
-      console.log("Request started:", details);
-
       const request = {
         id: details.requestId,
         method: details.method,
@@ -232,7 +207,6 @@ chrome.webRequest.onBeforeRequest.addListener(
         requestBody: details.requestBody,
       };
 
-      console.log("Storing request:", request);
       pendingRequests.set(details.requestId, request);
     }
   },
@@ -242,11 +216,6 @@ chrome.webRequest.onBeforeRequest.addListener(
 
 chrome.webRequest.onCompleted.addListener(
   (details) => {
-    console.log("Request completed:", details);
-    console.log("initiator", details.initiator);
-    const initiatorExistsInEnvs = envsArray.some((env) =>
-      details.initiator && env.includes(details.initiator)
-    );
     if (
       details.type === "xmlhttprequest"
       //  &&
@@ -284,8 +253,6 @@ chrome.webRequest.onCompleted.addListener(
 chrome.webRequest.onErrorOccurred.addListener(
   (details) => {
     if (details.type === "xmlhttprequest") {
-      console.log("Request error:", details);
-
       const request = pendingRequests.get(details.requestId);
       if (request) {
         const errorRequest = {
@@ -299,7 +266,6 @@ chrome.webRequest.onErrorOccurred.addListener(
           },
         };
 
-        console.log("Sending error request:", errorRequest);
         chrome.runtime.sendMessage({
           type: "NEW_NETWORK_CALL",
           data: errorRequest,
@@ -313,7 +279,6 @@ chrome.webRequest.onErrorOccurred.addListener(
 );
 
 /// DEBUGGER ISSUES FOR FULL RESPONSE => TESTING! WORKING! WILL FINISH THIS ON ANOTHER BRANCH
-console.log("Background script loaded");
 
 // מעקב אחרי טאבים שמחוברים לדיבאגר
 const debuggerTabs = new Map<number, boolean>();
@@ -419,7 +384,6 @@ async function attachDebugger(tabId: number): Promise<void> {
       try {
         const tab = await chrome.tabs.get(tabId).catch(() => null);
         if (!tab) {
-          console.log("Tab no longer exists, not sending message");
           return false;
         }
 
@@ -462,8 +426,6 @@ async function attachDebugger(tabId: number): Promise<void> {
         // Delete oldest entries
         const toDelete = entries.slice(500);
         toDelete.forEach(([id]) => requestData.delete(id));
-        
-        console.log(`Cleaned ${toDelete.length} old entries, ${requestData.size} remaining`);
       }
 
       // עדכון זמן הפעילות האחרון
@@ -477,27 +439,15 @@ async function attachDebugger(tabId: number): Promise<void> {
       // הגדרת טיימר חדש
       idleCheckState.timeout = setTimeout(async () => {
         try {
-          console.log("Idle timeout fired, checking network status");
           const timeSinceActivity =
             Date.now() - idleCheckState.lastActivityTimestamp;
 
           if (idleCheckState.requestCount === 0 || timeSinceActivity > 2000) {
-            if (idleCheckState.requestCount > 0) {
-              console.log(
-                `Force sending NETWORK_IDLE despite requestCount=${idleCheckState.requestCount}, ${timeSinceActivity}ms elapsed`
-              );
-            } else {
-              console.log("Normal NETWORK_IDLE send, no pending requests");
-            }
 
             if (requestData.size > 0) {
               const allRequests = Array.from(requestData.values());
               const completedRequests = allRequests.filter(req =>
                 req.response || req.failed || req.cancelled
-              );
-
-              console.log(
-                `Force send: ${completedRequests.length} completed of ${allRequests.length} total`
               );
 
               // Send all requests, delete only completed ones
@@ -523,10 +473,6 @@ async function attachDebugger(tabId: number): Promise<void> {
               !req.response && !req.failed && !req.cancelled
             );
 
-            console.log(
-              `Idle check: ${completedRequests.length} completed, ${pendingRequests.length} pending`
-            );
-
             // Send all requests (for UI updates), but only delete completed ones
             const success = await sendNetworkIdleMessage(allRequests);
             if (success) {
@@ -536,9 +482,6 @@ async function attachDebugger(tabId: number): Promise<void> {
                   requestData.delete(req.request.requestId);
                 }
               });
-              console.log(
-                `Deleted ${completedRequests.length} completed requests, keeping ${pendingRequests.length} pending`
-              );
             }
           }
         } catch (error) {

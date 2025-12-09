@@ -133,20 +133,6 @@ function isStaticAsset(url: string): boolean {
 }
 
 /**
- * Get configured backend URL for current domain
- */
-async function getConfiguredBackendUrl(): Promise<string | null> {
-  const key = `indi_onboarding_${window.location.hostname}`;
-
-  return new Promise((resolve) => {
-    chrome.storage.local.get([key], (result) => {
-      const state = result[key];
-      resolve(state?.selectedBackendUrl || null);
-    });
-  });
-}
-
-/**
  * Check if a network call should be stored based on backend config
  */
 async function shouldStoreCall(url: string): Promise<boolean> {
@@ -1156,20 +1142,6 @@ function generatePlaybackResultHTML(result: any): string {
   return html;
 }
 
-/**
- * Check if backend is configured for current domain
- */
-async function isBackendConfigured(): Promise<boolean> {
-  const key = `indi_onboarding_${window.location.hostname}`;
-
-  return new Promise((resolve) => {
-    chrome.storage.local.get([key], (result) => {
-      const state = result[key];
-      resolve(state?.selectedBackendUrl ? true : false);
-    });
-  });
-}
-
 async function handleBlobClick() {
   if (!indiBlob) return;
 
@@ -1243,15 +1215,15 @@ async function handleBlobClick() {
 
 // Track cumulative issues for the current page
 let currentPageUrl: string = window.location.href;
-let cumulativeErrorCalls = new Set<string>(); // Track unique error URLs
-let cumulativeSlowApis = new Set<string>(); // Track unique slow API URLs
-let cumulativeSecurityIssues = new Set<string>(); // Track unique security issues
+const cumulativeErrorCalls = new Set<string>(); // Track unique error URLs
+const cumulativeSlowApis = new Set<string>(); // Track unique slow API URLs
+const cumulativeSecurityIssues = new Set<string>(); // Track unique security issues
 let cumulativeSummary: PageSummaryData | null = null; // Track cumulative summary for badge clicks
 let cumulativeFailedCalls: NetworkCall[] = []; // Track actual failed call objects for detailed view
 let cumulativeSlowCalls: NetworkCall[] = []; // Track actual slow call objects for detailed view
-let notifiedErrorUrls = new Set<string>(); // Track which error URLs we've already notified about
-let notifiedSlowUrls = new Set<string>(); // Track which slow URLs we've already notified about
-let notifiedSecurityUrls = new Set<string>(); // Track which security URLs we've already notified about
+const notifiedErrorUrls = new Set<string>(); // Track which error URLs we've already notified about
+const notifiedSlowUrls = new Set<string>(); // Track which slow URLs we've already notified about
+const notifiedSecurityUrls = new Set<string>(); // Track which security URLs we've already notified about
 
 // Reset cumulative tracking when page changes
 function resetCumulativeTracking() {
@@ -1462,141 +1434,6 @@ function showIndividualNotifications(networkData: NetworkCall[]) {
 
       return; // Only show first new slow call
     }
-  }
-}
-
-function showIssuesSummary(summary: PageSummaryData, bypassMute: boolean = false) {
-  if (!speechBubble) return;
-
-  // Build simple summary message (Option 3 style)
-  const issueCount = summary.errorCalls + (summary.slowestApi && summary.slowestApi.duration > slowCallThreshold ? 1 : 0) + summary.securityIssues;
-
-  let message = '';
-
-  // Get most recent error if we have failed calls
-  let mostRecentError = '';
-  if (cumulativeFailedCalls.length > 0 && summary.errorCalls > 0) {
-    const recentCall = cumulativeFailedCalls[0];
-    const url = extractNetworkCallUrl(recentCall);
-    const method = recentCall?.request?.request?.method ?? 'GET';
-    const status = recentCall.status;
-    let error: string = 'Error';
-    const urlDisplay = url.length > 40 ? '...' + url.slice(-37) : url;
-    try {
-      const bodyObj = JSON.parse(recentCall?.body?.body);
-      error = bodyObj.error || 'Error';
-    } catch (e) {
-      console.error('Failed to parse request body for recent error:', e);
-    }
-
-
-    // Get time ago
-    const now = Date.now();
-    const timestamp = recentCall.timestamp || now;
-    const timeAgo = now - timestamp < 5000 ? 'just now' : `${Math.round((now - timestamp) / 1000)}s ago`;
-
-    mostRecentError = `\nMost Recent:\n❌ ${method} ${urlDisplay} → ${status} Error ${error} (${timeAgo})`;
-  }
-
-  // Count errors, slow APIs, security issues
-  const errorText = summary.errorCalls > 0 ? `${summary.errorCalls} API${summary.errorCalls > 1 ? 's' : ''} failing` : '';
-
-  // Count slow calls and show URL
-  const slowCalls = summary.durations.filter(d => d > slowCallThreshold).length;
-  let slowText = '';
-  if (slowCalls > 0 && summary.slowestApi) {
-    const slowUrl = summary.slowestApi.url.length > 60
-      ? summary.slowestApi.url.substring(0, 60) + '...'
-      : summary.slowestApi.url;
-    slowText = slowCalls === 1
-      ? `1 slow API (${Math.round(summary.slowestApi.duration)}ms): ${slowUrl}`
-      : `${slowCalls} slow APIs (slowest: ${Math.round(summary.slowestApi.duration)}ms)`;
-  }
-
-  const securityText = summary.securityIssues > 0 ? `${summary.securityIssues} security issue${summary.securityIssues > 1 ? 's' : ''}` : '';
-
-  const issues = [errorText, slowText, securityText].filter(Boolean);
-  const issuesText = issues.join(', ');
-
-  message = `${issuesText}${mostRecentError}`;
-
-  if (message) {
-    speechBubble.show({
-      title: '⚠️ Issues Detected',
-      message: message,
-      bypassMute: bypassMute,
-      actions: [
-        {
-          label: 'View Details',
-          style: 'primary',
-          onClick: () => {
-            speechBubble?.hide();
-            showDetailedIssuesModal(summary);
-          },
-        },
-        {
-          label: 'Dismiss',
-          style: 'secondary',
-          onClick: () => {
-            speechBubble?.hide();
-
-            // Decrement badge count by 1
-            if (indiBlob) {
-              const currentCount = indiBlob['notificationCount'] || 0;
-              const newCount = Math.max(0, currentCount - 1);
-              indiBlob.setNotifications(newCount);
-
-              // Update emotion based on new count
-              if (newCount === 0) {
-                indiBlob.setEmotion('happy');
-              } else if (newCount <= 2) {
-                indiBlob.setEmotion('calm');
-              }
-              // Keep current emotion if still many issues
-
-            }
-          },
-        },
-        {
-          label: 'Dismiss All',
-          style: 'secondary',
-          onClick: () => {
-            speechBubble?.hide();
-
-            // Clear all notifications
-            if (indiBlob) {
-              const currentCount = indiBlob['notificationCount'] || 0;
-              indiBlob.setNotifications(0);
-              indiBlob.setEmotion('happy');
-
-            }
-          },
-        },
-        {
-          label: 'Add An Indi',
-          style: 'third',
-          onClick: () => speechBubble?.createIndi(summary),
-        },
-      ],
-      showClose: true,
-      onClose: () => {
-        // Also decrement badge when user clicks X to close
-        if (indiBlob) {
-          const currentCount = indiBlob['notificationCount'] || 0;
-          const newCount = Math.max(0, currentCount - 1);
-          indiBlob.setNotifications(newCount);
-
-          // Update emotion based on new count
-          if (newCount === 0) {
-            indiBlob.setEmotion('happy');
-          } else if (newCount <= 2) {
-            indiBlob.setEmotion('calm');
-          }
-
-        }
-      },
-      persistent: false, // Auto-dismiss after 10s
-    });
   }
 }
 
@@ -3387,7 +3224,6 @@ function handleClick(e: MouseEvent) {
       };
     });
 
-    console.log({ cachedCalls, callsWithIds }, "cached Calls in SHOW_API_MODAL");
     showModal({data: callsWithIds, id: data.id, path: getElementPath(hoveredElement), rect: hoveredElement.getBoundingClientRect(), tagName: hoveredElement.tagName}, { networkCalls: callsWithIds });
 
 
@@ -3424,16 +3260,13 @@ function handleIndiBlobRef(e: MouseEvent) {
 
     if (storedNetworkCall) {
       // Use the complete network call data from cache
-      console.log('✅ Using complete network call data:', storedNetworkCall);
       networkCalls = [storedNetworkCall];
     } else if (indiBlobUrlWithIssue) {
       // Fallback: try to find it again in the cache using safe helper
-      console.log('⚠️ No stored network call, searching cache again...');
       const foundCall = findNetworkCallInCache(indiBlobUrlWithIssue);
 
       if (foundCall) {
         networkCalls = [foundCall];
-        console.log('✅ Found network call in cache:', foundCall);
       } else {
         // Last resort: create minimal call
         console.warn('⚠️ Creating minimal network call as fallback');

@@ -54,8 +54,6 @@ export class FlowRecorder {
       throw new Error('Cannot record while flow is playing. Stop playback first.');
     }
 
-    console.log(`🔴 Started recording flow: "${flowName}"`);
-
     this.recording = true;
     this.currentSession = {
       flowId: this.generateId(),
@@ -93,8 +91,6 @@ export class FlowRecorder {
       console.warn('⚠️ Not currently recording');
       return null;
     }
-
-    console.log(`⏹️ Stopped recording flow: "${this.currentSession.flowName}"`);
 
     this.recording = false;
 
@@ -147,8 +143,6 @@ export class FlowRecorder {
     const timestamp = call.timestamp || Date.now();
     const existing = this.recordingAPIsMap.get(timestamp) || [];
     this.recordingAPIsMap.set(timestamp, [...existing, call]);
-
-    console.log(`📡 Captured API during recording: ${call.method} ${call.url}`);
   }
 
   // ==================== EVENT LISTENERS ====================
@@ -207,12 +201,6 @@ export class FlowRecorder {
     if (clickableElement) {
       target = clickableElement;
     }
-
-    console.log(`🖱️ Captured click on:`, target.tagName, {
-      id: target.id,
-      className: target.className,
-      text: target.textContent?.substring(0, 50)
-    });
 
     const step: FlowStep = {
       id: this.generateId(),

@@ -15,8 +15,8 @@ const MAX_NETWORK_RESPONSES = 50;
 export const Panel: React.FC = () => {
   const networkResponsesRef = useRef<any[]>([]);
   const { networkCalls, handleSearch, searchTerm } = useNetworkCalls();
-  const [setSelectedElement] = useState<any>(null);
-  const [networkResponses, setNetworkResponses] = useState<any[]>([]);
+  const [, setSelectedElement] = useState<any>(null);
+  const [, setNetworkResponses] = useState<any[]>([]);
 
   const [showIndicators, setShowIndicators] = useState(true);
   const [showRecordButton, setShowRecordButton] = useState(true);

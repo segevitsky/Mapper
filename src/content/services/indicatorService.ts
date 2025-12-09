@@ -13,9 +13,11 @@ import initFloatingButton from "../floatingRecorderButton";
 import SchemaValidationService from "./schemaValidationService";
 import { createInteractiveJsonViewer, jsonViewerStyles, setupJsonViewerListeners } from "./components/jsonViewer";
 import { modalStyles } from "./components/networkModalStyles";
-import test from "node:test";
 
 export let pageIndicators: IndicatorData[] = [];
+
+// Track indicators currently being created to prevent race conditions
+const creatingIndicators = new Set<string>();
 
 type Domain = {
   value: string;
@@ -63,22 +65,33 @@ export function loadIndicators() {
     if (currentPageIndicators.length === 0) {
       return;
     }
+
+    // Create all indicators (in-flight tracking prevents duplicates)
     currentPageIndicators?.forEach(createIndicatorFromData);
 
     // Make sure we have all indicators with better error handling
     currentPageIndicators?.forEach(async (indicator: any, index: number) => {
       try {
-        const indicatorElement = await waitForIndicator(indicator.id, 3000);
-        if (!indicatorElement) {
-          setTimeout(() => {
-            createIndicatorFromData(indicator);
-          }, 500 + (index * 200)); // Stagger indicator creation
+        const indicatorElement = await waitForIndicator(indicator.id, 5000); // Increased to 5s
+        if (!indicatorElement && !creatingIndicators.has(indicator.id)) {
+          // Only retry if not currently being created and not in DOM
+          const stillNotInDom = !document.getElementById(`indi-${indicator.id}`);
+          if (stillNotInDom) {
+            setTimeout(() => {
+              createIndicatorFromData(indicator);
+            }, 500 + (index * 200)); // Stagger indicator creation
+          }
         }
       } catch (error) {
-        // Try to create the indicator anyway
-        setTimeout(() => {
-          createIndicatorFromData(indicator);
-        }, 1000 + (index * 200));
+        // Only retry if not currently being created
+        if (!creatingIndicators.has(indicator.id)) {
+          const stillNotInDom = !document.getElementById(`indi-${indicator.id}`);
+          if (stillNotInDom) {
+            setTimeout(() => {
+              createIndicatorFromData(indicator);
+            }, 1000 + (index * 200));
+          }
+        }
       }
     });
 
@@ -103,11 +116,24 @@ export async function createIndicatorFromData(
   indicatorData: IndicatorData,
   isAuto?: boolean
 ) {
+
+  // Already being created? Skip to prevent race conditions
+  if (creatingIndicators.has(indicatorData.id)) {
+    return;
+  }
+
+  // Mark as in-flight
+  creatingIndicators.add(indicatorData.id);
+
+  // Check if already exists in DOM (outside try to ensure cleanup)
   const indicatorElement = document.getElementById(`indi-${indicatorData.id}`);
   const currentPageUUID = extractUUIDFromUrl(window.location.href);
   if (indicatorElement) {
+    creatingIndicators.delete(indicatorData.id);
     return;
   }
+
+  try {
   if (indicatorData?.pattern) {
     indicatorData.baseUrl = window.location.href;
     indicatorData.lastCall.url = updateUrlWithNewUUID(
@@ -142,13 +168,13 @@ export async function createIndicatorFromData(
   // Check if indicator belongs to current page with more flexible matching
   const currentPagePath = generateStoragePath(window.location.href);
   const indicatorPagePath = generateStoragePath(
-    currentPageUUID 
-      ? updateUrlWithNewUUID(indicatorData?.request?.documentURL || indicatorData.baseUrl, currentPageUUID) 
+    currentPageUUID
+      ? updateUrlWithNewUUID(indicatorData?.request?.documentURL || indicatorData.baseUrl, currentPageUUID)
       : indicatorData?.request?.documentURL || indicatorData.baseUrl
   );
-  
-  if (indicatorPagePath !== currentPagePath && indicatorData.baseUrl !== 'global') { 
-    return; 
+
+  if (indicatorPagePath !== currentPagePath && indicatorData.baseUrl !== 'global') {
+    return;
   }
   
   // claude code addition
@@ -255,6 +281,12 @@ export async function createIndicatorFromData(
     }
   } else {
     elementByPath?.insertAdjacentElement("beforebegin", indicator);
+  }
+  } catch (error) {
+    console.error('Error creating indicator:', error);
+  } finally {
+    // Cleanup in-flight tracking
+    creatingIndicators.delete(indicatorData.id);
   }
 }
 
@@ -370,7 +402,7 @@ function addIndicatorEvents(
             left: currentLeft,
           };
           chrome.storage.local.set({ indicators }, () => {
-            console.log('✅ Indicator position saved:', { top: currentTop, left: currentLeft });
+            // console.log('✅ Indicator position saved:', { top: currentTop, left: currentLeft });
           });
         }
       });

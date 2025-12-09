@@ -349,12 +349,9 @@ export class SpeechBubble {
     }
   }
 
-  public updatePosition(blobRect?: DOMRect): void {
+  public updatePosition(): void {
     if (!this.bubble || !this.isVisible) return;
 
-    if (blobRect) {
-      console.log('🔵 Updating bubble position using provided blobRect', blobRect);
-    }
 
     // Use the same smart positioning logic as initial placement
     this.positionBubbleRelativeToBlob();

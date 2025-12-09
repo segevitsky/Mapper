@@ -62,7 +62,7 @@ export class OnboardingFlow {
     });
 
     this.detectedUrls = Array.from(urls);
-    console.log('🔍 Detected backend URLs:', this.detectedUrls);
+    // console.log('🔍 Detected backend URLs:', this.detectedUrls);
   }
 
   /**
@@ -303,7 +303,7 @@ export class OnboardingFlow {
    * Dismiss onboarding (user clicked X on welcome)
    */
   private dismissOnboarding(): void {
-    console.log('🚫 User dismissed onboarding for this domain');
+    // console.log('🚫 User dismissed onboarding for this domain');
 
     this.saveOnboardingState({
       completed: false,
@@ -372,7 +372,7 @@ export class OnboardingFlow {
       domain: window.location.hostname,
     });
 
-    console.log('✅ Onboarding completed! Backend URL:', this.selectedUrl);
+    // console.log('✅ Onboarding completed! Backend URL:', this.selectedUrl);
   }
 
   /**

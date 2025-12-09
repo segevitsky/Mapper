@@ -65,7 +65,6 @@ const IndicatorFloatingWindow: React.FC = () => {
         try {
           // ניסיון שני - אולי הדאטה כבר decoded
           const parsedData = JSON.parse(dataParam);
-          console.log('📦 Second attempt - parsed data:', parsedData);
           
           const actualIndicatorData = parsedData.indicatorData || parsedData;
           setIndicatorData(actualIndicatorData);
@@ -73,8 +72,6 @@ const IndicatorFloatingWindow: React.FC = () => {
           return;
           
         } catch (secondError) {
-          console.error('❌ Second parsing attempt also failed:', secondError);
-          
           // ניסיון שלישי - fallback לדאטה מוגבלת
           setIndicatorData({
             url: 'Data parsing failed',

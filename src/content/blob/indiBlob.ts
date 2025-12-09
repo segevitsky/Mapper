@@ -281,9 +281,9 @@ export class IndiBlob {
     if (adjusted) {
       this.setPosition(x, y);
       this.savePosition();
-      if (this.originalPosition) {
-        console.log('📍 Original position saved:', this.originalPosition);
-      }
+      // if (this.originalPosition) {
+      //   console.log('📍 Original position saved:', this.originalPosition);
+      // }
     } else {
       // Position is within bounds, clear original if we have one
       if (this.originalPosition) {
@@ -834,7 +834,7 @@ export class IndiBlob {
 
   // Update speech bubble position if it exists and is visible
   if (this.speechBubble && this.speechBubble.isShowing()) {
-    this.speechBubble.updatePosition(blobRect);
+    this.speechBubble.updatePosition();
   }
 
   // Update summary tooltip position

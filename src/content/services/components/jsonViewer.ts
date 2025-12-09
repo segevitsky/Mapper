@@ -239,7 +239,9 @@ function doesItemMatchSearch(item: any, searchTerm: string): boolean {
 }
 
 function doesPathMatch(data: any, path: string, state: JsonViewerState): boolean {
-  console.log({ path });
+  if (!path) {
+    console.log({ path });
+  }
   if (!state.searchTerm) return true;
   return doesItemMatchSearch(data, state.searchTerm);
 }
