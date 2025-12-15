@@ -3,6 +3,8 @@ import { IndicatorData, NetworkCall } from "../types";
 // import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
 import { generatePatternBasedStoragePath, generateStoragePath } from "../utils/storage";
 import { identifyDynamicParams } from "../utils/urlUrils";
+import { SecurityEngine } from "../utils/securityEngine";
+import { SecurityIssue } from "../types/security";
 import { getRandomTip } from "../utils/loadingTips";
 import { IndicatorMonitor } from "./services/indicatorMonitor";
 import { IndicatorLoader } from "./services/indicatorLoader";
@@ -45,6 +47,7 @@ let pageSummary: PageSummary | null = null;
 let issuesSummary: PageSummaryData | null = null;
 let indiBlobUrlWithIssue: string | null = null;
 let slowCallThreshold: number = 1000; // Default slow call threshold, loaded from storage
+let securityEngine: SecurityEngine | null = null; // Security analysis engine
 
 /**
  * Load slow call threshold from storage
@@ -61,6 +64,28 @@ async function loadSlowCallThreshold() {
     }
   } catch (error) {
     console.error('Failed to load slow call threshold:', error);
+  }
+}
+
+/**
+ * Initialize security engine with context
+ */
+async function initializeSecurityEngine(): Promise<void> {
+  try {
+    const hostname = window.location.hostname;
+
+    // Get configured backend URL
+    const key = `indi_onboarding_${hostname}`;
+    const result = await chrome.storage.local.get([key]);
+    const configuredBackend = result[key]?.selectedBackendUrl || null;
+
+    // Create security engine with context
+    securityEngine = new SecurityEngine({
+      hostname,
+      configuredBackend,
+    });
+  } catch (error) {
+    console.error('Failed to initialize security engine:', error);
   }
 }
 
@@ -86,6 +111,9 @@ async function initializeIndi(networkData: NetworkCall[]) {
 
     // 3.5. Load slow call threshold from storage
     await loadSlowCallThreshold();
+
+    // 3.6. Initialize security engine
+    await initializeSecurityEngine();
 
     // 4. Create onboarding flow
     onboardingFlow = new OnboardingFlow(indiBlob, speechBubble);
@@ -1221,6 +1249,7 @@ const cumulativeSecurityIssues = new Set<string>(); // Track unique security iss
 let cumulativeSummary: PageSummaryData | null = null; // Track cumulative summary for badge clicks
 let cumulativeFailedCalls: NetworkCall[] = []; // Track actual failed call objects for detailed view
 let cumulativeSlowCalls: NetworkCall[] = []; // Track actual slow call objects for detailed view
+let cumulativeSecurityIssueObjects: SecurityIssue[] = []; // Track actual security issue objects for detailed view
 const notifiedErrorUrls = new Set<string>(); // Track which error URLs we've already notified about
 const notifiedSlowUrls = new Set<string>(); // Track which slow URLs we've already notified about
 const notifiedSecurityUrls = new Set<string>(); // Track which security URLs we've already notified about
@@ -1234,6 +1263,7 @@ function resetCumulativeTracking() {
   cumulativeSummary = null;
   cumulativeFailedCalls = []; // Reset failed calls array
   cumulativeSlowCalls = []; // Reset slow calls array
+  cumulativeSecurityIssueObjects = []; // Reset security issues array
   notifiedErrorUrls.clear(); // Reset notified errors
   notifiedSlowUrls.clear(); // Reset notified slow calls
   notifiedSecurityUrls.clear(); // Reset notified security issues
@@ -1266,6 +1296,19 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
   // Analyze current batch
   const summary = pageSummary.analyze(networkData);
 
+  // Run security analysis on network calls (silently)
+  // Filter out OPTIONS requests - no need to analyze preflight requests
+  const callsToAnalyze = networkData.filter(call => {
+    const method = call?.request?.request?.method || call?.method || 'GET';
+    return method !== 'OPTIONS';
+  });
+
+  let securityIssues: SecurityIssue[] = [];
+  if (securityEngine && callsToAnalyze.length > 0) {
+    const analysisResult = await securityEngine.analyzeMultiple(callsToAnalyze);
+    securityIssues = analysisResult.issues;
+    // Issues are tracked in cumulativeSecurityIssues and will be shown in UI
+  }
 
   // Update cumulative tracking with NEW issues from this batch
   if (summary.errorCalls > 0) {
@@ -1297,9 +1340,19 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
     }
   });
 
+  // Track security issues from both old system and new security engine
   if (summary.apisWithoutAuth && summary.apisWithoutAuth.length > 0) {
     summary.apisWithoutAuth.forEach((url: string) => cumulativeSecurityIssues.add(url));
   }
+  // Add new security engine issues to cumulative tracking
+  securityIssues.forEach((issue: SecurityIssue) => {
+    cumulativeSecurityIssues.add(issue.url);
+    // Store the full SecurityIssue object for detailed view (limit to last 50)
+    cumulativeSecurityIssueObjects.unshift(issue); // Add to front (newest first)
+    if (cumulativeSecurityIssueObjects.length > 50) {
+      cumulativeSecurityIssueObjects.pop(); // Remove oldest
+    }
+  });
 
   // Calculate total cumulative issue count for this page
   const totalIssueCount =
@@ -1713,30 +1766,53 @@ async function showDetailedIssuesModal(summary: PageSummaryData) {
   }
 
   // Security Issues Section
-  if (summary.securityIssues > 0 && summary.apisWithoutAuth && summary.apisWithoutAuth.length > 0) {
+  if (summary.securityIssues > 0 && cumulativeSecurityIssueObjects.length > 0) {
     html += `
-      <div style="margin-bottom: 16px;">
+      <div style="margin-bottom: 24px;">
         <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #7c2d12; display: flex; align-items: center; gap: 8px;">
           🔒 Security Issues (${summary.securityIssues})
         </h3>
-        <div style="max-height: 200px; overflow-y: auto;">
+        <div style="max-height: 300px; overflow-y: auto;">
     `;
 
-    summary.apisWithoutAuth.forEach(url => {
+    cumulativeSecurityIssueObjects.forEach((issue) => {
+      const timeStr = new Date(issue.timestamp).toLocaleTimeString();
+
+      // Map severity to color
+      let severityColor = '#ca8a04'; // Default yellow
+      let bgGradient = 'linear-gradient(135deg, #fefce8, #fef9c3)';
+
+      if (issue.severity === 'Critical') {
+        severityColor = '#dc2626';
+        bgGradient = 'linear-gradient(135deg, #fef2f2, #fee2e2)';
+      } else if (issue.severity === 'High') {
+        severityColor = '#ea580c';
+        bgGradient = 'linear-gradient(135deg, #fff7ed, #ffedd5)';
+      } else if (issue.severity === 'Medium') {
+        severityColor = '#ca8a04';
+        bgGradient = 'linear-gradient(135deg, #fefce8, #fef9c3)';
+      }
+
       html += `
         <div style="
-          margin-bottom: 8px;
-          padding: 10px;
-          background: linear-gradient(135deg, #fefce8, #fef9c3);
-          border-left: 4px solid #ca8a04;
+          margin-bottom: 10px;
+          padding: 12px;
+          background: ${bgGradient};
+          border-left: 4px solid ${severityColor};
           border-radius: 8px;
-          font-size: 12px;
-          color: #374151;
-          word-break: break-all;
         ">
-          ${url}
-          <div style="font-size: 11px; color: #92400e; margin-top: 4px;">
-            Missing authentication headers
+          <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+            <strong style="color: ${severityColor}; font-size: 13px;">${issue.severity} - ${issue.category}</strong>
+            <span style="font-size: 11px; color: #6b7280;">${timeStr}</span>
+          </div>
+          <div style="font-size: 12px; color: #374151; word-break: break-all; margin-bottom: 8px;">
+            ${issue.url}
+          </div>
+          <div style="font-size: 11px; color: #6b7280; margin-bottom: 8px;">
+            ${issue.message}
+          </div>
+          <div style="font-size: 11px; color: ${severityColor}; font-weight: 600;">
+            💡 ${issue.recommendation}
           </div>
         </div>
       `;
@@ -1930,10 +2006,10 @@ function cleanupIndi() {
   isIndiInitialized = false;
 }
 
-// Add cleanup to existing beforeunload
+// Cleanup on page unload
 window.addEventListener('beforeunload', () => {
   cleanupIndi();
-  clearCache(); // Your existing cache clear
+  clearCache();
 });
 
 /**
@@ -1951,27 +2027,6 @@ function getInsightTitle(type: string): string {
   return titles[type] || '💡 New Insight';
 }
 
-/**
- * Cleanup on page unload
- */
-function cleanup() {
-  document.removeEventListener('indi-blob-clicked', handleBlobClick);
-  
-  if (indiBlob) {
-    indiBlob.destroy();
-    indiBlob = null;
-  }
-
-  if (speechBubble) {
-    speechBubble.destroy();
-    speechBubble = null;
-  }
-
-  onboardingFlow = null;
-}
-
-// Cleanup on page unload
-window.addEventListener('beforeunload', cleanup);
 
 // Export for debugging in console
 (window as any).indiBlob = indiBlob;
@@ -1988,14 +2043,21 @@ async function addToCache(calls: NetworkCall[]) {
 
   for (const call of calls) {
     try {
-      // Extract URL from various possible locations
+      // Extract URL and method from various possible locations
       const url = call?.response?.response?.url ??
                   call?.response?.url ??
                   call?.request?.request?.url ??
                   call?.url;
 
+      const method = call?.request?.request?.method ?? call?.method ?? 'GET';
+
       if (!url) {
         console.warn('Call without URL, skipping cache', call);
+        continue;
+      }
+
+      // Skip OPTIONS requests (preflight requests - no need to track)
+      if (method === 'OPTIONS') {
         continue;
       }
 
@@ -2238,9 +2300,6 @@ function injectCustomModalStyles() {
 
   document.head.appendChild(style);
 }
-
-// Clear cache on navigation
-window.addEventListener('beforeunload', clearCache);
 
 createContainers();
 injectStyles();

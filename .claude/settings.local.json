@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(node cleanup-console.js:*)",
-      "Bash(node cleanup-console.cjs:*)"
+      "Bash(node cleanup-console.cjs:*)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []
