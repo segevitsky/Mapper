@@ -1,6 +1,9 @@
 // src/content/blob/PageSummary.ts
 
 import { NetworkCall } from '../../types';
+import { consoleCapture } from '../services/consoleCapture';
+import { ConsoleError } from '../../types/console';
+import { getRandomTip } from '../../utils/loadingTips';
 
 export interface PageSummaryData {
   // Timing
@@ -44,6 +47,10 @@ export class PageSummary {
   private pageLoadStart: number = Date.now();
   private previousApis: Set<string> = new Set();
   private slowCallThreshold: number = 1000; // Default threshold
+  private activeTab: 'summary' | 'network' | 'console' = 'summary';
+  private networkCalls: NetworkCall[] = [];
+  private currentSummaryData: PageSummaryData | null = null;
+  private summaryReady: boolean = false;
 
   constructor() {
     this.pageLoadStart = Date.now();
@@ -141,7 +148,7 @@ export class PageSummary {
     const issueCount = errors.length + slowAPIs + securityIssues;
     const hasIssues = issueCount > 0;
 
-    return {
+    const summary = {
       totalTime,
       firstApiTime,
       lastApiTime,
@@ -163,87 +170,692 @@ export class PageSummary {
       issueCount,
       durations,
     };
+
+    // Store summary data for tab navigation
+    this.currentSummaryData = summary;
+    this.summaryReady = true; // Mark summary as ready
+
+    return summary;
+  }
+
+  /**
+   * Public methods for tab management
+   */
+  public setNetworkCalls(calls: NetworkCall[]): void {
+    this.networkCalls = calls;
+  }
+
+  public setActiveTab(tab: 'summary' | 'network' | 'console'): void {
+    this.activeTab = tab as 'summary' | 'network' | 'console';
+  }
+
+  public getCurrentSummaryData(): PageSummaryData | null {
+    return this.currentSummaryData;
+  }
+
+  /**
+   * Set default tab based on whether summary is ready
+   */
+  public setDefaultTabForState(hasSummary: boolean): void {
+    this.summaryReady = hasSummary;
+    // If summary not ready, default to console tab (which always has data)
+    if (!hasSummary) {
+      this.activeTab = 'console';
+    } else {
+      this.activeTab = 'summary';
+    }
+  }
+
+  public isSummaryReady(): boolean {
+    return this.summaryReady;
   }
 
 
   /**
-   * Generate HTML summary for tooltip
+   * Generate HTML summary for tooltip with tabs
    */
   public generateSummaryHTML(summary: PageSummaryData): string {
     return `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-        <div style="font-size: 16px; font-weight: 600; margin-bottom: 12px; color: #1f2937;">
-          📊 Page Load Summary
-        </div>
-        
-        <div style="display: grid; gap: 8px; font-size: 14px;">
-          <div style="display: flex; justify-content: space-between;">
-            <span style="color: #6b7280;">⏱️ Total API Time:</span>
-            <span style="font-weight: 600; color: #1f2937;">${(summary.totalTime / 1000).toFixed(2)}s</span>
-          </div>
-          
-          <div style="display: flex; justify-content: space-between;">
-            <span style="color: #6b7280;">🌐 API Calls:</span>
-            <span style="font-weight: 600; color: #1f2937;">${summary.totalCalls}</span>
-          </div>
-          
-          ${summary.errorCalls > 0 ? `
-            <div style="display: flex; justify-content: space-between;">
-              <span style="color: #ef4444;">❌ Failed:</span>
-              <span style="font-weight: 600; color: #ef4444;">${summary.errorCalls}</span>
-            </div>
-          ` : ''}
-          
-          <div style="display: flex; justify-content: space-between;">
-            <span style="color: #6b7280;">⚡ Avg Response:</span>
-            <span style="font-weight: 600; color: ${summary.averageResponseTime > this.slowCallThreshold ? '#f59e0b' : '#10b981'};">
-              ${summary.averageResponseTime}ms
-            </span>
-          </div>
-          
-          ${summary.slowestApi ? `
-            <div style="margin-top: 8px; padding: 8px; background: #fef3c7; border-radius: 6px;">
-              <div style="font-size: 12px; color: #92400e; margin-bottom: 4px;">🐌 Slowest API:</div>
-              <div style="font-size: 11px; color: #78350f; word-break: break-all; font-family: monospace;">
-                ${this.shortUrl(summary.slowestApi.url)}
-              </div>
-              <div style="font-size: 12px; color: #92400e; margin-top: 2px; font-weight: 600;">
-                ${summary.slowestApi.duration}ms
-              </div>
-            </div>
-          ` : ''}
-          
-          ${summary.mostCalledApi && summary.mostCalledApi.count > 1 ? `
-            <div style="margin-top: 8px; padding: 8px; background: #fef3c7; border-radius: 6px;">
-              <div style="font-size: 12px; color: #92400e; margin-bottom: 4px;">🔥 Most Called (${summary.mostCalledApi.count}x):</div>
-              <div style="font-size: 11px; color: #78350f; word-break: break-all; font-family: monospace;">
-                ${this.shortUrl(summary.mostCalledApi.url)}
-              </div>
-            </div>
-          ` : ''}
-          
-          ${summary.totalDataTransferred > 0 ? `
-            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
-              <span style="color: #6b7280;">📦 Data:</span>
-              <span style="font-weight: 600; color: #1f2937;">${summary.totalDataTransferredMB} MB</span>
-            </div>
-          ` : ''}
-          
-          ${summary.newApis.length > 0 ? `
-            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
-              <span style="color: #3b82f6;">🆕 New APIs:</span>
-              <span style="font-weight: 600; color: #3b82f6;">${summary.newApis.length}</span>
-            </div>
-          ` : ''}
-          
-          ${summary.securityIssues > 0 ? `
-            <div style="display: flex; justify-content: space-between; margin-top: 4px;">
-              <span style="color: #ef4444;">🔒 Security Issues:</span>
-              <span style="font-weight: 600; color: #ef4444;">${summary.securityIssues}</span>
-            </div>
-          ` : ''}
+        ${this.generateTabNav()}
+        ${this.generateTabContent(summary)}
+        ${this.generateActionButtons()}
+      </div>
+    `;
+  }
 
-          <!-- Action Buttons Row -->
+  /**
+   * Generate tab navigation
+   */
+  private generateTabNav(): string {
+    const tabs = [
+      { id: 'summary', emoji: '📊', label: 'Summary' },
+      { id: 'network', emoji: '🌐', label: 'Network' },
+      { id: 'console', emoji: '💬', label: 'Console' }
+    ];
+
+    return `
+      <style>
+        .indi-tab {
+          transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .indi-tab:not([data-active="true"]):hover {
+          background: #f9fafb !important;
+          transform: translateY(-1px);
+        }
+      </style>
+      <div style="display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 2px solid #e5e7eb;">
+        ${tabs.map(tab => `
+          <button
+            class="indi-tab"
+            data-tab="${tab.id}"
+            data-active="${this.activeTab === tab.id}"
+            style="
+              flex: 1;
+              padding: 8px 12px;
+              background: ${this.activeTab === tab.id ? 'linear-gradient(135deg, #f857a6, #ff5858)' : 'transparent'};
+              color: ${this.activeTab === tab.id ? '#fff' : '#6b7280'};
+              border: none;
+              border-radius: 6px 6px 0 0;
+              cursor: pointer;
+              font-size: 12px;
+              font-weight: 600;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 4px;
+              box-shadow: ${this.activeTab === tab.id ? '0 -2px 8px rgba(248, 87, 166, 0.2)' : 'none'};
+            "
+          >
+            <span style="font-size: 14px;">${tab.emoji}</span>
+            <span>${tab.label}</span>
+          </button>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  /**
+   * Route to appropriate tab content
+   */
+  private generateTabContent(summary: PageSummaryData): string {
+    switch (this.activeTab) {
+      case 'summary':
+        return this.generateSummaryTab(summary);
+      case 'network':
+        return this.generateNetworkTab();
+      case 'console':
+        return this.generateConsoleTab();
+      default:
+        return this.generateSummaryTab(summary);
+    }
+  }
+
+  /**
+   * Generate Summary tab content (original summary view)
+   */
+  private generateSummaryTab(summary: PageSummaryData): string {
+    // If summary not ready, show loading state with random tip
+    if (!this.summaryReady || summary.totalCalls === 0) {
+      const randomTip = getRandomTip();
+      return `
+        <style>
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+          }
+          .hourglass-spin {
+            display: inline-block;
+            animation: spin 2s linear infinite;
+          }
+        </style>
+        <div style="text-align: center; padding: 20px;">
+          <div class="hourglass-spin" style="font-size: 32px; margin-bottom: 12px;">⏳</div>
+          <div style="font-weight: 700; font-size: 15px; color: #1f2937; margin-bottom: 8px;">
+            Analyzing network...
+          </div>
+          <div style="
+            background: linear-gradient(135deg, #f3e8ff, #e9d5ff);
+            border-left: 3px solid #a78bfa;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+            text-align: left;
+            box-shadow: 0 2px 8px rgba(167, 139, 250, 0.15);
+          ">
+            <div style="font-size: 11px; font-weight: 600; color: #7c3aed; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+              💡 Pro Tip
+            </div>
+            <div style="font-size: 13px; color: #374151; line-height: 1.5;">
+              ${randomTip}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div style="display: grid; gap: 8px; font-size: 14px;">
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #6b7280;">⏱️ Total API Time:</span>
+          <span style="font-weight: 600; color: #1f2937;">${(summary.totalTime / 1000).toFixed(2)}s</span>
+        </div>
+
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #6b7280;">🌐 API Calls:</span>
+          <span style="font-weight: 600; color: #1f2937;">${summary.totalCalls}</span>
+        </div>
+
+        ${summary.errorCalls > 0 ? `
+          <div style="display: flex; justify-content: space-between;">
+            <span style="color: #ef4444;">❌ Failed:</span>
+            <span style="font-weight: 600; color: #ef4444;">${summary.errorCalls}</span>
+          </div>
+        ` : ''}
+
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: #6b7280;">⚡ Avg Response:</span>
+          <span style="font-weight: 600; color: ${summary.averageResponseTime > this.slowCallThreshold ? '#f59e0b' : '#10b981'};">
+            ${summary.averageResponseTime}ms
+          </span>
+        </div>
+
+        ${summary.slowestApi ? `
+          <div style="margin-top: 8px; padding: 8px; background: #fef3c7; border-radius: 6px;">
+            <div style="font-size: 12px; color: #92400e; margin-bottom: 4px;">🐌 Slowest API:</div>
+            <div style="font-size: 11px; color: #78350f; word-break: break-all; font-family: monospace;">
+              ${this.shortUrl(summary.slowestApi.url)}
+            </div>
+            <div style="font-size: 12px; color: #92400e; margin-top: 2px; font-weight: 600;">
+              ${summary.slowestApi.duration}ms
+            </div>
+          </div>
+        ` : ''}
+
+        ${summary.mostCalledApi && summary.mostCalledApi.count > 1 ? `
+          <div style="margin-top: 8px; padding: 8px; background: #fef3c7; border-radius: 6px;">
+            <div style="font-size: 12px; color: #92400e; margin-bottom: 4px;">🔥 Most Called (${summary.mostCalledApi.count}x):</div>
+            <div style="font-size: 11px; color: #78350f; word-break: break-all; font-family: monospace;">
+              ${this.shortUrl(summary.mostCalledApi.url)}
+            </div>
+          </div>
+        ` : ''}
+
+        ${summary.totalDataTransferred > 0 ? `
+          <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+            <span style="color: #6b7280;">📦 Data:</span>
+            <span style="font-weight: 600; color: #1f2937;">${summary.totalDataTransferredMB} MB</span>
+          </div>
+        ` : ''}
+
+        ${summary.newApis.length > 0 ? `
+          <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+            <span style="color: #3b82f6;">🆕 New APIs:</span>
+            <span style="font-weight: 600; color: #3b82f6;">${summary.newApis.length}</span>
+          </div>
+        ` : ''}
+
+        ${summary.securityIssues > 0 ? `
+          <div style="display: flex; justify-content: space-between; margin-top: 4px;">
+            <span style="color: #ef4444;">🔒 Security Issues:</span>
+            <span style="font-weight: 600; color: #ef4444;">${summary.securityIssues}</span>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  /**
+   * Generate Network tab content
+   */
+  private generateNetworkTab(): string {
+    if (this.networkCalls.length === 0) {
+      return `
+        <div style="text-align: center; padding: 40px 20px; color: #9ca3af;">
+          <div style="font-size: 40px; margin-bottom: 12px;">🌐</div>
+          <div style="font-size: 14px;">No network calls captured yet</div>
+        </div>
+      `;
+    }
+
+    // Only show 20 most recent network calls for performance
+    const recentCalls = this.networkCalls.slice(0, 20);
+    const hasMore = this.networkCalls.length > 20;
+
+    return `
+      <div style="max-height: 400px; overflow-y: auto; padding: 4px;">
+        ${hasMore ? `<div style="padding: 8px; background: #dbeafe; border-radius: 6px; margin-bottom: 8px; font-size: 11px; color: #1e40af; text-align: center;">Showing 20 most recent calls (${this.networkCalls.length} total captured)</div>` : ''}
+        ${recentCalls.map((call, index) => this.generateNetworkCallItem(call, index)).join('')}
+      </div>
+    `;
+  }
+
+  /**
+   * Generate individual network call item (collapsible)
+   */
+  private generateNetworkCallItem(call: NetworkCall, index: number): string {
+    const url = this.extractUrl(call);
+    const status = this.getStatus(call);
+    const method = call?.request?.request?.method || call?.method || 'GET';
+    const duration = this.getDuration(call);
+    const timestamp = new Date(call.timestamp || Date.now()).toLocaleTimeString();
+
+    // Status color coding
+    let statusColor = '#10b981'; // Green for 2xx
+    if (status >= 400) statusColor = '#ef4444'; // Red for 4xx/5xx
+    else if (status >= 300) statusColor = '#f59e0b'; // Yellow for 3xx
+    else if (status === 0) statusColor = '#6b7280'; // Gray for errors
+
+    // Serialize call data for the copy button (escape single quotes for attribute)
+    const callDataEncoded = JSON.stringify(call).replace(/'/g, '&#39;');
+
+    return `
+      <style>
+        .network-call-item {
+          transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .network-call-item:hover {
+          box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+          border-color: #f857a6;
+        }
+        .network-call-header {
+          transition: background 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .network-call-header:hover {
+          background: linear-gradient(135deg, #fef2f2, #fff) !important;
+        }
+        .network-call-details {
+          max-height: 0;
+          overflow: hidden;
+          transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .network-call-details.expanded {
+          max-height: 800px;
+        }
+        .copy-curl-btn {
+          transition: all 0.15s ease;
+        }
+        .copy-curl-btn:hover {
+          transform: scale(1.05);
+          background: #f3f4f6 !important;
+        }
+        .copy-curl-btn:active {
+          transform: scale(0.95);
+        }
+      </style>
+      <div class="network-call-item" style="margin-bottom: 8px; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
+        <!-- Collapsed Header (clickable) -->
+        <div
+          class="network-call-header"
+          data-call-index="${index}"
+          style="padding: 10px; cursor: pointer; background: #fff;"
+        >
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="font-weight: 600; font-size: 12px; color: ${statusColor};">
+              ${method} ${status || 'ERR'}
+            </span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 11px; color: #6b7280;">${duration}ms</span>
+              <button
+                class="copy-curl-btn"
+                data-call-data='${callDataEncoded}'
+                style="
+                  padding: 4px 8px;
+                  background: #f9fafb;
+                  border: 1px solid #e5e7eb;
+                  border-radius: 4px;
+                  font-size: 10px;
+                  color: #6366f1;
+                  cursor: pointer;
+                  font-weight: 600;
+                "
+                title="Copy as cURL"
+              >
+                📋 cURL
+              </button>
+            </div>
+          </div>
+          <div style="font-size: 11px; color: #374151; word-break: break-all; font-family: monospace;">
+            ${this.shortUrl(url)}
+          </div>
+          <div style="font-size: 10px; color: #9ca3af; margin-top: 4px;">
+            ${timestamp}
+          </div>
+        </div>
+
+        <!-- Expanded Content (hidden by default) -->
+        <div
+          class="network-call-details"
+          data-call-index="${index}"
+          style="display: none; padding: 10px; background: #f9fafb; border-top: 1px solid #e5e7eb;"
+        >
+          ${this.generateNetworkCallDetails(call)}
+        </div>
+      </div>
+    `;
+  }
+
+  /**
+   * Generate network call expanded details
+   */
+  private generateNetworkCallDetails(call: NetworkCall): string {
+    try {
+      const headers = call?.request?.request?.headers || call?.request?.headers || {};
+      const requestBody = call?.request?.request?.postData || call?.body || null;
+
+    // Extract response body - try multiple locations
+    let responseBody = null;
+    let isBase64 = false;
+
+    // Try different locations where body might be stored
+    if (call?.body) {
+      // Check if body is directly on the call object
+      if (typeof call.body === 'object' && call.body.body) {
+        responseBody = call.body.body;
+        isBase64 = call.body.base64Encoded || false;
+      } else if (typeof call.body === 'string') {
+        responseBody = call.body;
+      } else {
+        responseBody = call.body;
+      }
+    } else if (call?.response?.body) {
+      // Check in response.body
+      if (typeof call.response.body === 'object' && call.response.body.body) {
+        responseBody = call.response.body.body;
+        isBase64 = call.response.body.base64Encoded || false;
+      } else if (typeof call.response.body === 'string') {
+        responseBody = call.response.body;
+      } else {
+        responseBody = call.response.body;
+      }
+    } else if (call?.response?.response) {
+      // Check in response.response (older structure)
+      responseBody = call.response.response;
+    }
+
+    // Decode base64 if needed
+    if (isBase64 && responseBody) {
+      try {
+        responseBody = atob(responseBody);
+      } catch (e) {
+        console.error('Failed to decode base64 response:', e);
+      }
+    }
+
+    // Try to parse if it's a JSON string
+    let parsedBody = responseBody;
+    if (typeof responseBody === 'string') {
+      try {
+        parsedBody = JSON.parse(responseBody);
+      } catch {
+        // Not JSON, keep as string
+        parsedBody = responseBody;
+      }
+    }
+
+    // Format the response body nicely
+    let formattedResponse = '';
+    try {
+      if (parsedBody !== null && parsedBody !== undefined) {
+        if (typeof parsedBody === 'object') {
+          formattedResponse = this.formatJSON(parsedBody);
+        } else {
+          formattedResponse = `<pre style="margin: 0; white-space: pre-wrap; word-break: break-word;">${this.escapeHtml(String(parsedBody))}</pre>`;
+        }
+      } else {
+        formattedResponse = '<span style="color: #9ca3af; font-style: italic;">No response body</span>';
+      }
+    } catch (error) {
+      console.error('Error formatting response:', error);
+      formattedResponse = '<span style="color: #ef4444; font-style: italic;">Error formatting response</span>';
+    }
+
+    return `
+      <div style="font-size: 12px;">
+        <!-- Request Headers -->
+        <div style="margin-bottom: 12px;">
+          <div style="font-weight: 600; color: #374151; margin-bottom: 4px;">📤 Request Headers:</div>
+          <div style="background: #fff; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 10px; max-height: 150px; overflow-y: auto;">
+            ${Object.entries(headers).map(([key, value]) => `
+              <div style="margin-bottom: 2px;">
+                <span style="color: #6366f1;">${key}:</span> ${value}
+              </div>
+            `).join('') || '<span style="color: #9ca3af;">No headers</span>'}
+          </div>
+        </div>
+
+        <!-- Request Body (if exists) -->
+        ${requestBody ? `
+          <div style="margin-bottom: 12px;">
+            <div style="font-weight: 600; color: #374151; margin-bottom: 4px;">📝 Request Body:</div>
+            <div style="background: #fff; padding: 8px; border-radius: 4px; font-family: monospace; font-size: 10px; max-height: 150px; overflow-y: auto; word-break: break-all;">
+              ${typeof requestBody === 'string' ? requestBody : JSON.stringify(requestBody, null, 2)}
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- Response Body -->
+        <div>
+          <div style="font-weight: 600; color: #374151; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+            <span>📥 Response Body</span>
+            ${parsedBody && typeof parsedBody === 'object' && !Array.isArray(parsedBody) ? `<span style="font-size: 10px; color: #6b7280; font-weight: normal;">(${Object.keys(parsedBody).length} fields)</span>` : ''}
+          </div>
+          <div style="
+            background: #f9fafb;
+            border: 1px solid #e5e7eb;
+            padding: 12px;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            max-height: 300px;
+            overflow-y: auto;
+            line-height: 1.6;
+          ">
+            ${formattedResponse}
+          </div>
+        </div>
+      </div>
+    `;
+    } catch (error) {
+      console.error('Error generating network call details:', error);
+      return `
+        <div style="font-size: 12px; padding: 12px; color: #ef4444;">
+          Error displaying network call details. Check console for more info.
+        </div>
+      `;
+    }
+  }
+
+  /**
+   * Format JSON with better readability - simplified for performance
+   */
+  private formatJSON(obj: any, indent: number = 0): string {
+    try {
+      // Limit nesting depth for performance
+      if (indent > 3) {
+        return `<span style="color: #9ca3af;">...</span>`;
+      }
+
+      const indentStr = '  '.repeat(indent);
+      const nextIndent = '  '.repeat(indent + 1);
+
+      if (obj === null) {
+        return `<span style="color: #9ca3af;">null</span>`;
+      }
+
+      if (typeof obj === 'boolean') {
+        return `<span style="color: #f59e0b;">${obj}</span>`;
+      }
+
+      if (typeof obj === 'number') {
+        return `<span style="color: #3b82f6;">${obj}</span>`;
+      }
+
+      if (typeof obj === 'string') {
+        // Truncate very long strings
+        const truncated = obj.length > 100 ? obj.substring(0, 100) + '...' : obj;
+        return `<span style="color: #10b981;">"${this.escapeHtml(truncated)}"</span>`;
+      }
+
+      if (Array.isArray(obj)) {
+        if (obj.length === 0) return '[ ]';
+        // Limit array size for performance
+        const items = obj.slice(0, 5).map((item, index) => {
+          const comma = index < Math.min(obj.length, 5) - 1 ? ',' : '';
+          return `\n${nextIndent}${this.formatJSON(item, indent + 1)}${comma}`;
+        }).join('');
+        const more = obj.length > 5 ? `\n${nextIndent}<span style="color: #9ca3af;">... ${obj.length - 5} more</span>` : '';
+        return `[${items}${more}\n${indentStr}]`;
+      }
+
+      if (typeof obj === 'object') {
+        const keys = Object.keys(obj);
+        if (keys.length === 0) return '{ }';
+
+        // Limit object keys for performance
+        const limitedKeys = keys.slice(0, 10);
+        const items = limitedKeys.map((key, index) => {
+          const comma = index < limitedKeys.length - 1 ? ',' : '';
+          return `\n${nextIndent}<span style="color: #f857a6;">"${this.escapeHtml(key)}"</span>: ${this.formatJSON(obj[key], indent + 1)}${comma}`;
+        }).join('');
+        const more = keys.length > 10 ? `\n${nextIndent}<span style="color: #9ca3af;">... ${keys.length - 10} more fields</span>` : '';
+        return `{${items}${more}\n${indentStr}}`;
+      }
+
+      return String(obj);
+    } catch (error) {
+      return `<span style="color: #ef4444;">Error formatting</span>`;
+    }
+  }
+
+  /**
+   * Escape HTML special characters
+   */
+  private escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  /**
+   * Generate cURL command from NetworkCall
+   */
+  public generateCurlCommand(call: NetworkCall): string {
+    const url = this.extractUrl(call);
+    const method = call?.request?.request?.method ?? call.method ?? 'GET';
+    const headers = call?.request?.request?.headers || call?.request?.headers || {};
+
+    let curl = `curl -X ${method} '${url}'`;
+
+    // Add headers
+    Object.entries(headers).forEach(([key, value]) => {
+      // Skip some headers that curl adds automatically or are problematic
+      if (!['host', 'connection', 'content-length'].includes(key.toLowerCase())) {
+        curl += ` \\\n  -H '${key}: ${value}'`;
+      }
+    });
+
+    // Add request body if exists
+    if (call?.request?.request?.postData || call?.body) {
+      const bodyData = call?.request?.request?.postData || call?.body;
+      const bodyStr = typeof bodyData === 'string' ? bodyData : JSON.stringify(bodyData);
+      curl += ` \\\n  --data '${bodyStr.replace(/'/g, "'\\''")}'`;
+    }
+
+    return curl;
+  }
+
+  /**
+   * Generate Console tab content
+   */
+  private generateConsoleTab(): string {
+    const logs = consoleCapture.getErrors();
+
+    if (logs.length === 0) {
+      return `
+        <div style="text-align: center; padding: 40px 20px; color: #9ca3af;">
+          <div style="font-size: 40px; margin-bottom: 12px;">📋</div>
+          <div style="font-size: 14px;">No console logs captured yet</div>
+          <div style="font-size: 12px; color: #6b7280; margin-top: 8px;">Logs will appear here as they occur</div>
+        </div>
+      `;
+    }
+
+    // Only show 30 most recent logs for performance
+    const recentLogs = logs.slice(0, 30);
+    const hasMore = logs.length > 30;
+
+    return `
+      <div style="max-height: 400px; overflow-y: auto; padding: 4px;">
+        ${hasMore ? `<div style="padding: 8px; background: #fef3c7; border-radius: 6px; margin-bottom: 8px; font-size: 11px; color: #92400e; text-align: center;">Showing 30 most recent logs (${logs.length} total captured)</div>` : ''}
+        ${recentLogs.map((log, index) => this.generateConsoleLogItem(log, index)).join('')}
+      </div>
+    `;
+  }
+
+  /**
+   * Generate individual console log item
+   */
+  private generateConsoleLogItem(log: ConsoleError, _index: number): string {
+    const typeStyles: Record<string, { bg: string; border: string; text: string; icon: string }> = {
+      log: { bg: '#f9fafb', border: '#6b7280', text: '#374151', icon: '📝' },
+      info: { bg: '#eff6ff', border: '#3b82f6', text: '#1e40af', icon: 'ℹ️' },
+      debug: { bg: '#f5f3ff', border: '#8b5cf6', text: '#6b21a8', icon: '🔍' },
+      warn: { bg: '#fffbeb', border: '#f59e0b', text: '#92400e', icon: '⚠️' },
+      error: { bg: '#fef2f2', border: '#ef4444', text: '#991b1b', icon: '❌' },
+      exception: { bg: '#fef2f2', border: '#dc2626', text: '#991b1b', icon: '💥' },
+      rejection: { bg: '#fef2f2', border: '#dc2626', text: '#991b1b', icon: '🚫' }
+    };
+
+    const style = typeStyles[log.type] || typeStyles.log;
+    const timestamp = new Date(log.timestamp).toLocaleTimeString();
+
+    return `
+      <style>
+        .console-log-item {
+          transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .console-log-item:hover {
+          box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+          transform: translateX(2px);
+        }
+      </style>
+      <div class="console-log-item" style="margin-bottom: 6px; padding: 8px; background: ${style.bg}; border-left: 3px solid ${style.border}; border-radius: 4px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+          <span style="font-weight: 600; font-size: 11px; color: ${style.text};">
+            ${style.icon} ${log.type.toUpperCase()}
+          </span>
+          <span style="font-size: 10px; color: #9ca3af;">${timestamp}</span>
+        </div>
+
+        <div style="font-size: 11px; color: #1f2937; font-family: monospace; word-break: break-word; line-height: 1.4;">
+          ${this.escapeHtml(log.message)}
+        </div>
+
+        ${log.stack ? `
+          <details style="margin-top: 6px;">
+            <summary style="cursor: pointer; font-size: 10px; color: ${style.text}; font-weight: 600;">
+              Stack Trace
+            </summary>
+            <pre style="margin-top: 4px; font-size: 9px; color: #6b7280; background: #fff; padding: 6px; border-radius: 3px; overflow-x: auto; white-space: pre-wrap; word-break: break-all;">${this.escapeHtml(log.stack)}</pre>
+          </details>
+        ` : ''}
+
+        ${log.url ? `
+          <div style="font-size: 9px; color: #9ca3af; margin-top: 3px; font-family: monospace;">
+            ${this.escapeHtml(log.url)}${log.line ? `:${log.line}` : ''}${log.column ? `:${log.column}` : ''}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  /**
+   * Generate action buttons (appears on all tabs)
+   */
+  private generateActionButtons(): string {
+    return `
+      <!-- Action Buttons Row -->
           <div style="
             margin-top: 16px;
             display: flex;
@@ -487,10 +1099,6 @@ export class PageSummary {
               </div>
             </div>
           </div>
-
-
-        </div>
-      </div>
     `;
   }
 

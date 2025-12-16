@@ -28,7 +28,9 @@ export const API_TESTING_TIPS = [
   "🔑 API keys in code? That's a security nightmare waiting to happen",
   "📉 Check memory leaks from unclosed connections",
   "🎨 Pretty error messages > cryptic stack traces for users",
-  "🔎 Log request/response pairs - debugging is easier with context"
+  "🔎 Log request/response pairs - debugging is easier with context",
+  "🛠️ Use Postman/Insomnia to isolate API issues outside your app",
+  "Did you know that by double clicking an indicator you'll open the detailed floating window?",
 ];
 
 /**

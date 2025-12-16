@@ -40,6 +40,8 @@ export class IndiBlob {
   private muteButton: HTMLElement | null = null;
   private originalPosition: Position | null = null; // Saved position before viewport adjustment
   private _backendConfigured: boolean = false; // Cached backend config status
+  private tooltipEventListenersAttached: boolean = false; // Track if event listeners are attached
+  private currentNetworkCalls: any[] = []; // Store current network calls for tab switching
 
 
   constructor(parentElement: HTMLElement = document.body) {
@@ -116,9 +118,10 @@ export class IndiBlob {
   /**
    * Update tooltip content (replaces showSummaryOnHover)
    */
-  public updateContent(summaryHTML: string, summaryData?: any): void {
+  public updateContent(summaryHTML: string, summaryData?: any, networkCalls?: any[]): void {
     this.currentSummary = summaryHTML;
     this.currentSummaryData = summaryData;
+    this.currentNetworkCalls = networkCalls || [];
 
     if (!this.summaryTooltip) {
       this.createTooltipElement();
@@ -135,7 +138,103 @@ export class IndiBlob {
       if (arrow) {
         this.summaryTooltip.appendChild(arrow);
       }
+
+      // Setup event delegation only once
+      if (!this.tooltipEventListenersAttached) {
+        this.setupTooltipEventHandlers();
+        this.tooltipEventListenersAttached = true;
+      }
     }
+  }
+
+  /**
+   * Setup event handlers for tooltip tabs and network calls using event delegation
+   */
+  private setupTooltipEventHandlers(): void {
+    if (!this.summaryTooltip) return;
+
+    // Use event delegation on the tooltip container
+    this.summaryTooltip.addEventListener('click', async (e) => {
+      const target = e.target as HTMLElement;
+
+      // Handle copy cURL button clicks
+      if (target.classList.contains('copy-curl-btn') || target.closest('.copy-curl-btn')) {
+        e.stopPropagation(); // Prevent expanding/collapsing the network call
+
+        const button = target.classList.contains('copy-curl-btn') ? target : target.closest('.copy-curl-btn') as HTMLElement;
+        const callData = button?.getAttribute('data-call-data');
+
+        if (callData) {
+          try {
+            // Parse the JSON directly (single quotes are already escaped as &#39;)
+            const call = JSON.parse(callData);
+
+            // Access pageSummary to use its generateCurlCommand method
+            const pageSummary = (window as any).pageSummary;
+            if (pageSummary) {
+              const curlCommand = pageSummary.generateCurlCommand(call);
+              await navigator.clipboard.writeText(curlCommand);
+
+              // Show success feedback
+              const originalText = button.textContent;
+              button.textContent = '✅ Copied';
+              setTimeout(() => {
+                button.textContent = originalText;
+              }, 2000);
+            }
+          } catch (error) {
+            console.error('Failed to copy cURL command:', error);
+            button.textContent = '❌ Failed';
+            setTimeout(() => {
+              button.textContent = '📋 cURL';
+            }, 2000);
+          }
+        }
+        return; // Stop further event handling
+      }
+
+      // Handle tab clicks
+      if (target.classList.contains('indi-tab') || target.closest('.indi-tab')) {
+        const tabButton = target.classList.contains('indi-tab') ? target : target.closest('.indi-tab') as HTMLElement;
+        const tab = tabButton?.dataset.tab;
+
+        if (tab) {
+          // Access pageSummary from window (set by content.ts)
+          const pageSummary = (window as any).pageSummary;
+          if (pageSummary) {
+            pageSummary.setActiveTab(tab);
+            const summary = pageSummary.getCurrentSummaryData();
+            const html = pageSummary.generateSummaryHTML(summary);
+            this.updateContent(html, summary, this.currentNetworkCalls);
+          }
+        }
+        return;
+      }
+
+      // Handle network call expand/collapse with smooth animation
+      if (target.classList.contains('network-call-header') || target.closest('.network-call-header')) {
+        const header = target.classList.contains('network-call-header') ? target : target.closest('.network-call-header') as HTMLElement;
+        const index = header?.dataset.callIndex;
+
+        if (index) {
+          const details = this.summaryTooltip?.querySelector(`.network-call-details[data-call-index="${index}"]`) as HTMLElement;
+          if (details) {
+            const isExpanded = details.classList.contains('expanded');
+            if (isExpanded) {
+              details.classList.remove('expanded');
+              setTimeout(() => {
+                details.style.display = 'none';
+              }, 300); // Match transition duration
+            } else {
+              details.style.display = 'block';
+              // Trigger reflow to enable transition
+              details.offsetHeight;
+              details.classList.add('expanded');
+            }
+          }
+        }
+      }
+    });
   }
 
   /**

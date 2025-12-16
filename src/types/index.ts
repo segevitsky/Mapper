@@ -131,3 +131,6 @@ export type NetworkRequest = {
   timing: number;
   duration: number;
 };
+
+// Export console error types
+export * from './console';
