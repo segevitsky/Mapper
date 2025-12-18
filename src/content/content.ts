@@ -5,7 +5,10 @@ import { generatePatternBasedStoragePath, generateStoragePath } from "../utils/s
 import { identifyDynamicParams } from "../utils/urlUrils";
 import { SecurityEngine } from "../utils/securityEngine";
 import { SecurityIssue } from "../types/security";
-import { getRandomTip } from "../utils/loadingTips";
+import { consoleCapture } from './services/consoleCapture';
+
+// Track if this tab is currently visible
+let isTabVisible = !document.hidden;
 import { IndicatorMonitor } from "./services/indicatorMonitor";
 import { IndicatorLoader } from "./services/indicatorLoader";
 import {
@@ -109,11 +112,17 @@ async function initializeIndi(networkData: NetworkCall[]) {
     // 3. Create page summary analyzer
     pageSummary = new PageSummary();
 
+    // Expose pageSummary on window for IndiBlob access
+    (window as any).pageSummary = pageSummary;
+
     // 3.5. Load slow call threshold from storage
     await loadSlowCallThreshold();
 
     // 3.6. Initialize security engine
     await initializeSecurityEngine();
+
+    // 3.7. Initialize console error capture (importing it initializes it)
+    consoleCapture; // Just referencing it to ensure it's imported
 
     // 4. Create onboarding flow
     onboardingFlow = new OnboardingFlow(indiBlob, speechBubble);
@@ -507,8 +516,25 @@ async function showSettingsModal() {
  * Set up Indi-specific event listeners
  */
 function setupIndiEventListeners() {
+  // Remove any existing listener first to prevent duplicates
+  document.removeEventListener('indi-blob-clicked', handleBlobClick);
   // Listen for Indi blob clicks
   document.addEventListener('indi-blob-clicked', handleBlobClick);
+
+  // Listen for tab visibility changes to save memory
+  document.addEventListener('visibilitychange', () => {
+    isTabVisible = !document.hidden;
+
+    if (document.hidden) {
+      // Tab became inactive - cleanup to save memory
+      console.log('🌙 Tab hidden - cleaning up cache and console logs');
+      cleanupInactiveTabCache();
+      consoleCapture.clearErrors(); // Clear console logs when tab hidden
+    } else {
+      // Tab became active
+      console.log('👁️ Tab visible - resuming full capture');
+    }
+  });
 
   // Listen for "Create Indicator" button clicks in the summary tooltip (event delegation)
   document.addEventListener('click', (e: MouseEvent) => {
@@ -1170,6 +1196,23 @@ function generatePlaybackResultHTML(result: any): string {
   return html;
 }
 
+/**
+ * Filter network calls by configured backend URL
+ */
+async function filterCallsByBackend(calls: NetworkCall[]): Promise<NetworkCall[]> {
+  const hostname = window.location.hostname;
+  const key = `indi_onboarding_${hostname}`;
+  const result = await chrome.storage.local.get([key]);
+  const backendUrl = result[key]?.selectedBackendUrl;
+
+  if (!backendUrl) return calls;
+
+  return calls.filter(call => {
+    const url = call?.lastCall?.url || call?.request?.request?.url || call?.url || '';
+    return url.startsWith(backendUrl);
+  });
+}
+
 async function handleBlobClick() {
   if (!indiBlob) return;
 
@@ -1183,61 +1226,34 @@ async function handleBlobClick() {
     return;
   }
 
-  // Backend is configured - check if we need to show loading state
+  // Get network calls filtered by backend
+  const networkData = Array.from(recentCallsCache.values()).flat();
+  const filteredCalls = await filterCallsByBackend(networkData);
+
+  // Pass network calls to PageSummary
+  if (pageSummary) {
+    pageSummary.setNetworkCalls(filteredCalls);
+  }
+
+  // Check if we have summary data ready
   const summaryData = indiBlob.getCurrentSummaryData();
   const hasSummary = summaryData || cumulativeSummary;
 
-  if (!hasSummary) {
-    // No data yet - update tooltip with loading state
-    const randomTip = getRandomTip();
-
-    const loadingHTML = `
-      <style>
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to { transform: rotate(360deg); }
-        }
-        .hourglass-spin {
-          display: inline-block;
-          animation: spin 2s linear infinite;
-        }
-      </style>
-      <div style="text-align: center; padding: 16px;">
-        <div class="hourglass-spin" style="font-size: 32px; margin-bottom: 12px;">⏳</div>
-        <div style="font-weight: 700; font-size: 15px; color: #1f2937; margin-bottom: 8px;">
-          Analyzing network...
-        </div>
-        <div style="
-          background: linear-gradient(135deg, #f3e8ff, #e9d5ff);
-          border-left: 3px solid #a78bfa;
-          border-radius: 8px;
-          padding: 12px;
-          margin-top: 12px;
-          text-align: left;
-          box-shadow: 0 2px 8px rgba(167, 139, 250, 0.15);
-        ">
-          <div style="font-size: 11px; font-weight: 600; color: #7c3aed; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
-            💡 Pro Tip
-          </div>
-          <div style="font-size: 13px; color: #374151; line-height: 1.5;">
-            ${randomTip}
-          </div>
-        </div>
-      </div>
-    `;
-
-    const emptySummary = {
-      totalCalls: 0,
-      errorCalls: 0,
-      slowApis: 0,
-      securityIssues: 0,
-      hasIssues: false
-    };
-
-    indiBlob.updateContent(loadingHTML, emptySummary);
+  // Set default tab based on whether summary is ready
+  // If no summary, default to Console tab (always has data)
+  // If summary ready, default to Summary tab
+  if (pageSummary) {
+    pageSummary.setDefaultTabForState(!!hasSummary);
   }
 
-  // Simple toggle
+  // Generate and update content - will show appropriate tab based on state
+  const summaryToUse = cumulativeSummary || pageSummary?.getCurrentSummaryData() || pageSummary?.analyze([]);
+  if (summaryToUse && pageSummary) {
+    const summaryHTML = pageSummary.generateSummaryHTML(summaryToUse);
+    indiBlob.updateContent(summaryHTML, summaryToUse, filteredCalls);
+  }
+
+  // Open the modal immediately
   indiBlob.toggle();
 }
 
@@ -1385,9 +1401,13 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
   // Update Indi's notification count with cumulative count
   indiBlob.setNotifications(totalIssueCount);
 
+  // Filter network calls by backend for Network tab
+  const filteredCalls = await filterCallsByBackend(networkData);
+  pageSummary.setNetworkCalls(filteredCalls);
+
   // Generate HTML summary and update tooltip content (use cumulative summary)
   const summaryHTML = pageSummary.generateSummaryHTML(cumulativeSummary);
-  indiBlob.updateContent(summaryHTML, cumulativeSummary);
+  indiBlob.updateContent(summaryHTML, cumulativeSummary, filteredCalls);
 
   // Store cumulative summary for badge clicks
   issuesSummary = cumulativeSummary;
@@ -2036,6 +2056,11 @@ function getInsightTitle(type: string): string {
 // content.ts - REPLACE allNetworkCalls array with this:
 export const recentCallsCache = new Map<string, NetworkCall[]>();
 const MAX_CALLS_PER_ENDPOINT = 50;
+const MAX_ENDPOINTS_IN_CACHE = 100; // Limit total endpoints to prevent memory bloat
+
+// Reduced limits for inactive tabs to save memory
+const INACTIVE_TAB_MAX_CALLS_PER_ENDPOINT = 10;
+const INACTIVE_TAB_MAX_ENDPOINTS = 20;
 
 async function addToCache(calls: NetworkCall[]) {
   // Filter calls before processing
@@ -2102,22 +2127,65 @@ async function addToCache(calls: NetworkCall[]) {
 }
 
 function addToCacheKey(key: string, call: NetworkCall) {
+  // Don't add to cache if tab is hidden (save memory)
+  if (!isTabVisible) {
+    return;
+  }
+
   const existing = recentCallsCache.get(key) || [];
-  
+
   // Add to front (newest first)
   existing.unshift(call);
-  
+
   // Keep only last 50
   if (existing.length > MAX_CALLS_PER_ENDPOINT) {
     existing.pop(); // Remove oldest
   }
-  
+
   recentCallsCache.set(key, existing);
+
+  // If we have too many endpoints, remove the oldest accessed one
+  if (recentCallsCache.size > MAX_ENDPOINTS_IN_CACHE) {
+    const firstKey = recentCallsCache.keys().next().value;
+    if (firstKey) {
+      recentCallsCache.delete(firstKey);
+    }
+  }
 }
 
 function clearCache() {
   recentCallsCache.clear();
   console.log('🧹 Cache cleared');
+}
+
+/**
+ * Cleanup cache when tab becomes inactive to save memory
+ */
+function cleanupInactiveTabCache() {
+  // Reduce cache size for inactive tabs
+  const endpointsToKeep = INACTIVE_TAB_MAX_ENDPOINTS;
+
+  // Keep only most recent endpoints
+  if (recentCallsCache.size > endpointsToKeep) {
+    const entries = Array.from(recentCallsCache.entries());
+    recentCallsCache.clear();
+
+    // Keep only the last N endpoints
+    entries.slice(0, endpointsToKeep).forEach(([key, calls]) => {
+      // Also limit calls per endpoint
+      const limitedCalls = calls.slice(0, INACTIVE_TAB_MAX_CALLS_PER_ENDPOINT);
+      recentCallsCache.set(key, limitedCalls);
+    });
+  } else {
+    // Just limit calls per endpoint
+    recentCallsCache.forEach((calls, key) => {
+      if (calls.length > INACTIVE_TAB_MAX_CALLS_PER_ENDPOINT) {
+        recentCallsCache.set(key, calls.slice(0, INACTIVE_TAB_MAX_CALLS_PER_ENDPOINT));
+      }
+    });
+  }
+
+  console.log(`🧹 Cleaned cache for inactive tab: ${recentCallsCache.size} endpoints`);
 }
 
 /**
