@@ -513,6 +513,168 @@ async function showSettingsModal() {
 }
 
 /**
+ * Show upgrade modal when user hits flow limit
+ */
+async function showUpgradeModal(flowCount: number) {
+  const INTEREST_KEY = 'indi_pro_interest_submitted';
+
+  // Check if user already submitted interest
+  const result = await chrome.storage.local.get([INTEREST_KEY]);
+  const hasSubmitted = result[INTEREST_KEY];
+
+  if (hasSubmitted) {
+    // User already expressed interest - show simpler message
+    await Swal.fire({
+      title: '🎯 Flow Limit Reached',
+      html: `
+        <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; text-align: left;">
+          <p style="color: #374151; margin-bottom: 16px;">
+            You've already expressed interest in <strong>Indi Mapper Pro</strong>!
+          </p>
+          <p style="color: #6b7280; font-size: 14px;">
+            We'll notify you at <strong>${hasSubmitted.email}</strong> when it launches.
+          </p>
+          <div style="margin-top: 20px; padding: 12px; background: #f3f4f6; border-radius: 8px; border-left: 4px solid #8b5cf6;">
+            <p style="color: #374151; font-size: 13px; margin: 0;">
+              💡 In the meantime, you can manage your existing ${flowCount} flows.
+            </p>
+          </div>
+        </div>
+      `,
+      confirmButtonText: 'Got it',
+      customClass: {
+        popup: 'jira-popup'
+      }
+    });
+    return;
+  }
+
+  // First time - show email collection form
+  const { value: formValues } = await Swal.fire({
+    title: '🎯 Upgrade to Indi Mapper Pro',
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; text-align: left;">
+        <p style="color: #374151; margin-bottom: 16px;">
+          You've reached the free plan limit of <strong>5 flows per domain</strong>.
+        </p>
+        <div style="background: linear-gradient(135deg, #f3e8ff, #e9d5ff); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+          <p style="color: #5b21b6; font-weight: 600; margin: 0 0 8px 0;">✨ Indi Mapper Pro includes:</p>
+          <ul style="color: #6b21a8; margin: 0; padding-left: 20px; font-size: 14px;">
+            <li>Unlimited flows</li>
+            <li>Advanced analytics</li>
+            <li>Priority support</li>
+          </ul>
+        </div>
+        <p style="color: #6b7280; font-size: 14px; margin-bottom: 12px;">
+          Interested? Enter your email and we'll notify you when it's available!
+        </p>
+        <input
+          id="upgrade-email"
+          type="email"
+          class="swal2-input"
+          placeholder="your.email@example.com"
+          style="margin: 0; width: calc(100% - 20px);"
+        >
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonText: 'Notify Me',
+    cancelButtonText: 'Maybe Later',
+    customClass: {
+      popup: 'jira-popup'
+    },
+    preConfirm: () => {
+      const emailInput = document.getElementById('upgrade-email') as HTMLInputElement;
+      const email = emailInput?.value?.trim();
+
+      if (!email) {
+        Swal.showValidationMessage('Please enter your email');
+        return false;
+      }
+
+      // Basic email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        Swal.showValidationMessage('Please enter a valid email address');
+        return false;
+      }
+
+      return { email };
+    }
+  });
+
+  if (formValues?.email) {
+    // Send email via Web3Forms
+    try {
+      const response = await fetch('https://api.web3forms.com/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          access_key: 'acc914d7-9d0a-43b0-9bc5-e9ea0bf8e1ba',
+          email: formValues.email,
+          message: `🚀 Indi Mapper Pro - Upgrade Interest
+
+Email: ${formValues.email}
+Domain: ${window.location.hostname}
+Flows on this domain: ${flowCount}/5
+Timestamp: ${new Date().toLocaleString()}
+Source: Flow Limit Reached
+
+User has reached the free plan limit (5 flows per domain) and wants to upgrade to Indi Mapper Pro.`,
+          from_name: 'Indi Mapper Extension',
+          subject: '🚀 Indi Mapper Pro - Upgrade Interest'
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to send email');
+      }
+
+      // Save submission to storage
+      await chrome.storage.local.set({
+        [INTEREST_KEY]: {
+          email: formValues.email,
+          timestamp: Date.now(),
+          flowCount
+        }
+      });
+
+      // Show success message
+      await Swal.fire({
+        icon: 'success',
+        title: '✅ Thanks for your interest!',
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;">
+            <p style="color: #374151;">
+              We'll email you at <strong>${formValues.email}</strong> when Indi Mapper Pro launches.
+            </p>
+            <p style="color: #6b7280; font-size: 14px; margin-top: 12px;">
+              In the meantime, you can manage your existing ${flowCount} flows.
+            </p>
+          </div>
+        `,
+        confirmButtonText: 'Got it',
+        customClass: {
+          popup: 'jira-popup'
+        }
+      });
+    } catch (error) {
+      console.error('Failed to submit upgrade interest:', error);
+      await Swal.fire({
+        icon: 'error',
+        title: 'Submission Failed',
+        text: 'Unable to submit your interest. Please try again later.',
+        customClass: {
+          popup: 'jira-popup'
+        }
+      });
+    }
+  }
+}
+
+/**
  * Set up Indi-specific event listeners
  */
 function setupIndiEventListeners() {
@@ -623,6 +785,16 @@ async function handleCreateFlowClick(button: HTMLElement) {
       });
     }
   } else {
+    // Start recording - Check flow limit first (per domain)
+    const flowCount = await FlowStorage.countFlowsForDomain();
+    const FREE_PLAN_LIMIT = 5;
+
+    if (flowCount >= FREE_PLAN_LIMIT) {
+      // User has reached limit - show upgrade modal
+      await showUpgradeModal(flowCount);
+      return;
+    }
+
     // Start recording
     const { value: flowName } = await Swal.fire({
       title: '🔴 Start Recording',

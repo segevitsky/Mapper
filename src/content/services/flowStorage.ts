@@ -45,6 +45,14 @@ export class FlowStorage {
   }
 
   /**
+   * Count flows for a specific domain (or current domain if not specified)
+   */
+  static async countFlowsForDomain(domain?: string): Promise<number> {
+    const flows = await this.getFlowsForDomain(domain);
+    return flows.length;
+  }
+
+  /**
    * Get flows for current domain
    */
   static async getFlowsForDomain(domain?: string): Promise<IndiFlow[]> {
