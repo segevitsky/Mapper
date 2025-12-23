@@ -1,8 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "Indi - Mapper",
-  "version": "1.0",
-  "description": "Map UI elements to API calls",
+  "name": "Indi Mapper - Developer Tool",
+  "version": "1.1.0",
+  "description": "Developer tool for QA and debugging: Map UI elements to API network calls. For developers and QA teams only.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Indi Mapper"
+  },
   "permissions": [
     "storage",
     "webRequest",

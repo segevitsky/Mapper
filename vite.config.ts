@@ -5,11 +5,16 @@ import path from "path";
 export default defineConfig({
   plugins: [react()],
   build: {
-    minify: false,
+    minify: 'terser', // Enable minification for production
     terserOptions: {
-      sourceMap: true,
+      sourceMap: false, // Disable source maps in terser
+      compress: {
+        drop_console: true, // Remove console.log statements
+        drop_debugger: true, // Remove debugger statements
+      },
+      mangle: true, // Obfuscate variable names
     },
-    sourcemap: 'inline', // Use inline source maps for content scripts to avoid CSP blocking
+    sourcemap: false, // Disable source maps completely for production
     outDir: "dist",
     emptyOutDir: true,
     rollupOptions: {
@@ -24,7 +29,6 @@ export default defineConfig({
       output: {
         entryFileNames: "[name].js",
         assetFileNames: "[name][extname]",
-        sourcemapExcludeSources: false,
       },
     },
   },
