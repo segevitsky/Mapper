@@ -83,16 +83,19 @@ export class IndiBlob {
       position: fixed;
       bottom: 160px;
       right: 40px;
-      background: #fff;
+      background: #ffffff;
       border-radius: 16px;
       padding: 16px;
       min-width: 280px;
       max-width: 350px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
       z-index: 999997;
       display: none;
       transform: translateY(10px);
       transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+      color: #1f2937 !important;
+      font-weight: 500 !important;
+      font-size: 14px !important;
     `;
 
     // Add arrow pointing to blob
@@ -495,6 +498,8 @@ export class IndiBlob {
         letter-spacing: normal !important;
         word-spacing: normal !important;
         text-transform: none !important;
+        color: #1f2937 !important;
+        font-weight: 500 !important;
       }
       /* ==================== END CSS RESET ==================== */
 
@@ -665,9 +670,10 @@ export class IndiBlob {
         display: none;
         align-items: center;
         justify-content: center;
-        font-size: 15px;
-        font-weight: 800;
-        color: white;
+        font-size: 15px !important;
+        font-weight: 800 !important;
+        color: #ffffff !important;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         box-shadow: 0 4px 20px rgba(255, 71, 87, 0.6);
         cursor: pointer;
         z-index: 20;

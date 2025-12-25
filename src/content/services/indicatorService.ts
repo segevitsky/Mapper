@@ -446,22 +446,26 @@ indicator.addEventListener('mouseenter', () => {
             .indi-tooltip {
                 position: fixed;
                 background: linear-gradient(to right, rgb(255, 129, 119) 0%, rgb(255, 134, 122) 0%, rgb(255, 140, 127) 21%, rgb(249, 145, 133) 52%, rgb(207, 85, 108) 78%, rgb(177, 42, 91) 100%);
-                color: white !important;
+                color: #ffffff !important;
                 padding: 12px 20px;
                 border-radius: 10px;
                 max-width: 200px;
                 text-align: center;
                 line-height: 1.4;
-                font-size: 14px;
-                font-weight: 600;
+                font-size: 14px !important;
+                font-weight: 700 !important;
                 z-index: 999999;
                 box-shadow: 0 4px 15px rgba(177, 42, 91, 0.3);
-                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+                text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
                 white-space: pre-line;
                 word-wrap: break-word;
                 pointer-events: none;
                 opacity: 0;
                 transition: opacity 0.3s ease;
+            }
+            .indi-tooltip * {
+                color: #ffffff !important;
+                font-weight: 700 !important;
             }
         `;
         document.head.appendChild(style);
@@ -647,14 +651,15 @@ indicator.addEventListener("click", async () => {
         position: fixed;
         top: 10rem;
         left: 33%;
-        background: #fff;
+        background: #ffffff;
         padding: 12px 16px;
         border-radius: 8px;
-        font-size: 13px;
+        font-size: 13px !important;
         line-height: 1.4;
-        color: #333;
+        color: #1f2937 !important;
+        font-weight: 500 !important;
         z-index: 999999;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
         border-left: 3px solid #cf556c;
         transform-origin: center;
         direction: ltr;
@@ -733,27 +738,23 @@ indicator.addEventListener("click", async () => {
   <div style="margin-bottom: 16px;">
     <div style="margin-bottom: 12px;">
       <div style="
-        font-size: 12px;
-        font-weight: 600;
-        color: #6b7280;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        color: #cf556c !important;
         text-transform: uppercase;
         letter-spacing: 1px;
         margin-bottom: 4px;
-        background: linear-gradient(to right, #ff8177, #cf556c);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
       ">
         Name:
       </div>
       <div style="
-        font-size: 14px;
-        color: ${currentData?.name || parsedDataFromAttr?.name ? '#374151' : '#9ca3af'};
-        font-weight: 500;
+        font-size: 14px !important;
+        color: ${currentData?.name || parsedDataFromAttr?.name ? '#1f2937' : '#6b7280'} !important;
+        font-weight: 500 !important;
         padding: 8px 12px;
-        background: rgba(255, 255, 255, 0.6);
+        background: rgba(255, 255, 255, 0.9);
         border-radius: 8px;
-        border: 1px solid rgba(255, 129, 119, 0.1);
+        border: 1px solid rgba(255, 129, 119, 0.2);
         ${!currentData?.name && !parsedDataFromAttr?.name ? 'font-style: italic;' : ''}
       ">
         ${currentData?.name || parsedDataFromAttr?.name || "-"}
@@ -761,27 +762,23 @@ indicator.addEventListener("click", async () => {
     </div>
     <div style="margin-bottom: 12px;">
       <div style="
-        font-size: 12px;
-        font-weight: 600;
-        color: #6b7280;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        color: #cf556c !important;
         text-transform: uppercase;
         letter-spacing: 1px;
         margin-bottom: 4px;
-        background: linear-gradient(to right, #ff8177, #cf556c);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
       ">
         Description:
       </div>
       <div style="
-        font-size: 14px;
-        color: ${currentData?.description || parsedDataFromAttr?.description ? '#374151' : '#9ca3af'};
-        font-weight: 500;
+        font-size: 14px !important;
+        color: ${currentData?.description || parsedDataFromAttr?.description ? '#1f2937' : '#6b7280'} !important;
+        font-weight: 500 !important;
         padding: 8px 12px;
-        background: rgba(255, 255, 255, 0.6);
+        background: rgba(255, 255, 255, 0.9);
         border-radius: 8px;
-        border: 1px solid rgba(255, 129, 119, 0.1);
+        border: 1px solid rgba(255, 129, 119, 0.2);
         ${!currentData?.description && !parsedDataFromAttr?.description ? 'font-style: italic;' : ''}
       ">
         ${currentData?.description || parsedDataFromAttr?.description || '-'}
@@ -790,15 +787,16 @@ indicator.addEventListener("click", async () => {
   </div>
 
   <div class='indi-url' style="
-    background: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
     padding: 14px;
     border-radius: 12px;
-    color: #374151;
-    font-size: 13px;
+    color: #1f2937 !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
     word-break: break-all;
     margin: 8px 0 16px 0;
-    border: 1px solid rgba(255, 129, 119, 0.2);
+    border: 1px solid rgba(255, 129, 119, 0.3);
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   ">
@@ -810,10 +808,10 @@ indicator.addEventListener("click", async () => {
       parsedDataFromAttr?.status === 200 || currentData?.lastCall?.status === 200
         ? "#059669"
         : "#dc2626"
-    };
+    } !important;
     margin-bottom: 20px;
-    font-weight: 600;
-    font-size: 15px;
+    font-weight: 700 !important;
+    font-size: 15px !important;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -958,13 +956,13 @@ indicator.addEventListener("click", async () => {
   </div>
 
   <div style="
-    color: #6b7280;
-    font-size: 11px;
+    color: #6b7280 !important;
+    font-size: 11px !important;
     text-align: center;
     margin-top: 16px;
     padding-top: 16px;
     border-top: 1px solid rgba(255, 129, 119, 0.1);
-    font-weight: 500;
+    font-weight: 600 !important;
     text-transform: uppercase;
     letter-spacing: 1px;
   ">
@@ -2063,11 +2061,11 @@ export function injectStyles() {
     /* Font Override */
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif !important;
     font-size: 14px !important;
-    font-weight: 400 !important;
+    font-weight: 500 !important;
     line-height: 1.5 !important;
 
     /* Reset common inherited properties */
-    color: inherit !important;
+    color: #1f2937 !important;
     letter-spacing: normal !important;
     word-spacing: normal !important;
     text-transform: none !important;

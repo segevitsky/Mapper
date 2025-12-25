@@ -216,7 +216,7 @@ export class PageSummary {
    */
   public generateSummaryHTML(summary: PageSummaryData): string {
     return `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1f2937 !important; font-weight: 500 !important;">
         ${this.generateTabNav()}
         ${this.generateTabContent(summary)}
         ${this.generateActionButtons()}
@@ -337,13 +337,13 @@ export class PageSummary {
     return `
       <div style="display: grid; gap: 8px; font-size: 14px;">
         <div style="display: flex; justify-content: space-between;">
-          <span style="color: #6b7280;">⏱️ Total API Time:</span>
-          <span style="font-weight: 600; color: #1f2937;">${(summary.totalTime / 1000).toFixed(2)}s</span>
+          <span style="color: #4b5563 !important; font-weight: 500 !important;">⏱️ Total API Time:</span>
+          <span style="font-weight: 700 !important; color: #1f2937 !important;">${(summary.totalTime / 1000).toFixed(2)}s</span>
         </div>
 
         <div style="display: flex; justify-content: space-between;">
-          <span style="color: #6b7280;">🌐 API Calls:</span>
-          <span style="font-weight: 600; color: #1f2937;">${summary.totalCalls}</span>
+          <span style="color: #4b5563 !important; font-weight: 500 !important;">🌐 API Calls:</span>
+          <span style="font-weight: 700 !important; color: #1f2937 !important;">${summary.totalCalls}</span>
         </div>
 
         ${summary.errorCalls > 0 ? `
@@ -354,8 +354,8 @@ export class PageSummary {
         ` : ''}
 
         <div style="display: flex; justify-content: space-between;">
-          <span style="color: #6b7280;">⚡ Avg Response:</span>
-          <span style="font-weight: 600; color: ${summary.averageResponseTime > this.slowCallThreshold ? '#f59e0b' : '#10b981'};">
+          <span style="color: #4b5563 !important; font-weight: 500 !important;">⚡ Avg Response:</span>
+          <span style="font-weight: 700 !important; color: ${summary.averageResponseTime > this.slowCallThreshold ? '#f59e0b' : '#10b981'} !important;">
             ${summary.averageResponseTime}ms
           </span>
         </div>
@@ -411,9 +411,9 @@ export class PageSummary {
   private generateNetworkTab(): string {
     if (this.networkCalls.length === 0) {
       return `
-        <div style="text-align: center; padding: 40px 20px; color: #9ca3af;">
+        <div style="text-align: center; padding: 40px 20px; color: #6b7280 !important;">
           <div style="font-size: 40px; margin-bottom: 12px;">🌐</div>
-          <div style="font-size: 14px;">No network calls captured yet</div>
+          <div style="font-size: 14px !important; font-weight: 600 !important; color: #6b7280 !important;">No network calls captured yet</div>
         </div>
       `;
     }
@@ -773,10 +773,10 @@ export class PageSummary {
 
     if (logs.length === 0) {
       return `
-        <div style="text-align: center; padding: 40px 20px; color: #9ca3af;">
+        <div style="text-align: center; padding: 40px 20px; color: #6b7280 !important;">
           <div style="font-size: 40px; margin-bottom: 12px;">📋</div>
-          <div style="font-size: 14px;">No console logs captured yet</div>
-          <div style="font-size: 12px; color: #6b7280; margin-top: 8px;">Logs will appear here as they occur</div>
+          <div style="font-size: 14px !important; font-weight: 600 !important; color: #6b7280 !important;">No console logs captured yet</div>
+          <div style="font-size: 12px !important; color: #9ca3af !important; margin-top: 8px; font-weight: 500 !important;">Logs will appear here as they occur</div>
         </div>
       `;
     }
