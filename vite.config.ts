@@ -7,14 +7,14 @@ export default defineConfig({
   build: {
     minify: 'terser', // Enable minification for production
     terserOptions: {
-      sourceMap: false, // Disable source maps in terser
+      sourceMap: true, // Disable source maps in terser
       compress: {
         drop_console: true, // Remove console.log statements
         drop_debugger: true, // Remove debugger statements
       },
       mangle: true, // Obfuscate variable names
     },
-    sourcemap: false, // Disable source maps completely for production
+    sourcemap: "inline", // Disable source maps completely for production
     outDir: "dist",
     emptyOutDir: true,
     rollupOptions: {

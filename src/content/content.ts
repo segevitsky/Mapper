@@ -7,6 +7,13 @@ import { SecurityEngine } from "../utils/securityEngine";
 import { SecurityIssue } from "../types/security";
 import { consoleCapture } from './services/consoleCapture';
 
+// Prevent content script from running multiple times
+if ((window as any).__INDI_CONTENT_SCRIPT_LOADED__) {
+  console.warn('⚠️ Indi content script already loaded, preventing duplicate initialization');
+  throw new Error('Content script already loaded');
+}
+(window as any).__INDI_CONTENT_SCRIPT_LOADED__ = true;
+
 // Track if this tab is currently visible
 let isTabVisible = !document.hidden;
 import { IndicatorMonitor } from "./services/indicatorMonitor";
@@ -682,6 +689,14 @@ function setupIndiEventListeners() {
   document.removeEventListener('indi-blob-clicked', handleBlobClick);
   // Listen for Indi blob clicks
   document.addEventListener('indi-blob-clicked', handleBlobClick);
+
+  // Listen for minimize event
+  document.removeEventListener('indi-minimized', handleIndiMinimized);
+  document.addEventListener('indi-minimized', handleIndiMinimized);
+
+  // Listen for restore event
+  document.removeEventListener('indi-restored', handleIndiRestored);
+  document.addEventListener('indi-restored', handleIndiRestored);
 
   // Listen for tab visibility changes to save memory
   document.addEventListener('visibilitychange', () => {
@@ -1369,64 +1384,192 @@ function generatePlaybackResultHTML(result: any): string {
 }
 
 /**
- * Filter network calls by configured backend URL
+ * Cache for backend URL to avoid repeated chrome.storage calls
  */
-async function filterCallsByBackend(calls: NetworkCall[]): Promise<NetworkCall[]> {
+let cachedBackendUrl: string | null | undefined = undefined; // undefined = not fetched yet
+let backendUrlCacheTime: number = 0;
+const BACKEND_URL_CACHE_TTL = 5000; // 5 seconds cache
+
+/**
+ * Get cached backend URL or fetch from storage
+ */
+async function getCachedBackendUrl(): Promise<string | null> {
+  const now = Date.now();
+
+  // Return cached value if still valid (and has been fetched at least once)
+  if (cachedBackendUrl !== undefined && (now - backendUrlCacheTime) < BACKEND_URL_CACHE_TTL) {
+    return cachedBackendUrl ?? null; // Ensure we never return undefined
+  }
+
+  // Fetch from storage
   const hostname = window.location.hostname;
   const key = `indi_onboarding_${hostname}`;
   const result = await chrome.storage.local.get([key]);
-  const backendUrl = result[key]?.selectedBackendUrl;
+  cachedBackendUrl = result[key]?.selectedBackendUrl || null;
+  backendUrlCacheTime = now;
 
-  if (!backendUrl) return calls;
+  return cachedBackendUrl ?? null; // Ensure we never return undefined
+}
+
+/**
+ * Filter network calls by configured backend URL (optimized with caching)
+ */
+async function filterCallsByBackend(calls: NetworkCall[]): Promise<NetworkCall[]> {
+  const backendUrl = await getCachedBackendUrl();
+
+  if (!backendUrl) {
+    // Even without backend URL, filter out OPTIONS calls
+    return calls.filter(call => {
+      const method = call?.request?.request?.method || call?.method || '';
+      return method.toUpperCase() !== 'OPTIONS';
+    });
+  }
 
   return calls.filter(call => {
     const url = call?.lastCall?.url || call?.request?.request?.url || call?.url || '';
-    return url.startsWith(backendUrl);
+    const method = call?.request?.request?.method || call?.method || '';
+
+    // Filter by backend URL AND exclude OPTIONS calls
+    return url.startsWith(backendUrl) && method.toUpperCase() !== 'OPTIONS';
   });
 }
 
+// Debounce flag to prevent double-calls
+let isHandlingBlobClick = false;
+
 async function handleBlobClick() {
+  console.log('📨 handleBlobClick received event');
   if (!indiBlob) return;
 
-  // Check cached backend config (no async needed!)
-  if (!indiBlob.isConfigured()) {
-    // Backend not configured - show onboarding
-    if (onboardingFlow) {
-      const networkData = Array.from(recentCallsCache.values()).flat();
-      await onboardingFlow.startWithNetworkData(networkData);
-    }
+  // Prevent rapid double-calls
+  if (isHandlingBlobClick) {
+    console.log('🚫 Ignoring duplicate blob click');
     return;
   }
 
-  // Get network calls filtered by backend
-  const networkData = Array.from(recentCallsCache.values()).flat();
-  const filteredCalls = await filterCallsByBackend(networkData);
+  isHandlingBlobClick = true;
 
-  // Pass network calls to PageSummary
-  if (pageSummary) {
-    pageSummary.setNetworkCalls(filteredCalls);
+  try {
+    // Check cached backend config (no async needed!)
+    if (!indiBlob.isConfigured()) {
+      // Backend not configured - show onboarding
+      if (onboardingFlow) {
+        const networkData = Array.from(recentCallsCache.values()).flat();
+        await onboardingFlow.startWithNetworkData(networkData);
+      }
+      return;
+    }
+
+    // OPTIMIZATION: Open modal IMMEDIATELY for instant feedback
+    // Check if we have existing summary to show
+    const existingSummary = cumulativeSummary || indiBlob.getCurrentSummaryData();
+
+    if (existingSummary) {
+      // We have data - show it immediately, then update in background
+      indiBlob.toggle();
+
+      // Now do the heavy work in background
+      const networkData = Array.from(recentCallsCache.values()).flat();
+      const filteredCalls = await filterCallsByBackend(networkData);
+
+      if (pageSummary) {
+        pageSummary.setNetworkCalls(filteredCalls);
+        pageSummary.setDefaultTabForState(true);
+
+        // Update with latest data
+        const summaryHTML = pageSummary.generateSummaryHTML(existingSummary);
+        indiBlob.updateContent(summaryHTML, existingSummary, filteredCalls);
+      }
+    } else {
+      // No existing data - need to fetch and analyze first
+      const networkData = Array.from(recentCallsCache.values()).flat();
+      const filteredCalls = await filterCallsByBackend(networkData);
+
+      if (pageSummary) {
+        pageSummary.setNetworkCalls(filteredCalls);
+
+        const summaryToUse = pageSummary?.analyze(filteredCalls) || pageSummary?.getCurrentSummaryData();
+        const hasSummary = !!summaryToUse;
+
+        pageSummary.setDefaultTabForState(hasSummary);
+
+        if (summaryToUse) {
+          const summaryHTML = pageSummary.generateSummaryHTML(summaryToUse);
+          indiBlob.updateContent(summaryHTML, summaryToUse, filteredCalls);
+        }
+      }
+
+      // Open modal after content is ready
+      indiBlob.toggle();
+    }
+  } finally {
+    // Reset the flag after a short delay
+    setTimeout(() => {
+      isHandlingBlobClick = false;
+    }, 100); // Reduced from 300ms to 100ms
   }
+}
 
-  // Check if we have summary data ready
-  const summaryData = indiBlob.getCurrentSummaryData();
-  const hasSummary = summaryData || cumulativeSummary;
+/**
+ * Handle Indi minimized event - detach debugger
+ */
+async function handleIndiMinimized() {
+  console.log('😴 Indi minimized - requesting debugger detach');
 
-  // Set default tab based on whether summary is ready
-  // If no summary, default to Console tab (always has data)
-  // If summary ready, default to Summary tab
-  if (pageSummary) {
-    pageSummary.setDefaultTabForState(!!hasSummary);
+  try {
+    // Don't send tabId - background will get it from sender.tab.id
+    const response = await chrome.runtime.sendMessage({
+      type: 'DETACH_DEBUGGER'
+    });
+
+    if (response?.success) {
+      console.log('✅ Debugger detached successfully');
+    } else {
+      console.warn('⚠️ Failed to detach debugger:', response?.error);
+    }
+  } catch (error) {
+    console.error('❌ Error detaching debugger:', error);
   }
+}
 
-  // Generate and update content - will show appropriate tab based on state
-  const summaryToUse = cumulativeSummary || pageSummary?.getCurrentSummaryData() || pageSummary?.analyze([]);
-  if (summaryToUse && pageSummary) {
-    const summaryHTML = pageSummary.generateSummaryHTML(summaryToUse);
-    indiBlob.updateContent(summaryHTML, summaryToUse, filteredCalls);
+/**
+ * Handle Indi restored event - re-attach debugger
+ */
+async function handleIndiRestored() {
+  console.log('👀 Indi restored - requesting debugger re-attach');
+
+  try {
+    // Don't send tabId - background will get it from sender.tab.id
+    const response = await chrome.runtime.sendMessage({
+      type: 'REATTACH_DEBUGGER'
+    });
+
+    if (response?.success) {
+      console.log('✅ Debugger re-attached successfully');
+
+      // Show brief confirmation to user
+      if (speechBubble && !indiBlob?.getMuteState()) {
+        speechBubble.show({
+          title: '👀 Monitoring resumed!',
+          message: 'I\'m back to watching your APIs',
+          actions: [],
+          showClose: false,
+          persistent: false
+        });
+
+        // Auto-hide after 2 seconds
+        setTimeout(() => {
+          if (speechBubble) {
+            speechBubble.hide();
+          }
+        }, 2000);
+      }
+    } else {
+      console.warn('⚠️ Failed to re-attach debugger:', response?.error);
+    }
+  } catch (error) {
+    console.error('❌ Error re-attaching debugger:', error);
   }
-
-  // Open the modal immediately
-  indiBlob.toggle();
 }
 
 // Track cumulative issues for the current page
@@ -1553,21 +1696,82 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
     // First batch - use current summary as base
     cumulativeSummary = { ...summary };
   } else {
-    // Merge new batch into cumulative summary
-    cumulativeSummary.errorCalls = cumulativeErrorCalls.size;
-    cumulativeSummary.securityIssues = cumulativeSecurityIssues.size;
-    cumulativeSummary.apisWithoutAuth = Array.from(cumulativeSecurityIssues);
+    // CRITICAL FIX: Merge ALL fields from new batch into cumulative summary
+    // This ensures no fields disappear when new traffic arrives
 
-    // Update slowest API if new batch has slower one
-    if (summary.slowestApi && cumulativeSlowApis.has(summary.slowestApi.url)) {
+    // Aggregate timing (accumulate total time)
+    cumulativeSummary.totalTime = (cumulativeSummary.totalTime || 0) + (summary.totalTime || 0);
+
+    // Aggregate counts
+    cumulativeSummary.totalCalls = (cumulativeSummary.totalCalls || 0) + (summary.totalCalls || 0);
+    cumulativeSummary.successfulCalls = (cumulativeSummary.successfulCalls || 0) + (summary.successfulCalls || 0);
+    cumulativeSummary.errorCalls = cumulativeErrorCalls.size; // Use cumulative set
+    cumulativeSummary.warningCalls = (cumulativeSummary.warningCalls || 0) + (summary.warningCalls || 0);
+
+    // Aggregate durations array for average calculation
+    const allDurations = [...(cumulativeSummary.durations || []), ...(summary.durations || [])];
+    cumulativeSummary.durations = allDurations;
+
+    // Recalculate average response time from all durations
+    cumulativeSummary.averageResponseTime = allDurations.length > 0
+      ? Math.round(allDurations.reduce((sum, d) => sum + d, 0) / allDurations.length)
+      : 0;
+
+    // Update slowest API (keep the slowest ever seen)
+    if (summary.slowestApi) {
       if (!cumulativeSummary.slowestApi || summary.slowestApi.duration > cumulativeSummary.slowestApi.duration) {
         cumulativeSummary.slowestApi = summary.slowestApi;
       }
     }
 
+    // Update fastest API (keep the fastest ever seen)
+    if (summary.fastestApi) {
+      if (!cumulativeSummary.fastestApi || summary.fastestApi.duration < cumulativeSummary.fastestApi.duration) {
+        cumulativeSummary.fastestApi = summary.fastestApi;
+      }
+    }
+
+    // Aggregate data transfer
+    cumulativeSummary.totalDataTransferred = (cumulativeSummary.totalDataTransferred || 0) + (summary.totalDataTransferred || 0);
+    cumulativeSummary.totalDataTransferredMB = (cumulativeSummary.totalDataTransferred / (1024 * 1024)).toFixed(2);
+
+    // Update most called API (track across all batches via Map)
+    if (summary.mostCalledApi) {
+      // We should track this globally, but for now just use the latest if it has higher count
+      if (!cumulativeSummary.mostCalledApi || summary.mostCalledApi.count > cumulativeSummary.mostCalledApi.count) {
+        cumulativeSummary.mostCalledApi = summary.mostCalledApi;
+      }
+    }
+
+    // Aggregate unique endpoints count
+    cumulativeSummary.uniqueEndpoints = (cumulativeSummary.uniqueEndpoints || 0) + (summary.uniqueEndpoints || 0);
+
+    // Merge new APIs arrays
+    const existingNewApis = cumulativeSummary.newApis || [];
+    const newNewApis = summary.newApis || [];
+    cumulativeSummary.newApis = [...existingNewApis, ...newNewApis];
+
+    // Update security issues
+    cumulativeSummary.securityIssues = cumulativeSecurityIssues.size;
+    cumulativeSummary.apisWithoutAuth = Array.from(cumulativeSecurityIssues);
+
     // Update issue flags
     cumulativeSummary.hasIssues = totalIssueCount > 0;
     cumulativeSummary.issueCount = totalIssueCount;
+
+    // Update timestamp fields if present
+    if (summary.firstApiTime !== undefined) {
+      cumulativeSummary.firstApiTime = Math.min(
+        cumulativeSummary.firstApiTime || Infinity,
+        summary.firstApiTime
+      );
+    }
+    if (summary.lastApiTime !== undefined) {
+      cumulativeSummary.lastApiTime = Math.max(
+        cumulativeSummary.lastApiTime || 0,
+        summary.lastApiTime
+      );
+    }
   }
 
   // Update Indi's notification count with cumulative count
@@ -1653,10 +1857,63 @@ function showIndividualNotifications(networkData: NetworkCall[]) {
       notifiedSlowUrls.add(url);
 
       const urlDisplay = url.length > 50 ? '...' + url.slice(-47) : url;
+      const timeSavings = Math.round(duration - slowCallThreshold);
+      const speedupFactor = (duration / slowCallThreshold).toFixed(1);
+
+      // Create expandable tips section
+      const tipsHTML = `
+        <details style="margin-top: 12px; cursor: pointer;">
+          <summary style="
+            font-size: 12px;
+            font-weight: 600;
+            color: #374151;
+            padding: 6px 0;
+            user-select: none;
+          ">
+            🔧 Quick fixes that usually work →
+          </summary>
+          <div style="
+            margin-top: 8px;
+            padding: 10px;
+            background: #f9fafb;
+            border-radius: 6px;
+            font-size: 11px;
+            line-height: 1.6;
+            color: #4b5563;
+          ">
+            <div style="margin-bottom: 8px;">
+              <strong>• Add caching</strong> (Redis/memory)<br/>
+              <span style="color: #6b7280;">5-10min TTL → ~80% faster</span>
+            </div>
+            <div style="margin-bottom: 8px;">
+              <strong>• Check for N+1 queries</strong><br/>
+              <span style="color: #6b7280;">Look for loops in backend → 50-90% faster</span>
+            </div>
+            <div style="margin-bottom: 8px;">
+              <strong>• Add pagination</strong><br/>
+              <span style="color: #6b7280;">Limit to 20-50 items → 60-80% faster</span>
+            </div>
+            <div>
+              <strong>• Use database indexes</strong><br/>
+              <span style="color: #6b7280;">On search/filter columns → 70-95% faster</span>
+            </div>
+          </div>
+        </details>
+      `;
 
       speechBubble!.show({
-        title: '⚡ Slow API Detected',
-        message: `${method} ${urlDisplay}\n${Math.round(duration)}ms (>${slowCallThreshold}ms)`,
+        title: '⚡ Quick Win Available',
+        message: `This call's taking ${(duration / 1000).toFixed(1)} seconds\nYour target: ${(slowCallThreshold / 1000).toFixed(1)}s\n\n💚 Fix this → Save ${(timeSavings / 1000).toFixed(1)}s\nYour users will get data ${speedupFactor}x faster`,
+        customContent: (() => {
+          const div = document.createElement('div');
+          div.innerHTML = `
+            <div style="margin-top: 8px; padding: 8px; background: #fef3c7; border-radius: 6px; font-size: 11px; font-family: monospace; color: #78350f; word-break: break-all;">
+              ${method} ${urlDisplay}
+            </div>
+            ${tipsHTML}
+          `;
+          return div;
+        })(),
         bypassMute: false,
         actions: [
           {
@@ -1851,13 +2108,13 @@ async function showDetailedIssuesModal(summary: PageSummaryData) {
     html += '</div></div>';
   }
 
-  // Slow APIs Section
+  // Quick Wins Section (formerly Slow APIs)
   if (cumulativeSlowCalls.length > 0) {
     const slowCount = cumulativeSlowCalls.length;
     html += `
       <div style="margin-bottom: 24px;">
-        <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #ea580c; display: flex; align-items: center; gap: 8px;">
-          ⚡ Slow APIs (${slowCount}) <span style="font-size: 12px; font-weight: normal; color: #6b7280;">>&nbsp;${slowCallThreshold}ms</span>
+        <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #f59e0b; display: flex; align-items: center; gap: 8px;">
+          ⚡ Quick Wins Available (${slowCount}) <span style="font-size: 12px; font-weight: normal; color: #6b7280;">>&nbsp;${slowCallThreshold}ms</span>
         </h3>
         <div style="max-height: 300px; overflow-y: auto;">
     `;
@@ -2036,11 +2293,11 @@ async function showDetailedIssuesModal(summary: PageSummaryData) {
 
   // Show draggable Swal modal
   const result = await Swal.fire({
-    title: '📊 Detailed Issues Report',
+    title: '📊 Detailed Report',
     html: html,
     width: '700px',
     showConfirmButton: true,
-    confirmButtonText: '🗑️ Clear All Issues',
+    confirmButtonText: '🗑️ Clear Report',
     confirmButtonColor: '#ef4444',
     showCancelButton: true,
     cancelButtonText: 'Close',

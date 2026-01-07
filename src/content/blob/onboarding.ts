@@ -16,6 +16,7 @@ export class OnboardingFlow {
   private currentStep: number = 0;
   private detectedUrls: string[] = [];
   private selectedUrl: string = '';
+  private isReconfiguring: boolean = false; // Track if we're in reconfiguration mode
 
   constructor(indiBlob: IndiBlob, speechBubble: SpeechBubble) {
     this.indiBlob = indiBlob;
@@ -26,6 +27,9 @@ export class OnboardingFlow {
    * Start onboarding with network data from NETWORK_IDLE
    */
   public async startWithNetworkData(networkData: any[], restart?: boolean): Promise<void> {
+    // Track if we're reconfiguring (bypass mute in this case)
+    this.isReconfiguring = restart || false;
+
     // Check if already onboarded for this domain
     const state = await this.getOnboardingState();
     if (!restart) {
@@ -99,6 +103,7 @@ export class OnboardingFlow {
     this.speechBubble.show({
       title: '🫧 Hi! I\'m Indi Blob!',
       message: 'Think of me as your API watchdog...\nexcept cuter and way less annoying.',
+      bypassMute: this.isReconfiguring, // Allow reconfiguration even when muted
       actions: [
         {
           label: 'Let\'s Go! 🚀',
@@ -123,6 +128,7 @@ export class OnboardingFlow {
       this.speechBubble.show({
         title: 'Hmm... 🤔',
         message: 'I haven\'t detected any API calls yet.\n\nTry interacting with the site (click buttons, load data), then I\'ll check again!',
+        bypassMute: this.isReconfiguring, // Allow reconfiguration even when muted
         actions: [
           {
             label: 'I Interacted, Check Again',
@@ -151,6 +157,7 @@ export class OnboardingFlow {
     this.speechBubble.show({
       title: 'Let me get to know your app:',
       message: 'I detected these API calls on this page.\nWhich one is YOUR backend?',
+      bypassMute: this.isReconfiguring, // Allow reconfiguration even when muted
       customContent: urlList,
       actions: [],
       showClose: false,
@@ -266,6 +273,7 @@ export class OnboardingFlow {
 🔒 Finding security gaps
 💡 Suggesting indicators to track
 📊 Full insights in the expanded panel`,
+      bypassMute: this.isReconfiguring, // Allow reconfiguration even when muted
       actions: [
         {
           label: 'Start Monitoring! 🎯',
@@ -287,6 +295,7 @@ export class OnboardingFlow {
     this.speechBubble.show({
       title: 'Ready? Let\'s go! 🚀',
       message: 'If something breaks, I\'ll let you know.\nIf everything\'s good, I\'ll just vibe here. 😎\n\n🫧 Click me anytime for the full view\n📊 Or check DevTools → Indi panel',
+      bypassMute: this.isReconfiguring, // Allow reconfiguration even when muted
       actions: [
         {
           label: 'Got it!',
@@ -327,6 +336,7 @@ export class OnboardingFlow {
     this.speechBubble.show({
       title: 'I\'m not ready yet 😔',
       message: 'I need to know your backend URL to start monitoring.\nClick me anytime to configure!',
+      bypassMute: this.isReconfiguring, // Allow reconfiguration even when muted
       actions: [
         {
           label: 'Configure Now',
@@ -409,6 +419,9 @@ export class OnboardingFlow {
    * Restart onboarding flow
    */
   public async restart(): Promise<void> {
+    // Set reconfiguring mode to bypass mute
+    this.isReconfiguring = true;
+
     // Clear onboarding state (including dismissed flag)
     await this.saveOnboardingState({
       completed: false,

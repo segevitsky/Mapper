@@ -73,6 +73,64 @@ chrome.runtime.onMessage.addListener(async  (message, _sender, sendResponse) => 
     return true; // חשוב בשביל sendResponse אסינכרוני
   }
 
+  // Handle minimize - detach debugger
+  if (message.type === 'DETACH_DEBUGGER') {
+    // Get tabId from sender instead of message (content scripts can't easily get tab ID)
+    const tabId = _sender?.tab?.id;
+
+    if (!tabId) {
+      console.error('❌ No tab ID available in sender');
+      sendResponse({ success: false, error: 'No tab ID available' });
+      return true;
+    }
+
+    console.log('📨 DETACH_DEBUGGER received for tab:', tabId);
+
+    try {
+      if (debuggerTabs.get(tabId)) {
+        await chrome.debugger.detach({ tabId });
+        debuggerTabs.delete(tabId);
+        console.log('✅ Debugger detached from tab:', tabId);
+        sendResponse({ success: true });
+      } else {
+        console.log('⚠️ No debugger attached to tab:', tabId);
+        sendResponse({ success: false, error: 'No debugger attached' });
+      }
+    } catch (error) {
+      console.error('❌ Failed to detach debugger:', error);
+      sendResponse({ success: false, error: String(error) });
+    }
+    return true;
+  }
+
+  // Handle restore - re-attach debugger
+  if (message.type === 'REATTACH_DEBUGGER') {
+    // Get tabId from sender instead of message
+    const tabId = _sender?.tab?.id;
+
+    if (!tabId) {
+      console.error('❌ No tab ID available in sender');
+      sendResponse({ success: false, error: 'No tab ID available' });
+      return true;
+    }
+
+    console.log('📨 REATTACH_DEBUGGER received for tab:', tabId);
+
+    try {
+      if (!debuggerTabs.get(tabId)) {
+        await attachDebugger(tabId);
+        console.log('✅ Debugger re-attached to tab:', tabId);
+        sendResponse({ success: true });
+      } else {
+        console.log('⚠️ Debugger already attached to tab:', tabId);
+        sendResponse({ success: true, alreadyAttached: true });
+      }
+    } catch (error) {
+      console.error('❌ Failed to re-attach debugger:', error);
+      sendResponse({ success: false, error: String(error) });
+    }
+    return true;
+  }
 
 //  if (message.type === "ANALYZE_API_CALL") {
 //     if (aiAssistant) {
