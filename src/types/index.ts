@@ -16,6 +16,7 @@ export interface NetworkCall {
   timing: any;
   request?: any;
   body?: any;
+  requestBody?: any;  // Request body from webRequest API
   error?: string;
   lastCall?: any;
   duration?: number;

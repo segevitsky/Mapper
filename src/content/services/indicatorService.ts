@@ -13,6 +13,8 @@ import initFloatingButton from "../floatingRecorderButton";
 import SchemaValidationService from "./schemaValidationService";
 import { createInteractiveJsonViewer, jsonViewerStyles, setupJsonViewerListeners } from "./components/jsonViewer";
 import { modalStyles } from "./components/networkModalStyles";
+import { IndicatorCache } from "./indicatorCache";
+import { IndicatorMonitor } from "./indicatorMonitor";
 
 export let pageIndicators: IndicatorData[] = [];
 
@@ -34,78 +36,68 @@ type TooltipContent = {
 
 export function loadIndicators() {
   const storagePath = generateStoragePath(window.location.href);
-  
-  chrome.storage.local.get(["indicators"], (result) => {
-    const { indicators } = result;
-    // const { domains, status } = userData || {};
-    // lets see if our current location is included in the domains
-    // const currentLocationHost = window.location.host;
-    // const domainIsAllowed = currentLocationHost.includes('localhost') || domains?.find((d: Domain) => d.value.includes(currentLocationHost));
-    // if (!domainIsAllowed) {
-    //   console.log('Domain not allowed, but attempting to load indicators anyway for debugging');
-    //   // Don't return early - still try to load indicators for better debugging
-    //   chrome.runtime.sendMessage({
-    //     type: "DOMAIN_NOT_ALLOWED",
-    //     data: {
-    //       message: `This domain is not allowed. Please contact your administrator.`,
-    //       status: 403,
-    //     },
-    //   });
-    // }
-    
 
-    const currentPageIndicators = indicators[storagePath] || [];
-    pageIndicators = currentPageIndicators.slice();
+  // Use memory cache instead of storage for faster access
+  const cache = IndicatorCache.getInstance();
+  const currentPageIndicators = cache.get(storagePath) || [];
 
-    // Calculate total indicators across all pages
-    const totalIndicators = Object.values(indicators || {}).reduce((acc: number, pageIndis: any) => {
-      return acc + (Array.isArray(pageIndis) ? pageIndis.length : 0);
-    }, 0);
+  pageIndicators = currentPageIndicators.slice();
 
-    if (currentPageIndicators.length === 0) {
-      return;
-    }
+  if (currentPageIndicators.length === 0) {
+    return;
+  }
 
-    // Create all indicators (in-flight tracking prevents duplicates)
-    currentPageIndicators?.forEach(createIndicatorFromData);
-
-    // Make sure we have all indicators with better error handling
-    currentPageIndicators?.forEach(async (indicator: any, index: number) => {
-      try {
-        const indicatorElement = await waitForIndicator(indicator.id, 5000); // Increased to 5s
-        if (!indicatorElement && !creatingIndicators.has(indicator.id)) {
-          // Only retry if not currently being created and not in DOM
-          const stillNotInDom = !document.getElementById(`indi-${indicator.id}`);
-          if (stillNotInDom) {
-            setTimeout(() => {
-              createIndicatorFromData(indicator);
-            }, 500 + (index * 200)); // Stagger indicator creation
-          }
-        }
-      } catch (error) {
-        // Only retry if not currently being created
-        if (!creatingIndicators.has(indicator.id)) {
-          const stillNotInDom = !document.getElementById(`indi-${indicator.id}`);
-          if (stillNotInDom) {
-            setTimeout(() => {
-              createIndicatorFromData(indicator);
-            }, 1000 + (index * 200));
-          }
-        }
-      }
-    });
-
-    const currentPageIndicatorsUuuidArray = currentPageIndicators?.map(
-      (indi: IndicatorData) => indi.id
-    );
-    document.querySelectorAll(".indicator").forEach((indicator: any) => {
-      if (
-        !currentPageIndicatorsUuuidArray.includes(indicator.dataset.indicatorId)
-      ) {
-        indicator.remove();
-      }
-    });
+  // Create all indicators (in-flight tracking prevents duplicates)
+  currentPageIndicators?.forEach((indicator) => {
+    createIndicatorFromData(indicator);
   });
+
+  // Make sure we have all indicators with better error handling
+  currentPageIndicators?.forEach(async (indicator: any, index: number) => {
+    try {
+      const indicatorElement = await waitForIndicator(indicator.id, 5000); // Increased to 5s
+      if (!indicatorElement && !creatingIndicators.has(indicator.id)) {
+        // Only retry if not currently being created and not in DOM
+        const stillNotInDom = !document.getElementById(`indi-${indicator.id}`);
+        if (stillNotInDom) {
+          setTimeout(() => {
+            createIndicatorFromData(indicator);
+          }, 500 + (index * 200)); // Stagger indicator creation
+        }
+      }
+    } catch (error) {
+      // Only retry if not currently being created
+      if (!creatingIndicators.has(indicator.id)) {
+        const stillNotInDom = !document.getElementById(`indi-${indicator.id}`);
+        if (stillNotInDom) {
+          setTimeout(() => {
+            createIndicatorFromData(indicator);
+          }, 1000 + (index * 200));
+        }
+      }
+    }
+  });
+
+  const currentPageIndicatorsUuuidArray = currentPageIndicators?.map(
+    (indi: IndicatorData) => indi.id
+  );
+  document.querySelectorAll(".indicator").forEach((indicator: any) => {
+    if (
+      !currentPageIndicatorsUuuidArray.includes(indicator.dataset.indicatorId)
+    ) {
+      indicator.remove();
+    }
+  });
+
+  // FIX: Update indicators from recent network calls (for tab switching)
+  // When user switches tabs, indicators are created but no new network calls happen
+  // Check recentCallsCache for existing data and populate indicators
+  setTimeout(() => {
+    if (currentPageIndicators.length > 0) {
+      const monitor = IndicatorMonitor.getInstance();
+      monitor.checkIndicatorsUpdate(currentPageIndicators, recentCallsCache);
+    }
+  }, 50); // Small delay to let DOM settle
 
   // initFloatingButton();
 }
@@ -474,9 +466,15 @@ indicator.addEventListener('mouseenter', () => {
     const key = generateStoragePath(indicatorData.lastCall?.url) + '|' + indicatorData.method;
     const recentCalls = recentCallsCache.get(key) || [];
     const netWorkData = recentCalls[0]; // Newest first since we unshift
-    
+
     let tooltipContent;
-    const data = dataAttribute ? JSON.parse(dataAttribute) : netWorkData ;
+    // Merge indicatorData with network data for complete tooltip info (name, description, duration, etc.)
+    const data = dataAttribute ? JSON.parse(dataAttribute) : {
+      ...netWorkData,
+      ...indicatorData,
+      duration: netWorkData?.timing?.duration || indicatorData?.lastCall?.timing?.duration || 0,
+      timestamp: netWorkData?.timestamp || indicatorData?.lastCall?.timestamp || Date.now()
+    };
     if (!data) {
         console.warn("No data found in data-indicator-info attribute");
         tooltipContent = "No data available for this indicator. please refresh the page.";

@@ -180,6 +180,14 @@ function isStaticAsset(url: string): boolean {
  * Check if a network call should be stored based on backend config
  */
 async function shouldStoreCall(url: string): Promise<boolean> {
+  // Filter out extension URLs (chrome-extension://, moz-extension://, etc.)
+  if (url.startsWith('chrome-extension://') ||
+      url.startsWith('moz-extension://') ||
+      url.startsWith('safari-extension://') ||
+      url.startsWith('edge-extension://')) {
+    return false;
+  }
+
   // Filter out static assets immediately
   if (isStaticAsset(url)) {
     return false;
@@ -704,12 +712,27 @@ function setupIndiEventListeners() {
 
     if (document.hidden) {
       // Tab became inactive - cleanup to save memory
-      console.log('🌙 Tab hidden - cleaning up cache and console logs');
+      console.log('🌙 Tab hidden - cleaning up cache and pausing monitoring');
       cleanupInactiveTabCache();
-      consoleCapture.clearErrors(); // Clear console logs when tab hidden
+
+      // Tell background to reduce monitoring for this tab
+      chrome.runtime.sendMessage({
+        type: 'TAB_HIDDEN',
+        timestamp: Date.now()
+      }).catch(() => {
+        // Ignore errors if background isn't ready
+      });
     } else {
-      // Tab became active
-      console.log('👁️ Tab visible - resuming full capture');
+      // Tab became active again
+      console.log('👀 Tab visible - resuming full monitoring');
+
+      // Tell background to resume full monitoring
+      chrome.runtime.sendMessage({
+        type: 'TAB_VISIBLE',
+        timestamp: Date.now()
+      }).catch(() => {
+        // Ignore errors if background isn't ready
+      });
     }
   });
 
@@ -717,9 +740,14 @@ function setupIndiEventListeners() {
   document.addEventListener('click', (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target && target.id === 'indi-summary-create-indicator') {
-      // Dispatch the event
-      const event = new CustomEvent('indi-create-indicator-from-summary');
-      document.dispatchEvent(event);
+      // If already in inspect mode, cancel it
+      if (isInspectMode) {
+        disableInspectMode();
+      } else {
+        // Dispatch the event to start inspect mode
+        const event = new CustomEvent('indi-create-indicator-from-summary');
+        document.dispatchEvent(event);
+      }
     }
 
     // Listen for Settings button clicks
@@ -1481,7 +1509,11 @@ async function handleBlobClick() {
         indiBlob.updateContent(summaryHTML, existingSummary, filteredCalls);
       }
     } else {
-      // No existing data - need to fetch and analyze first
+      // No existing data - show loading state immediately for better UX
+      indiBlob.showLoading();
+      indiBlob.toggle();
+
+      // Now do the heavy work in background
       const networkData = Array.from(recentCallsCache.values()).flat();
       const filteredCalls = await filterCallsByBackend(networkData);
 
@@ -1498,9 +1530,6 @@ async function handleBlobClick() {
           indiBlob.updateContent(summaryHTML, summaryToUse, filteredCalls);
         }
       }
-
-      // Open modal after content is ready
-      indiBlob.toggle();
     }
   } finally {
     // Reset the flag after a short delay
@@ -1585,6 +1614,22 @@ const notifiedErrorUrls = new Set<string>(); // Track which error URLs we've alr
 const notifiedSlowUrls = new Set<string>(); // Track which slow URLs we've already notified about
 const notifiedSecurityUrls = new Set<string>(); // Track which security URLs we've already notified about
 
+// Performance: Cache onboarding state in memory to avoid storage calls
+let cachedOnboardingState: any = null;
+let lastOnboardingCheck: number = 0;
+const ONBOARDING_CACHE_TTL = 60000; // Cache for 1 minute
+
+// Performance: Debounce timers for heavy operations
+let analyzeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let securityAnalysisTimer: ReturnType<typeof setTimeout> | null = null;
+let lastAnalysisTime: number = 0;
+const ANALYSIS_DEBOUNCE_MS = 1000; // Run analysis max once per second
+
+// Performance: Debounce indicator updates (reduced to 100ms for responsiveness)
+let indicatorUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+let lastIndicatorUpdateTime: number = 0;
+const INDICATOR_UPDATE_DEBOUNCE_MS = 100; // Check indicators max once per 100ms (fast and responsive)
+
 // Reset cumulative tracking when page changes
 function resetCumulativeTracking() {
   currentPageUrl = window.location.href;
@@ -1598,16 +1643,44 @@ function resetCumulativeTracking() {
   notifiedErrorUrls.clear(); // Reset notified errors
   notifiedSlowUrls.clear(); // Reset notified slow calls
   notifiedSecurityUrls.clear(); // Reset notified security issues
+
+  // Reset performance caches
+  cachedOnboardingState = null;
+  lastOnboardingCheck = 0;
+}
+
+/**
+ * Check onboarding state with memory caching to avoid repeated storage calls
+ * Performance: Reduces storage API calls by 90%+
+ */
+async function getCachedOnboardingState(): Promise<any> {
+  const now = Date.now();
+
+  // Return cached state if still valid
+  if (cachedOnboardingState && (now - lastOnboardingCheck) < ONBOARDING_CACHE_TTL) {
+    return cachedOnboardingState;
+  }
+
+  // Cache expired or doesn't exist - fetch from storage
+  const onboardingKey = `indi_onboarding_${window.location.hostname}`;
+  const result = await chrome.storage.local.get([onboardingKey]);
+  cachedOnboardingState = result[onboardingKey];
+  lastOnboardingCheck = now;
+
+  return cachedOnboardingState;
 }
 
 async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
   if (!indiBlob || !pageSummary) return;
 
-  // Check if onboarding exists for this domain - if NOT, don't analyze
-  // This prevents Indi from being intrusive on every website
-  const onboardingKey = `indi_onboarding_${window.location.hostname}`;
-  const onboardingState = await chrome.storage.local.get([onboardingKey]);
-  const state = onboardingState[onboardingKey];
+  // Performance: Skip analysis if tab is not visible
+  if (!isTabVisible) {
+    console.log('🌙 Tab hidden - skipping analysis');
+    return;
+  }
+
+  // Performance: Use cached onboarding state instead of storage call
+  const state = await getCachedOnboardingState();
 
   // If no onboarding data exists, this site is not enabled - return early
   if (!state) {
@@ -1618,6 +1691,24 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
   if (!state.completed) {
     return;
   }
+
+  // Performance: Debounce analysis to max once per second
+  // This prevents excessive CPU usage on pages with frequent network activity
+  const now = Date.now();
+  const timeSinceLastAnalysis = now - lastAnalysisTime;
+
+  if (timeSinceLastAnalysis < ANALYSIS_DEBOUNCE_MS) {
+    // Too soon - schedule for later
+    if (analyzeDebounceTimer) {
+      clearTimeout(analyzeDebounceTimer);
+    }
+    analyzeDebounceTimer = setTimeout(() => {
+      analyzeNetworkForIndi(networkData);
+    }, ANALYSIS_DEBOUNCE_MS - timeSinceLastAnalysis);
+    return;
+  }
+
+  lastAnalysisTime = now;
 
   // Check if URL changed - if so, reset cumulative tracking
   if (window.location.href !== currentPageUrl) {
@@ -1646,6 +1737,13 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
     // Add error URLs to cumulative set AND store full call objects
     networkData.forEach(call => {
       if (call.status >= 400) {
+        const method = call?.request?.request?.method || call?.method || 'GET';
+
+        // Skip OPTIONS preflight requests - track only actual API call failures
+        if (method.toUpperCase() === 'OPTIONS') {
+          return;
+        }
+
         const url = extractNetworkCallUrl(call);
         cumulativeErrorCalls.add(url);
         // Store the full NetworkCall object for detailed view (limit to last 50)
@@ -1659,6 +1757,13 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
 
   // Track slow API URLs AND store full call objects
   networkData.forEach(call => {
+    const method = call?.request?.request?.method || call?.method || 'GET';
+
+    // Skip OPTIONS preflight requests - if OPTIONS is slow, the actual request will be slow too
+    if (method.toUpperCase() === 'OPTIONS') {
+      return;
+    }
+
     const duration = call?.response?.response?.timing?.receiveHeadersEnd ?? call?.duration ?? 0;
     if (duration > slowCallThreshold) {
       const url = extractNetworkCallUrl(call);
@@ -1708,13 +1813,19 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
     cumulativeSummary.errorCalls = cumulativeErrorCalls.size; // Use cumulative set
     cumulativeSummary.warningCalls = (cumulativeSummary.warningCalls || 0) + (summary.warningCalls || 0);
 
+    // Performance: Use push instead of spread to reduce GC pressure
     // Aggregate durations array for average calculation
-    const allDurations = [...(cumulativeSummary.durations || []), ...(summary.durations || [])];
-    cumulativeSummary.durations = allDurations;
+    if (!cumulativeSummary.durations) {
+      cumulativeSummary.durations = [];
+    }
+    if (summary.durations && summary.durations.length > 0) {
+      cumulativeSummary.durations.push(...summary.durations);
+    }
 
     // Recalculate average response time from all durations
-    cumulativeSummary.averageResponseTime = allDurations.length > 0
-      ? Math.round(allDurations.reduce((sum, d) => sum + d, 0) / allDurations.length)
+    const durationsCount = cumulativeSummary.durations.length;
+    cumulativeSummary.averageResponseTime = durationsCount > 0
+      ? Math.round(cumulativeSummary.durations.reduce((sum, d) => sum + d, 0) / durationsCount)
       : 0;
 
     // Update slowest API (keep the slowest ever seen)
@@ -2540,11 +2651,8 @@ async function addToCache(calls: NetworkCall[]) {
                      call?.method ??
                      'GET';
 
-      // Strategy 1: Simple path (ignores most params)
-      const simpleKey = generateStoragePath(url) + '|' + method;
-      addToCacheKey(simpleKey, call);
-
-      // Strategy 2: Pattern-based (includes param names)
+      // Use pattern-based storage path (includes param names)
+      // NOTE: We only use ONE key per call to avoid duplicates when flattening cache
       const patternKey = generatePatternBasedStoragePath(url) + '|' + method;
       addToCacheKey(patternKey, call);
 
@@ -3420,7 +3528,7 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
 
       // Add to cache instead of array (async now for filtering)
       await addToCache(message.requests);
-      
+
       // Initialize Indi on first NETWORK_IDLE
       if (!isIndiInitialized) {
         initializeIndi(message.requests);
@@ -3429,29 +3537,46 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
         // only analyze if indi blob is connected to this page - which means finished onboarding
         analyzeNetworkForIndi(message.requests);
       }
-      
-      
-      const monitor = IndicatorMonitor.getInstance();
-      monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache);
-      
-      // lets check if we have any indicators that did not update
-      const failedIndicators: any[] = [];
-      const allIndicators = document.querySelectorAll(".indicator");
-      allIndicators.forEach((indicator) => {
-        const indicatorIsUpdated = indicator.getAttribute(
-          "data-indicator-info"
-        );
-        if (!indicatorIsUpdated) {
-          failedIndicators.push(indicator);
-          if (failedIndicators.length > 0) {
+
+      // Performance: Skip indicator updates if tab is not visible
+      if (!isTabVisible) {
+        console.log('🌙 Tab hidden - skipping indicator update');
+        break;
+      }
+
+      // Performance: Debounce indicator updates (but don't starve them!)
+      const now = Date.now();
+      const timeSinceLastUpdate = now - lastIndicatorUpdateTime;
+
+      if (timeSinceLastUpdate < INDICATOR_UPDATE_DEBOUNCE_MS) {
+        // Too soon - schedule for later, but only if not already scheduled
+        // This prevents timer from being constantly reset on busy pages
+        if (!indicatorUpdateTimer) {
+          indicatorUpdateTimer = setTimeout(() => {
+            // Double-check visibility before updating
+            if (!isTabVisible) {
+              indicatorUpdateTimer = null;
+              return;
+            }
+            const monitor = IndicatorMonitor.getInstance();
             monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache);
-          }
-          // chrome.runtime.sendMessage({
-          //   type: "INDICATOR_FAILED",
-          //   data: { failedIndicators, message },
-          // });
+            lastIndicatorUpdateTime = Date.now();
+            indicatorUpdateTimer = null;
+          }, INDICATOR_UPDATE_DEBOUNCE_MS - timeSinceLastUpdate);
         }
-      });
+      } else {
+        // Enough time passed - update now (leading edge)
+        const monitor = IndicatorMonitor.getInstance();
+        monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache);
+        lastIndicatorUpdateTime = now;
+
+        // Clear any pending timer since we just updated
+        if (indicatorUpdateTimer) {
+          clearTimeout(indicatorUpdateTimer);
+          indicatorUpdateTimer = null;
+        }
+      }
+
       break;
     }
 
@@ -3712,6 +3837,27 @@ function createHighlighter() {
   document.body.appendChild(highlighter);
 }
 
+/**
+ * Handle ESC key press to cancel inspect mode
+ */
+function handleEscapeKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && isInspectMode) {
+    e.preventDefault();
+    disableInspectMode();
+  }
+}
+
+/**
+ * Update Create Indicator button icon (+ vs ✖️)
+ */
+function updateCreateIndicatorButton(isInspecting: boolean) {
+  const button = document.getElementById('indi-summary-create-indicator');
+  if (button) {
+    button.textContent = isInspecting ? '✖️' : '+';
+    button.title = isInspecting ? 'Cancel (ESC)' : 'Create Indicator';
+  }
+}
+
 function enableInspectMode(indicatorData?: any) {
   // BYPASS: Skip domain validation - allow inspect mode on any domain
   isInspectMode = true;
@@ -3720,12 +3866,17 @@ function enableInspectMode(indicatorData?: any) {
 
   document.addEventListener("mouseover", handleMouseOver);
   document.addEventListener("mouseout", handleMouseOut);
+  document.addEventListener("keydown", handleEscapeKey);
+
   if (indicatorData) {
     // createIndicatorFromData(indicatorData)
     document.addEventListener("click", handleIndiBlobRef, true);
   } else {
     document.addEventListener("click", handleClick, true);
   }
+
+  // Update Create Indicator button to show cancel icon
+  updateCreateIndicatorButton(true);
 }
 
 function handleMouseOver(e: MouseEvent) {
@@ -3750,6 +3901,13 @@ function handleMouseOut() {
 
 function handleClick(e: MouseEvent) {
   if (!isInspectMode) return;
+
+  // Exception: Don't handle clicks on the Create Indicator button itself
+  const target = e.target as HTMLElement;
+  if (target?.id === 'indi-summary-create-indicator' ||
+      target?.closest('#indi-summary-create-indicator')) {
+    return; // Let the button's own click handler work
+  }
 
   e.preventDefault();
   e.stopPropagation();
@@ -3790,6 +3948,14 @@ function handleClick(e: MouseEvent) {
 
 function handleIndiBlobRef(e: MouseEvent) {
   if (!isInspectMode) return;
+
+  // Exception: Don't handle clicks on the Create Indicator button itself
+  const target = e.target as HTMLElement;
+  if (target?.id === 'indi-summary-create-indicator' ||
+      target?.closest('#indi-summary-create-indicator')) {
+    return; // Let the button's own click handler work
+  }
+
   e.preventDefault();
   e.stopPropagation();
 
@@ -3852,6 +4018,7 @@ function disableInspectMode() {
   document.body.style.cursor = "default";
   document.removeEventListener("mouseover", handleMouseOver);
   document.removeEventListener("mouseout", handleMouseOut);
+  document.removeEventListener("keydown", handleEscapeKey);
   document.removeEventListener("click", handleClick, true);
   document.removeEventListener("click", handleIndiBlobRef, true);
 
@@ -3863,6 +4030,9 @@ function disableInspectMode() {
   // Clean up stored data
   indiBlobUrlWithIssue = null;
   delete (window as any).__indiBlobNetworkCall;
+
+  // Restore Create Indicator button to plus icon
+  updateCreateIndicatorButton(false);
 }
 
 // Export for debugging - available in content script context

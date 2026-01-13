@@ -89,9 +89,9 @@ export class IndiBlob {
       right: 40px;
       background: #ffffff;
       border-radius: 16px;
-      padding: 16px;
-      min-width: 280px;
-      max-width: 350px;
+      padding: 20px;
+      min-width: 450px;
+      max-width: 600px;
       box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
       z-index: 999997;
       display: none;
@@ -120,6 +120,52 @@ export class IndiBlob {
     this.summaryTooltip.innerHTML = '<div style="text-align: center; padding: 12px;">Loading...</div>' + arrow.outerHTML;
 
     document.body.appendChild(this.summaryTooltip);
+  }
+
+  /**
+   * Show loading state in Blobi
+   * Performance: Gives instant feedback to user while analysis runs
+   */
+  public showLoading(): void {
+    if (!this.summaryTooltip) {
+      this.createTooltipElement();
+    }
+
+    if (this.summaryTooltip) {
+      const loadingHTML = `
+        <div style="
+          padding: 40px 20px;
+          text-align: center;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        ">
+          <div style="
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 20px;
+            border: 4px solid #f3f4f6;
+            border-top-color: #8b5cf6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          "></div>
+          <style>
+            @keyframes spin {
+              to { transform: rotate(360deg); }
+            }
+          </style>
+          <div style="font-size: 16px; font-weight: 600; color: #374151; margin-bottom: 8px;">
+            Analyzing network traffic...
+          </div>
+          <div style="font-size: 13px; color: #6b7280;">
+            Blobi is crunching the data 🔍
+          </div>
+        </div>
+      `;
+      this.summaryTooltip.innerHTML = loadingHTML;
+
+      if (this.isTooltipVisible()) {
+        this.summaryTooltip.style.display = 'block';
+      }
+    }
   }
 
   /**
@@ -200,19 +246,109 @@ export class IndiBlob {
         return; // Stop further event handling
       }
 
+      // Handle pop-out button clicks
+      if (target.classList.contains('pop-out-btn') || target.closest('.pop-out-btn')) {
+        e.stopPropagation(); // Prevent expanding/collapsing the network call
+
+        const button = target.classList.contains('pop-out-btn') ? target : target.closest('.pop-out-btn') as HTMLElement;
+        const callData = button?.getAttribute('data-call-data');
+
+        if (callData) {
+          try {
+            // Parse the JSON directly (single quotes are already escaped as &#39;)
+            const call = JSON.parse(callData);
+
+            // Show success feedback immediately
+            const originalText = button.textContent;
+            button.textContent = '✅ Opened';
+            setTimeout(() => {
+              button.textContent = originalText;
+            }, 2000);
+
+            // Generate schema if body exists (async, doesn't block UI feedback)
+            if (call.body || call.response?.body || call.response?.response) {
+              import('../../content/services/schemaValidationService').then((module) => {
+                const SchemaValidationService = module.default;
+                const schemaService = new SchemaValidationService();
+
+                const bodyData = call.body || call.response?.body || call.response?.response;
+                const schema = schemaService.generateTypeDefinition(
+                  bodyData,
+                  'ResponseSchema',
+                  { format: 'multiline' }
+                );
+                call.schema = schema;
+
+                // Send message with schema
+                chrome.runtime.sendMessage({
+                  type: "OPEN_FLOATING_WINDOW",
+                  data: {
+                    indicatorData: call,
+                    networkCall: call,
+                  }
+                });
+              }).catch((err) => {
+                console.warn('Schema generation failed, sending without schema:', err);
+                // Send without schema
+                chrome.runtime.sendMessage({
+                  type: "OPEN_FLOATING_WINDOW",
+                  data: {
+                    indicatorData: call,
+                    networkCall: call,
+                  }
+                });
+              });
+            } else {
+              // No body, send without schema
+              chrome.runtime.sendMessage({
+                type: "OPEN_FLOATING_WINDOW",
+                data: {
+                  indicatorData: call,
+                  networkCall: call,
+                }
+              });
+            }
+          } catch (error) {
+            console.error('Failed to open floating window:', error);
+            button.textContent = '❌ Failed';
+            setTimeout(() => {
+              button.textContent = '📤 Pop Out';
+            }, 2000);
+          }
+        }
+        return; // Stop further event handling
+      }
+
       // Handle tab clicks
       if (target.classList.contains('indi-tab') || target.closest('.indi-tab')) {
         const tabButton = target.classList.contains('indi-tab') ? target : target.closest('.indi-tab') as HTMLElement;
         const tab = tabButton?.dataset.tab;
 
         if (tab) {
-          // Access pageSummary from window (set by content.ts)
+          // Performance: Only update tab content, not entire HTML
           const pageSummary = (window as any).pageSummary;
-          if (pageSummary) {
+          if (pageSummary && this.summaryTooltip) {
             pageSummary.setActiveTab(tab);
-            const summary = pageSummary.getCurrentSummaryData();
-            const html = pageSummary.generateSummaryHTML(summary);
-            this.updateContent(html, summary, this.currentNetworkCalls);
+
+            // Update tab active states (CSS only, no HTML regeneration)
+            const allTabs = this.summaryTooltip.querySelectorAll('.indi-tab');
+            allTabs.forEach((t: Element) => {
+              const htmlTab = t as HTMLElement;
+              const isActive = htmlTab.dataset.tab === tab;
+              htmlTab.setAttribute('data-active', String(isActive));
+              htmlTab.style.background = isActive
+                ? 'linear-gradient(135deg, #f857a6, #ff5858)'
+                : 'transparent';
+              htmlTab.style.color = isActive ? '#fff' : '#6b7280';
+            });
+
+            // Only regenerate the tab content area
+            const tabContentArea = this.summaryTooltip.querySelector('[data-tab-content]');
+            if (tabContentArea) {
+              const summary = pageSummary.getCurrentSummaryData();
+              const contentHTML = pageSummary.generateTabContent(summary);
+              tabContentArea.innerHTML = contentHTML;
+            }
           }
         }
         return;
@@ -239,6 +375,38 @@ export class IndiBlob {
               details.classList.add('expanded');
             }
           }
+        }
+        return;
+      }
+
+      // Handle Clear button clicks
+      if (target.id === 'network-clear-btn') {
+        e.stopPropagation();
+        const pageSummary = (window as any).pageSummary;
+        if (pageSummary) {
+          pageSummary.clearNetworkCalls();
+          const summary = pageSummary.getCurrentSummaryData();
+          const html = pageSummary.generateSummaryHTML(summary);
+          this.updateContent(html, summary, []);
+        }
+        return;
+      }
+    });
+
+    // Handle network search input
+    this.summaryTooltip?.addEventListener('input', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      if (target.id === 'network-search-input') {
+        const searchTerm = target.value.toLowerCase();
+        const networkList = this.summaryTooltip?.querySelector('#network-calls-list');
+
+        if (networkList) {
+          const items = networkList.querySelectorAll('.network-call-item');
+          items.forEach((item: Element) => {
+            const htmlItem = item as HTMLElement;
+            const text = htmlItem.textContent?.toLowerCase() || '';
+            htmlItem.style.display = text.includes(searchTerm) ? '' : 'none';
+          });
         }
       }
     });
@@ -1066,6 +1234,7 @@ export class IndiBlob {
   if (this.minimizeButton) {
     this.minimizeButton.addEventListener('click', (e) => {
       e.stopPropagation(); // Prevent triggering container click
+      console.log('🔘 Minimize button clicked');
       this.minimize();
     });
   }

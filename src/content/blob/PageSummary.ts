@@ -47,7 +47,7 @@ export class PageSummary {
   private pageLoadStart: number = Date.now();
   private previousApis: Set<string> = new Set();
   private slowCallThreshold: number = 1000; // Default threshold
-  private activeTab: 'summary' | 'network' | 'console' = 'summary';
+  private activeTab: 'summary' | 'network' | 'console' | 'protips' = 'summary';
   private networkCalls: NetworkCall[] = [];
   private currentSummaryData: PageSummaryData | null = null;
   private summaryReady: boolean = false;
@@ -182,11 +182,32 @@ export class PageSummary {
    * Public methods for tab management
    */
   public setNetworkCalls(calls: NetworkCall[]): void {
-    this.networkCalls = calls;
+    // Merge new calls with existing ones, avoiding duplicates
+    // Use Set to track unique call IDs (combination of URL + timestamp)
+    const existingIds = new Set(
+      this.networkCalls.map(call =>
+        `${call.url || call.request?.request?.url}_${call.timestamp}`
+      )
+    );
+
+    // Only add new calls that don't already exist
+    const newCalls = calls.filter(call => {
+      const callId = `${call.url || call.request?.request?.url}_${call.timestamp}`;
+      return !existingIds.has(callId);
+    });
+
+    // Add new calls to the front (newest first) and keep sorted by timestamp
+    this.networkCalls = [...newCalls, ...this.networkCalls]
+      .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      .slice(0, 100); // Keep last 100 calls max to prevent memory issues
   }
 
-  public setActiveTab(tab: 'summary' | 'network' | 'console'): void {
-    this.activeTab = tab as 'summary' | 'network' | 'console';
+  public setActiveTab(tab: 'summary' | 'network' | 'console' | 'protips'): void {
+    this.activeTab = tab as 'summary' | 'network' | 'console' | 'protips';
+  }
+
+  public clearNetworkCalls(): void {
+    this.networkCalls = [];
   }
 
   public getCurrentSummaryData(): PageSummaryData | null {
@@ -218,7 +239,9 @@ export class PageSummary {
     return `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1f2937 !important; font-weight: 500 !important;">
         ${this.generateTabNav()}
-        ${this.generateTabContent(summary)}
+        <div data-tab-content>
+          ${this.generateTabContent(summary)}
+        </div>
         ${this.generateActionButtons()}
       </div>
     `;
@@ -231,7 +254,8 @@ export class PageSummary {
     const tabs = [
       { id: 'summary', emoji: '📊', label: 'Summary' },
       { id: 'network', emoji: '🌐', label: 'Network' },
-      { id: 'console', emoji: '💡', label: 'Console' }
+      { id: 'console', emoji: '💡', label: "Blobi's Console" },
+      { id: 'protips', emoji: '🎓', label: 'Pro Tips' }
     ];
 
     return `
@@ -278,7 +302,10 @@ export class PageSummary {
   /**
    * Route to appropriate tab content
    */
-  private generateTabContent(summary: PageSummaryData): string {
+  /**
+   * Generate content for active tab (public for performance optimization)
+   */
+  public generateTabContent(summary: PageSummaryData): string {
     switch (this.activeTab) {
       case 'summary':
         return this.generateSummaryTab(summary);
@@ -286,6 +313,8 @@ export class PageSummary {
         return this.generateNetworkTab();
       case 'console':
         return this.generateConsoleTab();
+      case 'protips':
+        return this.generateProTipsTab();
       default:
         return this.generateSummaryTab(summary);
     }
@@ -296,7 +325,7 @@ export class PageSummary {
    */
   private generateSummaryTab(summary: PageSummaryData): string {
     // If summary not ready, show loading state with random tip
-    if (!this.summaryReady || summary?.totalCalls === 0) {
+    if (!this.summaryReady || !summary || summary.totalCalls === 0) {
       const randomTip = getRandomTip();
       return `
         <style>
@@ -340,12 +369,12 @@ export class PageSummary {
     if (!hasIssues && summary.totalCalls > 0) {
       return `
         <style>
-          @keyframes celebrate {
-            0%, 100% { transform: scale(1); }
-            50% { transform: scale(1.05); }
+          @keyframes subtle-glow {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.95; }
           }
           .celebration {
-            animation: celebrate 0.6s ease-in-out;
+            animation: subtle-glow 2s ease-in-out;
           }
         </style>
         <div class="celebration" style="text-align: center; padding: 20px;">
@@ -539,24 +568,59 @@ export class PageSummary {
    * Generate Network tab content
    */
   private generateNetworkTab(): string {
-    if (this.networkCalls.length === 0) {
-      return `
+    const hasData = this.networkCalls.length > 0;
+
+    return `
+      <!-- Search and Clear Bar -->
+      <div style="padding: 8px; border-bottom: 1px solid #e5e7eb; background: #f9fafb;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <input
+            type="text"
+            id="network-search-input"
+            placeholder="Search by URL, method, or status..."
+            style="
+              flex: 1;
+              padding: 6px 12px;
+              border: 1px solid #d1d5db;
+              border-radius: 6px;
+              font-size: 12px;
+              color: #374151;
+              outline: none;
+            "
+          />
+          <button
+            id="network-clear-btn"
+            style="
+              padding: 6px 12px;
+              background: linear-gradient(to right, rgb(248, 87, 166), rgb(255, 88, 88));
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-size: 11px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s;
+            "
+            onmouseover="this.style.background='linear-gradient(to right, rgb(16, 185, 129), rgb(5, 150, 105))'"
+            onmouseout="this.style.background='linear-gradient(to right, rgb(248, 87, 166), rgb(255, 88, 88))'"
+            title="Clear all network calls"
+          >
+            🗑️ Clear
+          </button>
+        </div>
+        ${hasData ? `<div style="font-size: 10px; color: #6b7280; margin-top: 6px; text-align: center;">${this.networkCalls.length} call${this.networkCalls.length === 1 ? '' : 's'} captured</div>` : ''}
+      </div>
+
+      ${!hasData ? `
         <div style="text-align: center; padding: 40px 20px; color: #6b7280 !important;">
           <div style="font-size: 40px; margin-bottom: 12px;">🌐</div>
           <div style="font-size: 14px !important; font-weight: 600 !important; color: #6b7280 !important;">No network calls captured yet</div>
         </div>
-      `;
-    }
-
-    // Only show 20 most recent network calls for performance
-    const recentCalls = this.networkCalls.slice(0, 20);
-    const hasMore = this.networkCalls.length > 20;
-
-    return `
-      <div style="max-height: 400px; overflow-y: auto; padding: 4px;">
-        ${hasMore ? `<div style="padding: 8px; background: #dbeafe; border-radius: 6px; margin-bottom: 8px; font-size: 11px; color: #1e40af; text-align: center;">Showing 20 most recent calls (${this.networkCalls.length} total captured)</div>` : ''}
-        ${recentCalls.map((call, index) => this.generateNetworkCallItem(call, index)).join('')}
-      </div>
+      ` : `
+        <div id="network-calls-list" style="max-height: 300px; overflow-y: auto; padding: 4px;">
+          ${this.networkCalls.map((call, index) => this.generateNetworkCallItem(call, index)).join('')}
+        </div>
+      `}
     `;
   }
 
@@ -576,7 +640,7 @@ export class PageSummary {
     else if (status >= 300) statusColor = '#f59e0b'; // Yellow for 3xx
     else if (status === 0) statusColor = '#6b7280'; // Gray for errors
 
-    // Serialize call data for the copy button (escape single quotes for attribute)
+    // Serialize call data for the buttons (escape single quotes for attribute)
     const callDataEncoded = JSON.stringify(call).replace(/'/g, '&#39;');
 
     return `
@@ -602,14 +666,14 @@ export class PageSummary {
         .network-call-details.expanded {
           max-height: 800px;
         }
-        .copy-curl-btn {
+        .copy-curl-btn, .pop-out-btn {
           transition: all 0.15s ease;
         }
-        .copy-curl-btn:hover {
+        .copy-curl-btn:hover, .pop-out-btn:hover {
           transform: scale(1.05);
           background: #f3f4f6 !important;
         }
-        .copy-curl-btn:active {
+        .copy-curl-btn:active, .pop-out-btn:active {
           transform: scale(0.95);
         }
       </style>
@@ -643,9 +707,26 @@ export class PageSummary {
               >
                 📋 cURL
               </button>
+              <button
+                class="pop-out-btn"
+                data-call-data='${callDataEncoded}'
+                style="
+                  padding: 4px 8px;
+                  background: #f9fafb;
+                  border: 1px solid #e5e7eb;
+                  border-radius: 4px;
+                  font-size: 10px;
+                  color: #f857a6;
+                  cursor: pointer;
+                  font-weight: 600;
+                "
+                title="Open in Floating Window"
+              >
+                📤 Pop Out
+              </button>
             </div>
           </div>
-          <div style="font-size: 11px; color: #374151; word-break: break-all; font-family: monospace;">
+          <div style="font-size: 11px; color: #374151; word-break: break-all; font-family: monospace; cursor: help;" title="${url}">
             ${this.shortUrl(url)}
           </div>
           <div style="font-size: 10px; color: #9ca3af; margin-top: 4px;">
@@ -671,7 +752,7 @@ export class PageSummary {
   private generateNetworkCallDetails(call: NetworkCall): string {
     try {
       const headers = call?.request?.request?.headers || call?.request?.headers || {};
-      const requestBody = call?.request?.request?.postData || call?.body || null;
+      const requestBody = call?.request?.request?.postData || call?.requestBody || call?.body || null;
 
     // Extract response body - try multiple locations
     let responseBody = null;
@@ -916,9 +997,133 @@ export class PageSummary {
     const hasMore = logs.length > 30;
 
     return `
-      <div style="max-height: 400px; overflow-y: auto; padding: 4px;">
+      <div style="max-height: 300px; overflow-y: auto; padding: 4px;">
         ${hasMore ? `<div style="padding: 8px; background: #fef3c7; border-radius: 6px; margin-bottom: 8px; font-size: 11px; color: #92400e; text-align: center;">Showing 30 most recent logs (${logs.length} total captured)</div>` : ''}
         ${recentLogs.map((log, index) => this.generateConsoleLogItem(log, index)).join('')}
+      </div>
+    `;
+  }
+
+  /**
+   * Generate Pro Tips tab content (marketing & educational)
+   */
+  private generateProTipsTab(): string {
+    return `
+      <div style="max-height: 300px; overflow-y: auto; padding: 12px;">
+        <!-- Welcome Header -->
+        <div style="
+          background: linear-gradient(135deg, #f857a6, #ff5858);
+          border-radius: 12px;
+          padding: 16px;
+          margin-bottom: 16px;
+          color: white;
+          text-align: center;
+        ">
+          <div style="font-size: 32px; margin-bottom: 8px;">🎓</div>
+          <div style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Level Up with Indi</div>
+          <div style="font-size: 12px; opacity: 0.9;">Master debugging, ship faster, catch bugs before users do</div>
+        </div>
+
+        <!-- Quick Start Guide -->
+        <div style="
+          background: linear-gradient(135deg, #eff6ff, #dbeafe);
+          border-left: 4px solid #3b82f6;
+          border-radius: 8px;
+          padding: 12px;
+          margin-bottom: 12px;
+        ">
+          <div style="font-size: 13px; font-weight: 600; color: #1e40af; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            <span>🚀</span>
+            <span>Quick Start Guide</span>
+          </div>
+          <div style="font-size: 11px; color: #1e3a8a; line-height: 1.6;">
+            <strong>1. Create Indicators:</strong> Click any API call in the Network tab → "Pop Out" → Map to element<br/>
+            <strong>2. Monitor Live:</strong> Watch indicators change color as APIs succeed/fail in real-time<br/>
+            <strong>3. Create Flows:</strong> String multiple APIs together to test complex user journeys<br/>
+            <strong>4. Debug Fast:</strong> See request/response bodies instantly when things break
+          </div>
+        </div>
+
+        <!-- Power User Hacks -->
+        <div style="
+          background: linear-gradient(135deg, #fef3c7, #fde68a);
+          border-left: 4px solid #f59e0b;
+          border-radius: 8px;
+          padding: 12px;
+          margin-bottom: 12px;
+        ">
+          <div style="font-size: 13px; font-weight: 600; color: #92400e; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            <span>⚡</span>
+            <span>Power User Hacks</span>
+          </div>
+          <div style="font-size: 11px; color: #78350f; line-height: 1.6;">
+            <strong>🔴 Debug Failed APIs:</strong> Orange/Red indicators? Click them to see the exact error response<br/>
+            <strong>🐢 Find Bottlenecks:</strong> Check Summary tab → Slowest API to see what's slowing you down<br/>
+            <strong>🎯 Catch Breaking Changes:</strong> Schema validation detects when APIs return different data shapes<br/>
+            <strong>📋 Copy as cURL:</strong> Click any network call → "cURL" button to reproduce in terminal<br/>
+            <strong>🔄 Auto-Refresh:</strong> Indicators pulse when APIs update - no manual refresh needed
+          </div>
+        </div>
+
+        <!-- Advanced Debugging -->
+        <div style="
+          background: linear-gradient(135deg, #f3e8ff, #e9d5ff);
+          border-left: 4px solid #a78bfa;
+          border-radius: 8px;
+          padding: 12px;
+          margin-bottom: 12px;
+        ">
+          <div style="font-size: 13px; font-weight: 600; color: #6b21a8; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            <span>🔬</span>
+            <span>Advanced Debugging Techniques</span>
+          </div>
+          <div style="font-size: 11px; color: #5b21b6; line-height: 1.6;">
+            <strong>Schema Diffing:</strong> When indicators turn orange, click to see what fields changed in the response<br/>
+            <strong>Timing Analysis:</strong> Hover over indicators to see exact response times and status codes<br/>
+            <strong>Flow Testing:</strong> Record a user flow once, replay it infinitely to catch regressions<br/>
+            <strong>Console Integration:</strong> Check Blobi's Console tab for errors that correlate with API failures
+          </div>
+        </div>
+
+        <!-- What's New -->
+        <div style="
+          background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+          border-left: 4px solid #10b981;
+          border-radius: 8px;
+          padding: 12px;
+          margin-bottom: 12px;
+        ">
+          <div style="font-size: 13px; font-weight: 600; color: #065f46; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            <span>✨</span>
+            <span>What's New in Indi</span>
+          </div>
+          <div style="font-size: 11px; color: #047857; line-height: 1.6;">
+            <strong>⚡ Performance Boost:</strong> 5x faster indicator updates (500ms → 100ms debounce)<br/>
+            <strong>🧠 Smart Caching:</strong> Schema validation now uses intelligent caching<br/>
+            <strong>👁️ Tab Awareness:</strong> Indi only runs on active tabs to save browser resources<br/>
+            <strong>🎨 Better UX:</strong> Reduced annoying pulse animations with cooldown system<br/>
+            <strong>💾 Batched Writes:</strong> Storage operations optimized for 100x fewer writes
+          </div>
+        </div>
+
+        <!-- Community & Support -->
+        <div style="
+          background: linear-gradient(135deg, #fef2f2, #fee2e2);
+          border-left: 4px solid #f87171;
+          border-radius: 8px;
+          padding: 12px;
+        ">
+          <div style="font-size: 13px; font-weight: 600; color: #991b1b; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            <span>💬</span>
+            <span>Community & Support</span>
+          </div>
+          <div style="font-size: 11px; color: #7f1d1d; line-height: 1.6;">
+            <strong>Need Help?</strong> Check the settings panel for docs and tutorials<br/>
+            <strong>Found a Bug?</strong> Report it through the settings → feedback<br/>
+            <strong>Feature Ideas?</strong> We're always listening - send us your thoughts!<br/>
+            <strong>Pro Tip:</strong> Join our community to share flows and debugging strategies
+          </div>
+        </div>
       </div>
     `;
   }
