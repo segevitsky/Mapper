@@ -1019,12 +1019,34 @@ export class PageSummary {
           color: white;
           text-align: center;
         ">
-          <div style="font-size: 32px; margin-bottom: 8px;">🎓</div>
-          <div style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Level Up with Indi</div>
-          <div style="font-size: 12px; opacity: 0.9;">Master debugging, ship faster, catch bugs before users do</div>
+          <div style="font-size: 32px; margin-bottom: 8px;">🚀</div>
+          <div style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Level Up Your Dev Game</div>
+          <div style="font-size: 12px; opacity: 0.9;">Ship faster. Catch changes early. Be the hero.</div>
         </div>
 
-        <!-- Quick Start Guide -->
+        <!-- What's Indi? -->
+        <div style="
+          background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+          border-left: 4px solid #6b7280;
+          border-radius: 8px;
+          padding: 12px;
+          margin-bottom: 12px;
+        ">
+          <div style="font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            <span>⚡</span>
+            <span>What's Indi? (The 20-Second Version)</span>
+          </div>
+          <div style="font-size: 11px; color: #4b5563; line-height: 1.6;">
+            Indi is your API wingman - a floating buddy (Blobi) that changes colors based on how well you're doing. The more issues you catch early, the happier Blobi gets!<br/><br/>
+            <strong style="color: #8b5cf6;">💜 Purple = Happy & ready (default state)</strong><br/>
+            <strong style="color: #3b82f6;">🔵 Blue = Calm & focused (caught 1-4 issues)</strong><br/>
+            <strong style="color: #ec4899;">💗 Pink = Satisfied & proud (caught 5-14 issues!)</strong><br/>
+            <strong style="color: #f59e0b;">💛 Gold = Super excited (caught 15+ issues - you're crushing it!)</strong><br/><br/>
+            It's gamified debugging. The more you catch, the more excited Blobi gets. You're basically leveling up while fixing stuff.
+          </div>
+        </div>
+
+        <!-- Get Started -->
         <div style="
           background: linear-gradient(135deg, #eff6ff, #dbeafe);
           border-left: 4px solid #3b82f6;
@@ -1033,39 +1055,24 @@ export class PageSummary {
           margin-bottom: 12px;
         ">
           <div style="font-size: 13px; font-weight: 600; color: #1e40af; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-            <span>🚀</span>
-            <span>Quick Start Guide</span>
+            <span>🎯</span>
+            <span>Get Started in 60 Seconds</span>
           </div>
           <div style="font-size: 11px; color: #1e3a8a; line-height: 1.6;">
-            <strong>1. Create Indicators:</strong> Click any API call in the Network tab → "Pop Out" → Map to element<br/>
-            <strong>2. Monitor Live:</strong> Watch indicators change color as APIs succeed/fail in real-time<br/>
-            <strong>3. Create Flows:</strong> String multiple APIs together to test complex user journeys<br/>
-            <strong>4. Debug Fast:</strong> See request/response bodies instantly when things break
+            <strong>Create Your First Indicator:</strong><br/>
+            1. Click the <strong>+ button</strong> (the pink circle with a plus sign)<br/>
+            2. Click any element on your page (button, form, link, whatever)<br/>
+            3. Interact with that element (click it, submit the form, etc.)<br/>
+            4. BOOM! Indi captures the API calls and your indicator appears<br/><br/>
+            <strong>Now watch the magic:</strong><br/>
+            • API succeeds? Green dot<br/>
+            • Schema changed? Orange dot (you caught it early!)<br/>
+            • API fails? Red dot (you found it first!)<br/><br/>
+            Click any indicator to see full details. Want to explore? Click Blobi → Network → "📤 Pop Out" on any call.
           </div>
         </div>
 
-        <!-- Power User Hacks -->
-        <div style="
-          background: linear-gradient(135deg, #fef3c7, #fde68a);
-          border-left: 4px solid #f59e0b;
-          border-radius: 8px;
-          padding: 12px;
-          margin-bottom: 12px;
-        ">
-          <div style="font-size: 13px; font-weight: 600; color: #92400e; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-            <span>⚡</span>
-            <span>Power User Hacks</span>
-          </div>
-          <div style="font-size: 11px; color: #78350f; line-height: 1.6;">
-            <strong>🔴 Debug Failed APIs:</strong> Orange/Red indicators? Click them to see the exact error response<br/>
-            <strong>🐢 Find Bottlenecks:</strong> Check Summary tab → Slowest API to see what's slowing you down<br/>
-            <strong>🎯 Catch Breaking Changes:</strong> Schema validation detects when APIs return different data shapes<br/>
-            <strong>📋 Copy as cURL:</strong> Click any network call → "cURL" button to reproduce in terminal<br/>
-            <strong>🔄 Auto-Refresh:</strong> Indicators pulse when APIs update - no manual refresh needed
-          </div>
-        </div>
-
-        <!-- Advanced Debugging -->
+        <!-- Power Moves -->
         <div style="
           background: linear-gradient(135deg, #f3e8ff, #e9d5ff);
           border-left: 4px solid #a78bfa;
@@ -1074,14 +1081,35 @@ export class PageSummary {
           margin-bottom: 12px;
         ">
           <div style="font-size: 13px; font-weight: 600; color: #6b21a8; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
-            <span>🔬</span>
-            <span>Advanced Debugging Techniques</span>
+            <span>💪</span>
+            <span>Power Moves</span>
           </div>
           <div style="font-size: 11px; color: #5b21b6; line-height: 1.6;">
-            <strong>Schema Diffing:</strong> When indicators turn orange, click to see what fields changed in the response<br/>
-            <strong>Timing Analysis:</strong> Hover over indicators to see exact response times and status codes<br/>
-            <strong>Flow Testing:</strong> Record a user flow once, replay it infinitely to catch regressions<br/>
-            <strong>Console Integration:</strong> Check Blobi's Console tab for errors that correlate with API failures
+            <strong>🚀 Find Your Bottleneck:</strong> Summary tab → Slowest API → Optimize it → Ship 3x faster<br/>
+            <strong>🎯 Test Complete Flows:</strong> Green ⏺️ button → Record login/checkout/whatever → Blue ▶️ to replay anytime<br/>
+            <strong>📋 Debug Like a Pro:</strong> Any network call → "cURL" button → Test in terminal → Share with backend<br/>
+            <strong>🔮 Catch Breaking Changes:</strong> Orange indicator = schema changed → Click to see what → Update before production<br/>
+            <strong>⚡ Speed Optimization:</strong> Check "Response Time" on any indicator → Anything >1s? Time to cache it!
+          </div>
+        </div>
+
+        <!-- Level Up Techniques -->
+        <div style="
+          background: linear-gradient(135deg, #fef3c7, #fde68a);
+          border-left: 4px solid #f59e0b;
+          border-radius: 8px;
+          padding: 12px;
+          margin-bottom: 12px;
+        ">
+          <div style="font-size: 13px; font-weight: 600; color: #92400e; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            <span>🎓</span>
+            <span>Level Up Techniques</span>
+          </div>
+          <div style="font-size: 11px; color: #78350f; line-height: 1.6;">
+            <strong>The "10x Developer" Move:</strong> Create indicators for your main user flows. Check them daily. Catch issues before standup. Look like a genius.<br/><br/>
+            <strong>The "Performance Hero" Move:</strong> Summary tab shows your slowest API. Add caching. Watch it go from 2000ms → 200ms. Get promoted.<br/><br/>
+            <strong>The "Schema Detective" Move:</strong> Orange indicators tell you when backend changed the API response. Update your frontend before anything breaks. Save everyone's day.<br/><br/>
+            <strong>The "Perfect PR" Move:</strong> Record a flow showing your feature works end-to-end. Attach to PR. Reviewers trust you. Instant approve.
           </div>
         </div>
 
@@ -1095,18 +1123,39 @@ export class PageSummary {
         ">
           <div style="font-size: 13px; font-weight: 600; color: #065f46; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
             <span>✨</span>
-            <span>What's New in Indi</span>
+            <span>What's New</span>
           </div>
           <div style="font-size: 11px; color: #047857; line-height: 1.6;">
-            <strong>⚡ Performance Boost:</strong> 5x faster indicator updates (500ms → 100ms debounce)<br/>
-            <strong>🧠 Smart Caching:</strong> Schema validation now uses intelligent caching<br/>
-            <strong>👁️ Tab Awareness:</strong> Indi only runs on active tabs to save browser resources<br/>
-            <strong>🎨 Better UX:</strong> Reduced annoying pulse animations with cooldown system<br/>
-            <strong>💾 Batched Writes:</strong> Storage operations optimized for 100x fewer writes
+            <strong>We just shipped some major upgrades:</strong><br/>
+            • ⚡ <strong>5x faster updates</strong> - indicators respond in 100ms<br/>
+            • 🧠 <strong>Smart caching</strong> - no lag, butter smooth<br/>
+            • 👁️ <strong>Tab-aware</strong> - only runs when you're watching (saves RAM)<br/>
+            • 🎨 <strong>Better animations</strong> - clean visuals, less distraction<br/>
+            • 💾 <strong>Optimized storage</strong> - 100x fewer writes<br/><br/>
+            <strong>Translation:</strong> Indi is now faster than your coffee break.
           </div>
         </div>
 
-        <!-- Community & Support -->
+        <!-- Pro Tips from Community -->
+        <div style="
+          background: linear-gradient(135deg, #fff7ed, #fed7aa);
+          border-left: 4px solid #fb923c;
+          border-radius: 8px;
+          padding: 12px;
+          margin-bottom: 12px;
+        ">
+          <div style="font-size: 13px; font-weight: 600; color: #9a3412; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
+            <span>🏆</span>
+            <span>Pro Tips from the Community</span>
+          </div>
+          <div style="font-size: 11px; color: #7c2d12; line-height: 1.6; font-style: italic;">
+            "Map your checkout flow on day one. Saved me from shipping a broken payment button three times." - Frontend Dev<br/><br/>
+            "Orange indicators are gold. Backend changed the user object without telling anyone. I caught it in 5 minutes." - QA Lead<br/><br/>
+            "Use Summary tab every morning. Found a 4-second API call we didn't know existed. Fixed it, users are way happier." - Full-Stack Dev
+          </div>
+        </div>
+
+        <!-- Need More -->
         <div style="
           background: linear-gradient(135deg, #fef2f2, #fee2e2);
           border-left: 4px solid #f87171;
@@ -1115,14 +1164,19 @@ export class PageSummary {
         ">
           <div style="font-size: 13px; font-weight: 600; color: #991b1b; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;">
             <span>💬</span>
-            <span>Community & Support</span>
+            <span>Need More?</span>
           </div>
           <div style="font-size: 11px; color: #7f1d1d; line-height: 1.6;">
-            <strong>Need Help?</strong> Check the settings panel for docs and tutorials<br/>
-            <strong>Found a Bug?</strong> Report it through the settings → feedback<br/>
-            <strong>Feature Ideas?</strong> We're always listening - send us your thoughts!<br/>
-            <strong>Pro Tip:</strong> Join our community to share flows and debugging strategies
+            <strong>Stuck?</strong> Settings → Help & Docs<br/>
+            <strong>Found a bug?</strong> Settings → Report Issue (we actually fix them)<br/>
+            <strong>Feature idea?</strong> We're listening! Hit us up<br/>
+            <strong>Want to level up?</strong> Check the Summary tab - it's your performance report card
           </div>
+        </div>
+
+        <!-- Footer -->
+        <div style="text-align: center; margin-top: 16px; padding: 8px; font-size: 10px; color: #9ca3af; font-style: italic;">
+          Built by devs who want to ship fast and sleep well at night.
         </div>
       </div>
     `;

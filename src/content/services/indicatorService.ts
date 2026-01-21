@@ -488,7 +488,7 @@ indicator.addEventListener('mouseenter', () => {
         } else {
             // lets update to local time and date
             const localDate = new Date(timestamp).toLocaleDateString() + ' ' + new Date(timestamp).toLocaleTimeString();
-            tooltipContent = `Last Updated: ${localDate}\nDuration: ${Math.floor(duration)} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`;
+            tooltipContent = `Last Updated: ${localDate}\nDuration: ${Math.floor(duration)} seconds\nName: ${name || '-'}`;
             if (schemaStatus) {
                 tooltipContent += `\nSchema Status: ${schemaStatus}`;
             }
@@ -745,18 +745,25 @@ indicator.addEventListener("click", async () => {
       ">
         Name:
       </div>
-      <div style="
-        font-size: 14px !important;
-        color: ${currentData?.name || parsedDataFromAttr?.name ? '#1f2937' : '#6b7280'} !important;
-        font-weight: 500 !important;
-        padding: 8px 12px;
-        background: rgba(255, 255, 255, 0.9);
-        border-radius: 8px;
-        border: 1px solid rgba(255, 129, 119, 0.2);
-        ${!currentData?.name && !parsedDataFromAttr?.name ? 'font-style: italic;' : ''}
-      ">
-        ${currentData?.name || parsedDataFromAttr?.name || "-"}
-      </div>
+      <input
+        class="indi-name-input"
+        type="text"
+        value="${currentData?.name || parsedDataFromAttr?.name || ''}"
+        placeholder="Enter indicator name..."
+        style="
+          width: 100%;
+          font-size: 14px !important;
+          color: #1f2937 !important;
+          font-weight: 500 !important;
+          padding: 8px 12px;
+          background: rgba(255, 255, 255, 0.9);
+          border-radius: 8px;
+          border: 1px solid rgba(255, 129, 119, 0.2);
+          outline: none;
+          transition: all 0.2s;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        "
+      />
     </div>
     <div style="margin-bottom: 12px;">
       <div style="
@@ -769,18 +776,25 @@ indicator.addEventListener("click", async () => {
       ">
         Description:
       </div>
-      <div style="
-        font-size: 14px !important;
-        color: ${currentData?.description || parsedDataFromAttr?.description ? '#1f2937' : '#6b7280'} !important;
-        font-weight: 500 !important;
-        padding: 8px 12px;
-        background: rgba(255, 255, 255, 0.9);
-        border-radius: 8px;
-        border: 1px solid rgba(255, 129, 119, 0.2);
-        ${!currentData?.description && !parsedDataFromAttr?.description ? 'font-style: italic;' : ''}
-      ">
-        ${currentData?.description || parsedDataFromAttr?.description || '-'}
-      </div>
+      <textarea
+        class="indi-description-input"
+        placeholder="Enter indicator description..."
+        style="
+          width: 100%;
+          font-size: 14px !important;
+          color: #1f2937 !important;
+          font-weight: 500 !important;
+          padding: 8px 12px;
+          background: rgba(255, 255, 255, 0.9);
+          border-radius: 8px;
+          border: 1px solid rgba(255, 129, 119, 0.2);
+          outline: none;
+          transition: all 0.2s;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          resize: vertical;
+          min-height: 60px;
+        "
+      >${currentData?.description || parsedDataFromAttr?.description || ''}</textarea>
     </div>
   </div>
 
@@ -905,6 +919,24 @@ indicator.addEventListener("click", async () => {
       overflow: hidden;
     ">
       📊 Response
+    </button>
+    <button class="pop-out-window btn-success" style="
+      padding: 10px 14px;
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      position: relative;
+      overflow: hidden;
+    ">
+      📤 Pop Out
     </button>
     <button class="change-position btn-warning" style="
       padding: 10px 14px;
@@ -1185,6 +1217,125 @@ indicator.addEventListener("click", async () => {
         tooltip.remove();
       });
 
+    // Function to save name/description changes
+    const saveIndicatorMetadata = (field: 'name' | 'description', value: string) => {
+      const currentPath = generateStoragePath(window.location.href);
+
+      chrome.storage.local.get(["indicators"], (result) => {
+        const indies = result.indicators as { [key: string]: IndicatorData[] } || {};
+
+        if (!indies[currentPath]) {
+          indies[currentPath] = [];
+        }
+
+        const index = indies[currentPath].findIndex((el) => el.id === currentData.id);
+
+        if (index !== -1) {
+          // Update the field
+          indies[currentPath][index][field] = value;
+
+          // Also update currentData reference
+          currentData[field] = value;
+
+          // Update storage
+          chrome.storage.local.set({ indicators: indies }, () => {
+            // Update the indicator element's data attribute
+            const updatedData = indies[currentPath][index];
+            indicator.setAttribute("data-indicator-info", JSON.stringify(updatedData));
+
+            // Show visual feedback
+            const inputElement = field === 'name'
+              ? tooltip.querySelector(".indi-name-input") as HTMLInputElement
+              : tooltip.querySelector(".indi-description-input") as HTMLTextAreaElement;
+
+            if (inputElement) {
+              // Flash green border to show save success
+              inputElement.style.borderColor = '#10b981';
+              inputElement.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.1)';
+
+              setTimeout(() => {
+                inputElement.style.borderColor = 'rgba(255, 129, 119, 0.2)';
+                inputElement.style.boxShadow = 'none';
+              }, 500);
+            }
+          });
+        }
+      });
+    };
+
+    // Name input event listeners
+    const nameInput = tooltip.querySelector(".indi-name-input") as HTMLInputElement;
+    if (nameInput) {
+      // Save on blur (when user clicks away)
+      nameInput.addEventListener("blur", () => {
+        const newName = nameInput.value.trim();
+        saveIndicatorMetadata('name', newName);
+      });
+
+      // Save on Enter key
+      nameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const newName = nameInput.value.trim();
+          saveIndicatorMetadata('name', newName);
+          nameInput.blur(); // Remove focus
+        }
+      });
+    }
+
+    // Description textarea event listeners
+    const descriptionInput = tooltip.querySelector(".indi-description-input") as HTMLTextAreaElement;
+    if (descriptionInput) {
+      // Save on blur (when user clicks away)
+      descriptionInput.addEventListener("blur", () => {
+        const newDescription = descriptionInput.value.trim();
+        saveIndicatorMetadata('description', newDescription);
+      });
+
+      // Save on Ctrl+Enter (common pattern for multiline inputs)
+      descriptionInput.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          e.preventDefault();
+          const newDescription = descriptionInput.value.trim();
+          saveIndicatorMetadata('description', newDescription);
+          descriptionInput.blur(); // Remove focus
+        }
+      });
+    }
+
+    // Pop Out button - only opens floating window
+    tooltip.querySelector(".pop-out-window")?.addEventListener("click", () => {
+      // lets get the data from the attribute data-indicator-info
+      const allIndicatorData = JSON.parse(
+        indicator.getAttribute("data-indicator-info") || "{}"
+      );
+
+      if (!allIndicatorData || Object.keys(allIndicatorData).length === 0) {
+          const key = generateStoragePath(indicatorData.lastCall?.url) + '|' + indicatorData.method;
+          const recentCalls = recentCallsCache.get(key) || [];
+          if (recentCalls.length > 0) {
+            const dataToSend = recentCalls[0];
+            chrome.runtime.sendMessage({
+              type: "OPEN_FLOATING_WINDOW",
+              data: {
+                indicatorData: dataToSend,
+                networkCall: dataToSend,
+              }
+            });
+          }
+          return;
+      }
+
+      chrome.runtime.sendMessage({
+        type: "OPEN_FLOATING_WINDOW",
+        data: {
+          indicatorData: allIndicatorData,
+          networkCall: allIndicatorData,
+        }
+      });
+    });
+
+    // Response button - only toggles response panel display
     tooltip.querySelector(".show-response")?.addEventListener("click", () => {
         // toggle the display from block to none
         const topPart = tooltip.querySelector("#top-part");
@@ -1198,30 +1349,13 @@ indicator.addEventListener("click", async () => {
       const allIndicatorData = JSON.parse(
         indicator.getAttribute("data-indicator-info") || "{}"
       );
-      if (!allIndicatorData) {
+      if (!allIndicatorData || Object.keys(allIndicatorData).length === 0) {
           const key = generateStoragePath(indicatorData.lastCall?.url) + '|' + indicatorData.method;
           const recentCalls = recentCallsCache.get(key) || [];
           if (recentCalls.length > 0) {
             const allIndicatorData = recentCalls[0];
-            // lets send the message to the background script to open the floating window
-            chrome.runtime.sendMessage({
-            type: "OPEN_FLOATING_WINDOW",
-            data: {
-              indicatorData: allIndicatorData,
-              networkCall: allIndicatorData,
-                }
-              });
-            }
-          return;
+          }
       }
-
-      chrome.runtime.sendMessage({
-        type: "OPEN_FLOATING_WINDOW",
-        data: {
-          indicatorData: allIndicatorData,
-          networkCall: allIndicatorData,
-        }
-      });
 
       // Toggle display of the panel regardless of data
       const isHidden = (responsePanel as HTMLElement).style.display === "none";
