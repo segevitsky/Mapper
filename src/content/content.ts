@@ -298,9 +298,385 @@ document.addEventListener('indi-badge-clicked', (e: Event) => {
 });
 
 
-document.addEventListener('indi-create-indicator-from-summary', async () => { 
+document.addEventListener('indi-create-indicator-from-summary', async () => {
   enableInspectMode();
 });
+
+
+// ========== IMPORT/EXPORT INDICATORS ==========
+
+interface IndicatorExport {
+  version: string;
+  exportedAt: string;
+  source: string;
+  indicators: Record<string, any[]>;
+}
+
+/**
+ * Export all indicators to a JSON file
+ */
+async function handleExportIndicators(): Promise<void> {
+  try {
+    const result = await chrome.storage.local.get(['indicators']);
+    const indicators = result.indicators || {};
+
+    const totalIndicators = Object.values(indicators).reduce((acc: number, arr: any) => acc + (Array.isArray(arr) ? arr.length : 0), 0);
+
+    if (totalIndicators === 0) {
+      await Swal.fire({
+        icon: 'info',
+        title: 'No Indicators',
+        text: 'There are no indicators to export.',
+        customClass: { popup: 'jira-popup' }
+      });
+      return;
+    }
+
+    const exportData: IndicatorExport = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      source: window.location.origin,
+      indicators
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const date = new Date().toISOString().split('T')[0];
+    const filename = `indi-indicators-${date}.json`;
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    await Swal.fire({
+      icon: 'success',
+      title: 'Export Complete!',
+      text: `Exported ${totalIndicators} indicators to ${filename}`,
+      timer: 2000,
+      showConfirmButton: false,
+      customClass: { popup: 'jira-popup' }
+    });
+  } catch (error) {
+    console.error('Export failed:', error);
+    await Swal.fire({
+      icon: 'error',
+      title: 'Export Failed',
+      text: 'Something went wrong during export.',
+      customClass: { popup: 'jira-popup' }
+    });
+  }
+}
+
+/**
+ * Import indicators from a JSON file
+ */
+async function handleImportIndicators(): Promise<void> {
+  // Create file input
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json';
+
+  fileInput.onchange = async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+
+    try {
+      const content = await file.text();
+      const data = JSON.parse(content);
+
+      // Validate structure
+      let indicators: Record<string, any[]>;
+
+      if (data.version && data.indicators) {
+        // New format with metadata
+        indicators = data.indicators;
+      } else if (typeof data === 'object' && !Array.isArray(data)) {
+        // Legacy format - raw indicators object
+        indicators = data;
+      } else {
+        throw new Error('Invalid format');
+      }
+
+      // Validate indicators have proper structure
+      const paths = Object.keys(indicators);
+      if (paths.length === 0) {
+        throw new Error('No indicators found in file');
+      }
+
+      let totalIndicators = 0;
+      const pathSummary: { path: string; count: number }[] = [];
+
+      for (const path of paths) {
+        const pathIndicators = indicators[path];
+        if (!Array.isArray(pathIndicators)) {
+          throw new Error(`Invalid data for path: ${path}`);
+        }
+        pathSummary.push({ path, count: pathIndicators.length });
+        totalIndicators += pathIndicators.length;
+      }
+
+      // Show selection modal
+      await showImportSelectionModal(indicators, pathSummary, totalIndicators, data.exportedAt);
+    } catch (error) {
+      console.error('Import failed:', error);
+      await Swal.fire({
+        icon: 'error',
+        title: 'Import Failed',
+        html: `
+          <p style="margin-bottom: 12px;">Could not parse the file.</p>
+          <p style="font-size: 13px; color: #6b7280;">Make sure it's a valid Indi indicators export file.</p>
+        `,
+        customClass: { popup: 'jira-popup' }
+      });
+    }
+  };
+
+  fileInput.click();
+}
+
+/**
+ * Show import selection modal
+ */
+async function showImportSelectionModal(
+  indicators: Record<string, any[]>,
+  pathSummary: { path: string; count: number }[],
+  totalIndicators: number,
+  exportedAt?: string
+): Promise<void> {
+  const pathsHtml = pathSummary
+    .sort((a, b) => b.count - a.count)
+    .map((p) => `
+      <label style="
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        background: #f9fafb;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+      " onmouseover="this.style.borderColor='#8b5cf6'" onmouseout="this.style.borderColor=this.querySelector('input').checked ? '#8b5cf6' : '#e5e7eb'">
+        <input
+          type="checkbox"
+          name="import-path"
+          value="${p.path}"
+          checked
+          style="width: 18px; height: 18px; accent-color: #8b5cf6;"
+        />
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-weight: 600; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${p.path}">
+            ${formatPath(p.path)}
+          </div>
+          <div style="font-size: 11px; color: #9ca3af; margin-top: 2px;">${p.path}</div>
+        </div>
+        <span style="
+          background: linear-gradient(to right, #8b5cf6, #7c3aed);
+          color: white;
+          padding: 4px 10px;
+          border-radius: 12px;
+          font-size: 12px;
+          font-weight: 600;
+        ">${p.count}</span>
+      </label>
+    `).join('');
+
+  const result = await Swal.fire({
+    title: '📤 Import Indicators',
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; text-align: left;">
+        <!-- Summary -->
+        <div style="background: linear-gradient(to right, #f3e8ff, #ede9fe); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;">
+          <div style="font-weight: 600; color: #6b21a8;">
+            ${totalIndicators} indicators in ${pathSummary.length} paths
+          </div>
+          ${exportedAt ? `<div style="font-size: 12px; color: #7c3aed; margin-top: 4px;">Exported: ${new Date(exportedAt).toLocaleString()}</div>` : ''}
+        </div>
+
+        <!-- Path Selection -->
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-weight: 600; color: #374151;">Select paths to import:</span>
+            <div>
+              <button type="button" id="import-select-all" style="background: none; border: none; color: #8b5cf6; font-size: 12px; cursor: pointer; font-weight: 600;">Select All</button>
+              <span style="color: #d1d5db; margin: 0 4px;">|</span>
+              <button type="button" id="import-select-none" style="background: none; border: none; color: #8b5cf6; font-size: 12px; cursor: pointer; font-weight: 600;">Select None</button>
+            </div>
+          </div>
+          <div style="max-height: 250px; overflow-y: auto; padding-right: 8px;">
+            ${pathsHtml}
+          </div>
+        </div>
+
+        <!-- Import Mode -->
+        <div style="margin-bottom: 8px;">
+          <span style="font-weight: 600; color: #374151; display: block; margin-bottom: 8px;">Import mode:</span>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <label style="
+              display: flex;
+              flex-direction: column;
+              padding: 12px;
+              background: #ecfdf5;
+              border: 2px solid #10b981;
+              border-radius: 8px;
+              cursor: pointer;
+            ">
+              <input type="radio" name="import-mode" value="merge" checked style="margin-bottom: 6px; accent-color: #10b981;" />
+              <span style="font-weight: 600; color: #065f46;">Merge</span>
+              <span style="font-size: 11px; color: #047857;">Add new, skip duplicates</span>
+            </label>
+            <label style="
+              display: flex;
+              flex-direction: column;
+              padding: 12px;
+              background: #fff7ed;
+              border: 2px solid #f59e0b;
+              border-radius: 8px;
+              cursor: pointer;
+            ">
+              <input type="radio" name="import-mode" value="overwrite" style="margin-bottom: 6px; accent-color: #f59e0b;" />
+              <span style="font-weight: 600; color: #92400e;">Overwrite</span>
+              <span style="font-size: 11px; color: #b45309;">Replace existing paths</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    `,
+    width: '550px',
+    showCancelButton: true,
+    confirmButtonText: 'Import',
+    cancelButtonText: 'Cancel',
+    customClass: {
+      popup: 'jira-popup',
+      confirmButton: 'swal2-confirm-custom',
+    },
+    didOpen: (popup) => {
+      const confirmBtn = Swal.getConfirmButton();
+      if (confirmBtn) {
+        confirmBtn.style.cssText = `
+          background: linear-gradient(to right, #8b5cf6, #7c3aed) !important;
+          border: none !important;
+          padding: 12px 24px !important;
+          border-radius: 8px !important;
+          font-weight: 600 !important;
+        `;
+      }
+
+      // Select all/none handlers
+      popup.querySelector('#import-select-all')?.addEventListener('click', () => {
+        popup.querySelectorAll('input[name="import-path"]').forEach((cb: any) => cb.checked = true);
+      });
+      popup.querySelector('#import-select-none')?.addEventListener('click', () => {
+        popup.querySelectorAll('input[name="import-path"]').forEach((cb: any) => cb.checked = false);
+      });
+    },
+    preConfirm: () => {
+      const selectedPaths = Array.from(document.querySelectorAll('input[name="import-path"]:checked'))
+        .map((cb: any) => cb.value);
+      const mode = (document.querySelector('input[name="import-mode"]:checked') as HTMLInputElement)?.value || 'merge';
+
+      if (selectedPaths.length === 0) {
+        Swal.showValidationMessage('Please select at least one path to import');
+        return false;
+      }
+
+      return { selectedPaths, mode };
+    }
+  });
+
+  if (result.isConfirmed && result.value) {
+    await performImport(indicators, result.value.selectedPaths, result.value.mode);
+  }
+}
+
+/**
+ * Format path for display
+ */
+function formatPath(path: string): string {
+  return path
+    .split(/[-_.]/)
+    .flatMap(part => part.split(/(?=[A-Z])/))
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * Perform the actual import
+ */
+async function performImport(
+  importIndicators: Record<string, any[]>,
+  selectedPaths: string[],
+  mode: string
+): Promise<void> {
+  try {
+    const result = await chrome.storage.local.get(['indicators']);
+    const existingIndicators = result.indicators || {};
+
+    let imported = 0;
+    let skipped = 0;
+    let newIndicators: Record<string, any[]>;
+
+    if (mode === 'overwrite') {
+      newIndicators = { ...existingIndicators };
+      for (const path of selectedPaths) {
+        const pathIndicators = importIndicators[path] || [];
+        newIndicators[path] = pathIndicators;
+        imported += pathIndicators.length;
+      }
+    } else {
+      // Merge mode
+      newIndicators = { ...existingIndicators };
+      for (const path of selectedPaths) {
+        const importPathIndicators = importIndicators[path] || [];
+        const existingPathIndicators = newIndicators[path] || [];
+        const existingIds = new Set(existingPathIndicators.map((ind: any) => ind.id));
+
+        for (const indicator of importPathIndicators) {
+          if (existingIds.has(indicator.id)) {
+            skipped++;
+          } else {
+            existingPathIndicators.push(indicator);
+            imported++;
+          }
+        }
+        newIndicators[path] = existingPathIndicators;
+      }
+    }
+
+    await chrome.storage.local.set({ indicators: newIndicators });
+
+    const skippedMsg = skipped > 0 ? ` (${skipped} skipped - already exist)` : '';
+
+    await Swal.fire({
+      icon: 'success',
+      title: 'Import Complete!',
+      text: `Successfully imported ${imported} indicators${skippedMsg}`,
+      timer: 3000,
+      showConfirmButton: false,
+      customClass: { popup: 'jira-popup' }
+    });
+
+    // Reload indicators on page
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+  } catch (error) {
+    console.error('Import failed:', error);
+    await Swal.fire({
+      icon: 'error',
+      title: 'Import Failed',
+      text: 'Something went wrong during import.',
+      customClass: { popup: 'jira-popup' }
+    });
+  }
+}
+
+// ========== END IMPORT/EXPORT ==========
 
 
 /**
@@ -430,6 +806,58 @@ async function showSettingsModal() {
           API calls slower than <strong>${currentThreshold}ms</strong> will be flagged as slow and highlighted in blobi reports, summaries, and the logger. This affects issue detection and notifications.
         </p>
       </div>
+
+      <!-- Import/Export Section -->
+      <div style="border-top: 1px solid #e5e7eb; padding-top: 20px;">
+        <label style="display: block; font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 12px;">
+          Import / Export Indicators
+        </label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <button
+            id="indi-settings-export"
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 8px;
+              padding: 12px 16px;
+              background: linear-gradient(to right, #10b981, #059669);
+              color: white;
+              border: none;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s;
+            "
+          >
+            <span style="font-size: 16px;">📥</span> Export
+          </button>
+          <button
+            id="indi-settings-import"
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 8px;
+              padding: 12px 16px;
+              background: linear-gradient(to right, #8b5cf6, #7c3aed);
+              color: white;
+              border: none;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s;
+            "
+          >
+            <span style="font-size: 16px;">📤</span> Import
+          </button>
+        </div>
+        <p style="font-size: 12px; color: #6b7280; margin-top: 8px;">
+          Export all indicators to a JSON file for backup or sharing. Import previously exported indicators.
+        </p>
+      </div>
     </div>
   `;
 
@@ -486,6 +914,23 @@ async function showSettingsModal() {
             const networkData = Array.from(recentCallsCache.values()).flat();
             await onboardingFlow.startWithNetworkData(networkData, true);
           }
+        });
+      }
+
+      // Export button handler
+      const exportBtn = popup.querySelector('#indi-settings-export') as HTMLButtonElement;
+      if (exportBtn) {
+        exportBtn.addEventListener('click', async () => {
+          await handleExportIndicators();
+        });
+      }
+
+      // Import button handler
+      const importBtn = popup.querySelector('#indi-settings-import') as HTMLButtonElement;
+      if (importBtn) {
+        importBtn.addEventListener('click', async () => {
+          Swal.close();
+          await handleImportIndicators();
         });
       }
     },
