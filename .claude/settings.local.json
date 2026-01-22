@@ -3,7 +3,10 @@
     "allow": [
       "Bash(node cleanup-console.js:*)",
       "Bash(node cleanup-console.cjs:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(npm run build:*)",
+      "Bash(source ~/.zshrc)",
+      "Bash(source ~/.bashrc)"
     ],
     "deny": [],
     "ask": []

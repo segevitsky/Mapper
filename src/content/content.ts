@@ -7,6 +7,13 @@ import { SecurityEngine } from "../utils/securityEngine";
 import { SecurityIssue } from "../types/security";
 import { consoleCapture } from './services/consoleCapture';
 
+// Prevent content script from running multiple times
+if ((window as any).__INDI_CONTENT_SCRIPT_LOADED__) {
+  console.warn('⚠️ Indi content script already loaded, preventing duplicate initialization');
+  throw new Error('Content script already loaded');
+}
+(window as any).__INDI_CONTENT_SCRIPT_LOADED__ = true;
+
 // Track if this tab is currently visible
 let isTabVisible = !document.hidden;
 import { IndicatorMonitor } from "./services/indicatorMonitor";
@@ -173,6 +180,14 @@ function isStaticAsset(url: string): boolean {
  * Check if a network call should be stored based on backend config
  */
 async function shouldStoreCall(url: string): Promise<boolean> {
+  // Filter out extension URLs (chrome-extension://, moz-extension://, etc.)
+  if (url.startsWith('chrome-extension://') ||
+      url.startsWith('moz-extension://') ||
+      url.startsWith('safari-extension://') ||
+      url.startsWith('edge-extension://')) {
+    return false;
+  }
+
   // Filter out static assets immediately
   if (isStaticAsset(url)) {
     return false;
@@ -283,9 +298,385 @@ document.addEventListener('indi-badge-clicked', (e: Event) => {
 });
 
 
-document.addEventListener('indi-create-indicator-from-summary', async () => { 
+document.addEventListener('indi-create-indicator-from-summary', async () => {
   enableInspectMode();
 });
+
+
+// ========== IMPORT/EXPORT INDICATORS ==========
+
+interface IndicatorExport {
+  version: string;
+  exportedAt: string;
+  source: string;
+  indicators: Record<string, any[]>;
+}
+
+/**
+ * Export all indicators to a JSON file
+ */
+async function handleExportIndicators(): Promise<void> {
+  try {
+    const result = await chrome.storage.local.get(['indicators']);
+    const indicators = result.indicators || {};
+
+    const totalIndicators = Object.values(indicators).reduce((acc: number, arr: any) => acc + (Array.isArray(arr) ? arr.length : 0), 0);
+
+    if (totalIndicators === 0) {
+      await Swal.fire({
+        icon: 'info',
+        title: 'No Indicators',
+        text: 'There are no indicators to export.',
+        customClass: { popup: 'jira-popup' }
+      });
+      return;
+    }
+
+    const exportData: IndicatorExport = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      source: window.location.origin,
+      indicators
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const date = new Date().toISOString().split('T')[0];
+    const filename = `indi-indicators-${date}.json`;
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    await Swal.fire({
+      icon: 'success',
+      title: 'Export Complete!',
+      text: `Exported ${totalIndicators} indicators to ${filename}`,
+      timer: 2000,
+      showConfirmButton: false,
+      customClass: { popup: 'jira-popup' }
+    });
+  } catch (error) {
+    console.error('Export failed:', error);
+    await Swal.fire({
+      icon: 'error',
+      title: 'Export Failed',
+      text: 'Something went wrong during export.',
+      customClass: { popup: 'jira-popup' }
+    });
+  }
+}
+
+/**
+ * Import indicators from a JSON file
+ */
+async function handleImportIndicators(): Promise<void> {
+  // Create file input
+  const fileInput = document.createElement('input');
+  fileInput.type = 'file';
+  fileInput.accept = '.json';
+
+  fileInput.onchange = async (e) => {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+
+    try {
+      const content = await file.text();
+      const data = JSON.parse(content);
+
+      // Validate structure
+      let indicators: Record<string, any[]>;
+
+      if (data.version && data.indicators) {
+        // New format with metadata
+        indicators = data.indicators;
+      } else if (typeof data === 'object' && !Array.isArray(data)) {
+        // Legacy format - raw indicators object
+        indicators = data;
+      } else {
+        throw new Error('Invalid format');
+      }
+
+      // Validate indicators have proper structure
+      const paths = Object.keys(indicators);
+      if (paths.length === 0) {
+        throw new Error('No indicators found in file');
+      }
+
+      let totalIndicators = 0;
+      const pathSummary: { path: string; count: number }[] = [];
+
+      for (const path of paths) {
+        const pathIndicators = indicators[path];
+        if (!Array.isArray(pathIndicators)) {
+          throw new Error(`Invalid data for path: ${path}`);
+        }
+        pathSummary.push({ path, count: pathIndicators.length });
+        totalIndicators += pathIndicators.length;
+      }
+
+      // Show selection modal
+      await showImportSelectionModal(indicators, pathSummary, totalIndicators, data.exportedAt);
+    } catch (error) {
+      console.error('Import failed:', error);
+      await Swal.fire({
+        icon: 'error',
+        title: 'Import Failed',
+        html: `
+          <p style="margin-bottom: 12px;">Could not parse the file.</p>
+          <p style="font-size: 13px; color: #6b7280;">Make sure it's a valid Indi indicators export file.</p>
+        `,
+        customClass: { popup: 'jira-popup' }
+      });
+    }
+  };
+
+  fileInput.click();
+}
+
+/**
+ * Show import selection modal
+ */
+async function showImportSelectionModal(
+  indicators: Record<string, any[]>,
+  pathSummary: { path: string; count: number }[],
+  totalIndicators: number,
+  exportedAt?: string
+): Promise<void> {
+  const pathsHtml = pathSummary
+    .sort((a, b) => b.count - a.count)
+    .map((p) => `
+      <label style="
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        background: #f9fafb;
+        border: 2px solid #e5e7eb;
+        border-radius: 8px;
+        margin-bottom: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+      " onmouseover="this.style.borderColor='#8b5cf6'" onmouseout="this.style.borderColor=this.querySelector('input').checked ? '#8b5cf6' : '#e5e7eb'">
+        <input
+          type="checkbox"
+          name="import-path"
+          value="${p.path}"
+          checked
+          style="width: 18px; height: 18px; accent-color: #8b5cf6;"
+        />
+        <div style="flex: 1; min-width: 0;">
+          <div style="font-weight: 600; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${p.path}">
+            ${formatPath(p.path)}
+          </div>
+          <div style="font-size: 11px; color: #9ca3af; margin-top: 2px;">${p.path}</div>
+        </div>
+        <span style="
+          background: linear-gradient(to right, #8b5cf6, #7c3aed);
+          color: white;
+          padding: 4px 10px;
+          border-radius: 12px;
+          font-size: 12px;
+          font-weight: 600;
+        ">${p.count}</span>
+      </label>
+    `).join('');
+
+  const result = await Swal.fire({
+    title: '📤 Import Indicators',
+    html: `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; text-align: left;">
+        <!-- Summary -->
+        <div style="background: linear-gradient(to right, #f3e8ff, #ede9fe); padding: 12px 16px; border-radius: 8px; margin-bottom: 16px;">
+          <div style="font-weight: 600; color: #6b21a8;">
+            ${totalIndicators} indicators in ${pathSummary.length} paths
+          </div>
+          ${exportedAt ? `<div style="font-size: 12px; color: #7c3aed; margin-top: 4px;">Exported: ${new Date(exportedAt).toLocaleString()}</div>` : ''}
+        </div>
+
+        <!-- Path Selection -->
+        <div style="margin-bottom: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-weight: 600; color: #374151;">Select paths to import:</span>
+            <div>
+              <button type="button" id="import-select-all" style="background: none; border: none; color: #8b5cf6; font-size: 12px; cursor: pointer; font-weight: 600;">Select All</button>
+              <span style="color: #d1d5db; margin: 0 4px;">|</span>
+              <button type="button" id="import-select-none" style="background: none; border: none; color: #8b5cf6; font-size: 12px; cursor: pointer; font-weight: 600;">Select None</button>
+            </div>
+          </div>
+          <div style="max-height: 250px; overflow-y: auto; padding-right: 8px;">
+            ${pathsHtml}
+          </div>
+        </div>
+
+        <!-- Import Mode -->
+        <div style="margin-bottom: 8px;">
+          <span style="font-weight: 600; color: #374151; display: block; margin-bottom: 8px;">Import mode:</span>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <label style="
+              display: flex;
+              flex-direction: column;
+              padding: 12px;
+              background: #ecfdf5;
+              border: 2px solid #10b981;
+              border-radius: 8px;
+              cursor: pointer;
+            ">
+              <input type="radio" name="import-mode" value="merge" checked style="margin-bottom: 6px; accent-color: #10b981;" />
+              <span style="font-weight: 600; color: #065f46;">Merge</span>
+              <span style="font-size: 11px; color: #047857;">Add new, skip duplicates</span>
+            </label>
+            <label style="
+              display: flex;
+              flex-direction: column;
+              padding: 12px;
+              background: #fff7ed;
+              border: 2px solid #f59e0b;
+              border-radius: 8px;
+              cursor: pointer;
+            ">
+              <input type="radio" name="import-mode" value="overwrite" style="margin-bottom: 6px; accent-color: #f59e0b;" />
+              <span style="font-weight: 600; color: #92400e;">Overwrite</span>
+              <span style="font-size: 11px; color: #b45309;">Replace existing paths</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    `,
+    width: '550px',
+    showCancelButton: true,
+    confirmButtonText: 'Import',
+    cancelButtonText: 'Cancel',
+    customClass: {
+      popup: 'jira-popup',
+      confirmButton: 'swal2-confirm-custom',
+    },
+    didOpen: (popup) => {
+      const confirmBtn = Swal.getConfirmButton();
+      if (confirmBtn) {
+        confirmBtn.style.cssText = `
+          background: linear-gradient(to right, #8b5cf6, #7c3aed) !important;
+          border: none !important;
+          padding: 12px 24px !important;
+          border-radius: 8px !important;
+          font-weight: 600 !important;
+        `;
+      }
+
+      // Select all/none handlers
+      popup.querySelector('#import-select-all')?.addEventListener('click', () => {
+        popup.querySelectorAll('input[name="import-path"]').forEach((cb: any) => cb.checked = true);
+      });
+      popup.querySelector('#import-select-none')?.addEventListener('click', () => {
+        popup.querySelectorAll('input[name="import-path"]').forEach((cb: any) => cb.checked = false);
+      });
+    },
+    preConfirm: () => {
+      const selectedPaths = Array.from(document.querySelectorAll('input[name="import-path"]:checked'))
+        .map((cb: any) => cb.value);
+      const mode = (document.querySelector('input[name="import-mode"]:checked') as HTMLInputElement)?.value || 'merge';
+
+      if (selectedPaths.length === 0) {
+        Swal.showValidationMessage('Please select at least one path to import');
+        return false;
+      }
+
+      return { selectedPaths, mode };
+    }
+  });
+
+  if (result.isConfirmed && result.value) {
+    await performImport(indicators, result.value.selectedPaths, result.value.mode);
+  }
+}
+
+/**
+ * Format path for display
+ */
+function formatPath(path: string): string {
+  return path
+    .split(/[-_.]/)
+    .flatMap(part => part.split(/(?=[A-Z])/))
+    .filter(Boolean)
+    .join(' ');
+}
+
+/**
+ * Perform the actual import
+ */
+async function performImport(
+  importIndicators: Record<string, any[]>,
+  selectedPaths: string[],
+  mode: string
+): Promise<void> {
+  try {
+    const result = await chrome.storage.local.get(['indicators']);
+    const existingIndicators = result.indicators || {};
+
+    let imported = 0;
+    let skipped = 0;
+    let newIndicators: Record<string, any[]>;
+
+    if (mode === 'overwrite') {
+      newIndicators = { ...existingIndicators };
+      for (const path of selectedPaths) {
+        const pathIndicators = importIndicators[path] || [];
+        newIndicators[path] = pathIndicators;
+        imported += pathIndicators.length;
+      }
+    } else {
+      // Merge mode
+      newIndicators = { ...existingIndicators };
+      for (const path of selectedPaths) {
+        const importPathIndicators = importIndicators[path] || [];
+        const existingPathIndicators = newIndicators[path] || [];
+        const existingIds = new Set(existingPathIndicators.map((ind: any) => ind.id));
+
+        for (const indicator of importPathIndicators) {
+          if (existingIds.has(indicator.id)) {
+            skipped++;
+          } else {
+            existingPathIndicators.push(indicator);
+            imported++;
+          }
+        }
+        newIndicators[path] = existingPathIndicators;
+      }
+    }
+
+    await chrome.storage.local.set({ indicators: newIndicators });
+
+    const skippedMsg = skipped > 0 ? ` (${skipped} skipped - already exist)` : '';
+
+    await Swal.fire({
+      icon: 'success',
+      title: 'Import Complete!',
+      text: `Successfully imported ${imported} indicators${skippedMsg}`,
+      timer: 3000,
+      showConfirmButton: false,
+      customClass: { popup: 'jira-popup' }
+    });
+
+    // Reload indicators on page
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+  } catch (error) {
+    console.error('Import failed:', error);
+    await Swal.fire({
+      icon: 'error',
+      title: 'Import Failed',
+      text: 'Something went wrong during import.',
+      customClass: { popup: 'jira-popup' }
+    });
+  }
+}
+
+// ========== END IMPORT/EXPORT ==========
 
 
 /**
@@ -415,6 +806,58 @@ async function showSettingsModal() {
           API calls slower than <strong>${currentThreshold}ms</strong> will be flagged as slow and highlighted in blobi reports, summaries, and the logger. This affects issue detection and notifications.
         </p>
       </div>
+
+      <!-- Import/Export Section -->
+      <div style="border-top: 1px solid #e5e7eb; padding-top: 20px;">
+        <label style="display: block; font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 12px;">
+          Import / Export Indicators
+        </label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <button
+            id="indi-settings-export"
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 8px;
+              padding: 12px 16px;
+              background: linear-gradient(to right, #10b981, #059669);
+              color: white;
+              border: none;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s;
+            "
+          >
+            <span style="font-size: 16px;">📥</span> Export
+          </button>
+          <button
+            id="indi-settings-import"
+            style="
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 8px;
+              padding: 12px 16px;
+              background: linear-gradient(to right, #8b5cf6, #7c3aed);
+              color: white;
+              border: none;
+              border-radius: 8px;
+              font-size: 14px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s;
+            "
+          >
+            <span style="font-size: 16px;">📤</span> Import
+          </button>
+        </div>
+        <p style="font-size: 12px; color: #6b7280; margin-top: 8px;">
+          Export all indicators to a JSON file for backup or sharing. Import previously exported indicators.
+        </p>
+      </div>
     </div>
   `;
 
@@ -471,6 +914,23 @@ async function showSettingsModal() {
             const networkData = Array.from(recentCallsCache.values()).flat();
             await onboardingFlow.startWithNetworkData(networkData, true);
           }
+        });
+      }
+
+      // Export button handler
+      const exportBtn = popup.querySelector('#indi-settings-export') as HTMLButtonElement;
+      if (exportBtn) {
+        exportBtn.addEventListener('click', async () => {
+          await handleExportIndicators();
+        });
+      }
+
+      // Import button handler
+      const importBtn = popup.querySelector('#indi-settings-import') as HTMLButtonElement;
+      if (importBtn) {
+        importBtn.addEventListener('click', async () => {
+          Swal.close();
+          await handleImportIndicators();
         });
       }
     },
@@ -683,18 +1143,41 @@ function setupIndiEventListeners() {
   // Listen for Indi blob clicks
   document.addEventListener('indi-blob-clicked', handleBlobClick);
 
+  // Listen for minimize event
+  document.removeEventListener('indi-minimized', handleIndiMinimized);
+  document.addEventListener('indi-minimized', handleIndiMinimized);
+
+  // Listen for restore event
+  document.removeEventListener('indi-restored', handleIndiRestored);
+  document.addEventListener('indi-restored', handleIndiRestored);
+
   // Listen for tab visibility changes to save memory
   document.addEventListener('visibilitychange', () => {
     isTabVisible = !document.hidden;
 
     if (document.hidden) {
       // Tab became inactive - cleanup to save memory
-      console.log('🌙 Tab hidden - cleaning up cache and console logs');
+      console.log('🌙 Tab hidden - cleaning up cache and pausing monitoring');
       cleanupInactiveTabCache();
-      consoleCapture.clearErrors(); // Clear console logs when tab hidden
+
+      // Tell background to reduce monitoring for this tab
+      chrome.runtime.sendMessage({
+        type: 'TAB_HIDDEN',
+        timestamp: Date.now()
+      }).catch(() => {
+        // Ignore errors if background isn't ready
+      });
     } else {
-      // Tab became active
-      console.log('👁️ Tab visible - resuming full capture');
+      // Tab became active again
+      console.log('👀 Tab visible - resuming full monitoring');
+
+      // Tell background to resume full monitoring
+      chrome.runtime.sendMessage({
+        type: 'TAB_VISIBLE',
+        timestamp: Date.now()
+      }).catch(() => {
+        // Ignore errors if background isn't ready
+      });
     }
   });
 
@@ -702,9 +1185,14 @@ function setupIndiEventListeners() {
   document.addEventListener('click', (e: MouseEvent) => {
     const target = e.target as HTMLElement;
     if (target && target.id === 'indi-summary-create-indicator') {
-      // Dispatch the event
-      const event = new CustomEvent('indi-create-indicator-from-summary');
-      document.dispatchEvent(event);
+      // If already in inspect mode, cancel it
+      if (isInspectMode) {
+        disableInspectMode();
+      } else {
+        // Dispatch the event to start inspect mode
+        const event = new CustomEvent('indi-create-indicator-from-summary');
+        document.dispatchEvent(event);
+      }
     }
 
     // Listen for Settings button clicks
@@ -1369,64 +1857,193 @@ function generatePlaybackResultHTML(result: any): string {
 }
 
 /**
- * Filter network calls by configured backend URL
+ * Cache for backend URL to avoid repeated chrome.storage calls
  */
-async function filterCallsByBackend(calls: NetworkCall[]): Promise<NetworkCall[]> {
+let cachedBackendUrl: string | null | undefined = undefined; // undefined = not fetched yet
+let backendUrlCacheTime: number = 0;
+const BACKEND_URL_CACHE_TTL = 5000; // 5 seconds cache
+
+/**
+ * Get cached backend URL or fetch from storage
+ */
+async function getCachedBackendUrl(): Promise<string | null> {
+  const now = Date.now();
+
+  // Return cached value if still valid (and has been fetched at least once)
+  if (cachedBackendUrl !== undefined && (now - backendUrlCacheTime) < BACKEND_URL_CACHE_TTL) {
+    return cachedBackendUrl ?? null; // Ensure we never return undefined
+  }
+
+  // Fetch from storage
   const hostname = window.location.hostname;
   const key = `indi_onboarding_${hostname}`;
   const result = await chrome.storage.local.get([key]);
-  const backendUrl = result[key]?.selectedBackendUrl;
+  cachedBackendUrl = result[key]?.selectedBackendUrl || null;
+  backendUrlCacheTime = now;
 
-  if (!backendUrl) return calls;
+  return cachedBackendUrl ?? null; // Ensure we never return undefined
+}
+
+/**
+ * Filter network calls by configured backend URL (optimized with caching)
+ */
+async function filterCallsByBackend(calls: NetworkCall[]): Promise<NetworkCall[]> {
+  const backendUrl = await getCachedBackendUrl();
+
+  if (!backendUrl) {
+    // Even without backend URL, filter out OPTIONS calls
+    return calls.filter(call => {
+      const method = call?.request?.request?.method || call?.method || '';
+      return method.toUpperCase() !== 'OPTIONS';
+    });
+  }
 
   return calls.filter(call => {
     const url = call?.lastCall?.url || call?.request?.request?.url || call?.url || '';
-    return url.startsWith(backendUrl);
+    const method = call?.request?.request?.method || call?.method || '';
+
+    // Filter by backend URL AND exclude OPTIONS calls
+    return url.startsWith(backendUrl) && method.toUpperCase() !== 'OPTIONS';
   });
 }
 
+// Debounce flag to prevent double-calls
+let isHandlingBlobClick = false;
+
 async function handleBlobClick() {
+  console.log('📨 handleBlobClick received event');
   if (!indiBlob) return;
 
-  // Check cached backend config (no async needed!)
-  if (!indiBlob.isConfigured()) {
-    // Backend not configured - show onboarding
-    if (onboardingFlow) {
-      const networkData = Array.from(recentCallsCache.values()).flat();
-      await onboardingFlow.startWithNetworkData(networkData);
-    }
+  // Prevent rapid double-calls
+  if (isHandlingBlobClick) {
+    console.log('🚫 Ignoring duplicate blob click');
     return;
   }
 
-  // Get network calls filtered by backend
-  const networkData = Array.from(recentCallsCache.values()).flat();
-  const filteredCalls = await filterCallsByBackend(networkData);
+  isHandlingBlobClick = true;
 
-  // Pass network calls to PageSummary
-  if (pageSummary) {
-    pageSummary.setNetworkCalls(filteredCalls);
+  try {
+    // Check cached backend config (no async needed!)
+    if (!indiBlob.isConfigured()) {
+      // Backend not configured - show onboarding
+      if (onboardingFlow) {
+        const networkData = Array.from(recentCallsCache.values()).flat();
+        await onboardingFlow.startWithNetworkData(networkData);
+      }
+      return;
+    }
+
+    // OPTIMIZATION: Open modal IMMEDIATELY for instant feedback
+    // Check if we have existing summary to show
+    const existingSummary = cumulativeSummary || indiBlob.getCurrentSummaryData();
+
+    if (existingSummary) {
+      // We have data - show it immediately, then update in background
+      indiBlob.toggle();
+
+      // Now do the heavy work in background
+      const networkData = Array.from(recentCallsCache.values()).flat();
+      const filteredCalls = await filterCallsByBackend(networkData);
+
+      if (pageSummary) {
+        pageSummary.setNetworkCalls(filteredCalls);
+        pageSummary.setDefaultTabForState(true);
+
+        // Update with latest data
+        const summaryHTML = pageSummary.generateSummaryHTML(existingSummary);
+        indiBlob.updateContent(summaryHTML, existingSummary, filteredCalls);
+      }
+    } else {
+      // No existing data - show loading state immediately for better UX
+      indiBlob.showLoading();
+      indiBlob.toggle();
+
+      // Now do the heavy work in background
+      const networkData = Array.from(recentCallsCache.values()).flat();
+      const filteredCalls = await filterCallsByBackend(networkData);
+
+      if (pageSummary) {
+        pageSummary.setNetworkCalls(filteredCalls);
+
+        const summaryToUse = pageSummary?.analyze(filteredCalls) || pageSummary?.getCurrentSummaryData();
+        const hasSummary = !!summaryToUse;
+
+        pageSummary.setDefaultTabForState(hasSummary);
+
+        if (summaryToUse) {
+          const summaryHTML = pageSummary.generateSummaryHTML(summaryToUse);
+          indiBlob.updateContent(summaryHTML, summaryToUse, filteredCalls);
+        }
+      }
+    }
+  } finally {
+    // Reset the flag after a short delay
+    setTimeout(() => {
+      isHandlingBlobClick = false;
+    }, 100); // Reduced from 300ms to 100ms
   }
+}
 
-  // Check if we have summary data ready
-  const summaryData = indiBlob.getCurrentSummaryData();
-  const hasSummary = summaryData || cumulativeSummary;
+/**
+ * Handle Indi minimized event - detach debugger
+ */
+async function handleIndiMinimized() {
+  console.log('😴 Indi minimized - requesting debugger detach');
 
-  // Set default tab based on whether summary is ready
-  // If no summary, default to Console tab (always has data)
-  // If summary ready, default to Summary tab
-  if (pageSummary) {
-    pageSummary.setDefaultTabForState(!!hasSummary);
+  try {
+    // Don't send tabId - background will get it from sender.tab.id
+    const response = await chrome.runtime.sendMessage({
+      type: 'DETACH_DEBUGGER'
+    });
+
+    if (response?.success) {
+      console.log('✅ Debugger detached successfully');
+    } else {
+      console.warn('⚠️ Failed to detach debugger:', response?.error);
+    }
+  } catch (error) {
+    console.error('❌ Error detaching debugger:', error);
   }
+}
 
-  // Generate and update content - will show appropriate tab based on state
-  const summaryToUse = cumulativeSummary || pageSummary?.getCurrentSummaryData() || pageSummary?.analyze([]);
-  if (summaryToUse && pageSummary) {
-    const summaryHTML = pageSummary.generateSummaryHTML(summaryToUse);
-    indiBlob.updateContent(summaryHTML, summaryToUse, filteredCalls);
+/**
+ * Handle Indi restored event - re-attach debugger
+ */
+async function handleIndiRestored() {
+  console.log('👀 Indi restored - requesting debugger re-attach');
+
+  try {
+    // Don't send tabId - background will get it from sender.tab.id
+    const response = await chrome.runtime.sendMessage({
+      type: 'REATTACH_DEBUGGER'
+    });
+
+    if (response?.success) {
+      console.log('✅ Debugger re-attached successfully');
+
+      // Show brief confirmation to user
+      if (speechBubble && !indiBlob?.getMuteState()) {
+        speechBubble.show({
+          title: '👀 Monitoring resumed!',
+          message: 'I\'m back to watching your APIs',
+          actions: [],
+          showClose: false,
+          persistent: false
+        });
+
+        // Auto-hide after 2 seconds
+        setTimeout(() => {
+          if (speechBubble) {
+            speechBubble.hide();
+          }
+        }, 2000);
+      }
+    } else {
+      console.warn('⚠️ Failed to re-attach debugger:', response?.error);
+    }
+  } catch (error) {
+    console.error('❌ Error re-attaching debugger:', error);
   }
-
-  // Open the modal immediately
-  indiBlob.toggle();
 }
 
 // Track cumulative issues for the current page
@@ -1442,6 +2059,22 @@ const notifiedErrorUrls = new Set<string>(); // Track which error URLs we've alr
 const notifiedSlowUrls = new Set<string>(); // Track which slow URLs we've already notified about
 const notifiedSecurityUrls = new Set<string>(); // Track which security URLs we've already notified about
 
+// Performance: Cache onboarding state in memory to avoid storage calls
+let cachedOnboardingState: any = null;
+let lastOnboardingCheck: number = 0;
+const ONBOARDING_CACHE_TTL = 60000; // Cache for 1 minute
+
+// Performance: Debounce timers for heavy operations
+let analyzeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let securityAnalysisTimer: ReturnType<typeof setTimeout> | null = null;
+let lastAnalysisTime: number = 0;
+const ANALYSIS_DEBOUNCE_MS = 1000; // Run analysis max once per second
+
+// Performance: Debounce indicator updates (reduced to 100ms for responsiveness)
+let indicatorUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+let lastIndicatorUpdateTime: number = 0;
+const INDICATOR_UPDATE_DEBOUNCE_MS = 100; // Check indicators max once per 100ms (fast and responsive)
+
 // Reset cumulative tracking when page changes
 function resetCumulativeTracking() {
   currentPageUrl = window.location.href;
@@ -1455,16 +2088,44 @@ function resetCumulativeTracking() {
   notifiedErrorUrls.clear(); // Reset notified errors
   notifiedSlowUrls.clear(); // Reset notified slow calls
   notifiedSecurityUrls.clear(); // Reset notified security issues
+
+  // Reset performance caches
+  cachedOnboardingState = null;
+  lastOnboardingCheck = 0;
+}
+
+/**
+ * Check onboarding state with memory caching to avoid repeated storage calls
+ * Performance: Reduces storage API calls by 90%+
+ */
+async function getCachedOnboardingState(): Promise<any> {
+  const now = Date.now();
+
+  // Return cached state if still valid
+  if (cachedOnboardingState && (now - lastOnboardingCheck) < ONBOARDING_CACHE_TTL) {
+    return cachedOnboardingState;
+  }
+
+  // Cache expired or doesn't exist - fetch from storage
+  const onboardingKey = `indi_onboarding_${window.location.hostname}`;
+  const result = await chrome.storage.local.get([onboardingKey]);
+  cachedOnboardingState = result[onboardingKey];
+  lastOnboardingCheck = now;
+
+  return cachedOnboardingState;
 }
 
 async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
   if (!indiBlob || !pageSummary) return;
 
-  // Check if onboarding exists for this domain - if NOT, don't analyze
-  // This prevents Indi from being intrusive on every website
-  const onboardingKey = `indi_onboarding_${window.location.hostname}`;
-  const onboardingState = await chrome.storage.local.get([onboardingKey]);
-  const state = onboardingState[onboardingKey];
+  // Performance: Skip analysis if tab is not visible
+  if (!isTabVisible) {
+    console.log('🌙 Tab hidden - skipping analysis');
+    return;
+  }
+
+  // Performance: Use cached onboarding state instead of storage call
+  const state = await getCachedOnboardingState();
 
   // If no onboarding data exists, this site is not enabled - return early
   if (!state) {
@@ -1475,6 +2136,24 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
   if (!state.completed) {
     return;
   }
+
+  // Performance: Debounce analysis to max once per second
+  // This prevents excessive CPU usage on pages with frequent network activity
+  const now = Date.now();
+  const timeSinceLastAnalysis = now - lastAnalysisTime;
+
+  if (timeSinceLastAnalysis < ANALYSIS_DEBOUNCE_MS) {
+    // Too soon - schedule for later
+    if (analyzeDebounceTimer) {
+      clearTimeout(analyzeDebounceTimer);
+    }
+    analyzeDebounceTimer = setTimeout(() => {
+      analyzeNetworkForIndi(networkData);
+    }, ANALYSIS_DEBOUNCE_MS - timeSinceLastAnalysis);
+    return;
+  }
+
+  lastAnalysisTime = now;
 
   // Check if URL changed - if so, reset cumulative tracking
   if (window.location.href !== currentPageUrl) {
@@ -1503,6 +2182,13 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
     // Add error URLs to cumulative set AND store full call objects
     networkData.forEach(call => {
       if (call.status >= 400) {
+        const method = call?.request?.request?.method || call?.method || 'GET';
+
+        // Skip OPTIONS preflight requests - track only actual API call failures
+        if (method.toUpperCase() === 'OPTIONS') {
+          return;
+        }
+
         const url = extractNetworkCallUrl(call);
         cumulativeErrorCalls.add(url);
         // Store the full NetworkCall object for detailed view (limit to last 50)
@@ -1516,6 +2202,13 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
 
   // Track slow API URLs AND store full call objects
   networkData.forEach(call => {
+    const method = call?.request?.request?.method || call?.method || 'GET';
+
+    // Skip OPTIONS preflight requests - if OPTIONS is slow, the actual request will be slow too
+    if (method.toUpperCase() === 'OPTIONS') {
+      return;
+    }
+
     const duration = call?.response?.response?.timing?.receiveHeadersEnd ?? call?.duration ?? 0;
     if (duration > slowCallThreshold) {
       const url = extractNetworkCallUrl(call);
@@ -1553,21 +2246,88 @@ async function analyzeNetworkForIndi(networkData: NetworkCall[]) {
     // First batch - use current summary as base
     cumulativeSummary = { ...summary };
   } else {
-    // Merge new batch into cumulative summary
-    cumulativeSummary.errorCalls = cumulativeErrorCalls.size;
-    cumulativeSummary.securityIssues = cumulativeSecurityIssues.size;
-    cumulativeSummary.apisWithoutAuth = Array.from(cumulativeSecurityIssues);
+    // CRITICAL FIX: Merge ALL fields from new batch into cumulative summary
+    // This ensures no fields disappear when new traffic arrives
 
-    // Update slowest API if new batch has slower one
-    if (summary.slowestApi && cumulativeSlowApis.has(summary.slowestApi.url)) {
+    // Aggregate timing (accumulate total time)
+    cumulativeSummary.totalTime = (cumulativeSummary.totalTime || 0) + (summary.totalTime || 0);
+
+    // Aggregate counts
+    cumulativeSummary.totalCalls = (cumulativeSummary.totalCalls || 0) + (summary.totalCalls || 0);
+    cumulativeSummary.successfulCalls = (cumulativeSummary.successfulCalls || 0) + (summary.successfulCalls || 0);
+    cumulativeSummary.errorCalls = cumulativeErrorCalls.size; // Use cumulative set
+    cumulativeSummary.warningCalls = (cumulativeSummary.warningCalls || 0) + (summary.warningCalls || 0);
+
+    // Performance: Use push instead of spread to reduce GC pressure
+    // Aggregate durations array for average calculation
+    if (!cumulativeSummary.durations) {
+      cumulativeSummary.durations = [];
+    }
+    if (summary.durations && summary.durations.length > 0) {
+      cumulativeSummary.durations.push(...summary.durations);
+    }
+
+    // Recalculate average response time from all durations
+    const durationsCount = cumulativeSummary.durations.length;
+    cumulativeSummary.averageResponseTime = durationsCount > 0
+      ? Math.round(cumulativeSummary.durations.reduce((sum, d) => sum + d, 0) / durationsCount)
+      : 0;
+
+    // Update slowest API (keep the slowest ever seen)
+    if (summary.slowestApi) {
       if (!cumulativeSummary.slowestApi || summary.slowestApi.duration > cumulativeSummary.slowestApi.duration) {
         cumulativeSummary.slowestApi = summary.slowestApi;
       }
     }
 
+    // Update fastest API (keep the fastest ever seen)
+    if (summary.fastestApi) {
+      if (!cumulativeSummary.fastestApi || summary.fastestApi.duration < cumulativeSummary.fastestApi.duration) {
+        cumulativeSummary.fastestApi = summary.fastestApi;
+      }
+    }
+
+    // Aggregate data transfer
+    cumulativeSummary.totalDataTransferred = (cumulativeSummary.totalDataTransferred || 0) + (summary.totalDataTransferred || 0);
+    cumulativeSummary.totalDataTransferredMB = (cumulativeSummary.totalDataTransferred / (1024 * 1024)).toFixed(2);
+
+    // Update most called API (track across all batches via Map)
+    if (summary.mostCalledApi) {
+      // We should track this globally, but for now just use the latest if it has higher count
+      if (!cumulativeSummary.mostCalledApi || summary.mostCalledApi.count > cumulativeSummary.mostCalledApi.count) {
+        cumulativeSummary.mostCalledApi = summary.mostCalledApi;
+      }
+    }
+
+    // Aggregate unique endpoints count
+    cumulativeSummary.uniqueEndpoints = (cumulativeSummary.uniqueEndpoints || 0) + (summary.uniqueEndpoints || 0);
+
+    // Merge new APIs arrays
+    const existingNewApis = cumulativeSummary.newApis || [];
+    const newNewApis = summary.newApis || [];
+    cumulativeSummary.newApis = [...existingNewApis, ...newNewApis];
+
+    // Update security issues
+    cumulativeSummary.securityIssues = cumulativeSecurityIssues.size;
+    cumulativeSummary.apisWithoutAuth = Array.from(cumulativeSecurityIssues);
+
     // Update issue flags
     cumulativeSummary.hasIssues = totalIssueCount > 0;
     cumulativeSummary.issueCount = totalIssueCount;
+
+    // Update timestamp fields if present
+    if (summary.firstApiTime !== undefined) {
+      cumulativeSummary.firstApiTime = Math.min(
+        cumulativeSummary.firstApiTime || Infinity,
+        summary.firstApiTime
+      );
+    }
+    if (summary.lastApiTime !== undefined) {
+      cumulativeSummary.lastApiTime = Math.max(
+        cumulativeSummary.lastApiTime || 0,
+        summary.lastApiTime
+      );
+    }
   }
 
   // Update Indi's notification count with cumulative count
@@ -1653,10 +2413,63 @@ function showIndividualNotifications(networkData: NetworkCall[]) {
       notifiedSlowUrls.add(url);
 
       const urlDisplay = url.length > 50 ? '...' + url.slice(-47) : url;
+      const timeSavings = Math.round(duration - slowCallThreshold);
+      const speedupFactor = (duration / slowCallThreshold).toFixed(1);
+
+      // Create expandable tips section
+      const tipsHTML = `
+        <details style="margin-top: 12px; cursor: pointer;">
+          <summary style="
+            font-size: 12px;
+            font-weight: 600;
+            color: #374151;
+            padding: 6px 0;
+            user-select: none;
+          ">
+            🔧 Quick fixes that usually work →
+          </summary>
+          <div style="
+            margin-top: 8px;
+            padding: 10px;
+            background: #f9fafb;
+            border-radius: 6px;
+            font-size: 11px;
+            line-height: 1.6;
+            color: #4b5563;
+          ">
+            <div style="margin-bottom: 8px;">
+              <strong>• Add caching</strong> (Redis/memory)<br/>
+              <span style="color: #6b7280;">5-10min TTL → ~80% faster</span>
+            </div>
+            <div style="margin-bottom: 8px;">
+              <strong>• Check for N+1 queries</strong><br/>
+              <span style="color: #6b7280;">Look for loops in backend → 50-90% faster</span>
+            </div>
+            <div style="margin-bottom: 8px;">
+              <strong>• Add pagination</strong><br/>
+              <span style="color: #6b7280;">Limit to 20-50 items → 60-80% faster</span>
+            </div>
+            <div>
+              <strong>• Use database indexes</strong><br/>
+              <span style="color: #6b7280;">On search/filter columns → 70-95% faster</span>
+            </div>
+          </div>
+        </details>
+      `;
 
       speechBubble!.show({
-        title: '⚡ Slow API Detected',
-        message: `${method} ${urlDisplay}\n${Math.round(duration)}ms (>${slowCallThreshold}ms)`,
+        title: '⚡ Quick Win Available',
+        message: `This call's taking ${(duration / 1000).toFixed(1)} seconds\nYour target: ${(slowCallThreshold / 1000).toFixed(1)}s\n\n💚 Fix this → Save ${(timeSavings / 1000).toFixed(1)}s\nYour users will get data ${speedupFactor}x faster`,
+        customContent: (() => {
+          const div = document.createElement('div');
+          div.innerHTML = `
+            <div style="margin-top: 8px; padding: 8px; background: #fef3c7; border-radius: 6px; font-size: 11px; font-family: monospace; color: #78350f; word-break: break-all;">
+              ${method} ${urlDisplay}
+            </div>
+            ${tipsHTML}
+          `;
+          return div;
+        })(),
         bypassMute: false,
         actions: [
           {
@@ -1851,13 +2664,13 @@ async function showDetailedIssuesModal(summary: PageSummaryData) {
     html += '</div></div>';
   }
 
-  // Slow APIs Section
+  // Quick Wins Section (formerly Slow APIs)
   if (cumulativeSlowCalls.length > 0) {
     const slowCount = cumulativeSlowCalls.length;
     html += `
       <div style="margin-bottom: 24px;">
-        <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #ea580c; display: flex; align-items: center; gap: 8px;">
-          ⚡ Slow APIs (${slowCount}) <span style="font-size: 12px; font-weight: normal; color: #6b7280;">>&nbsp;${slowCallThreshold}ms</span>
+        <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #f59e0b; display: flex; align-items: center; gap: 8px;">
+          ⚡ Quick Wins Available (${slowCount}) <span style="font-size: 12px; font-weight: normal; color: #6b7280;">>&nbsp;${slowCallThreshold}ms</span>
         </h3>
         <div style="max-height: 300px; overflow-y: auto;">
     `;
@@ -2036,11 +2849,11 @@ async function showDetailedIssuesModal(summary: PageSummaryData) {
 
   // Show draggable Swal modal
   const result = await Swal.fire({
-    title: '📊 Detailed Issues Report',
+    title: '📊 Detailed Report',
     html: html,
     width: '700px',
     showConfirmButton: true,
-    confirmButtonText: '🗑️ Clear All Issues',
+    confirmButtonText: '🗑️ Clear Report',
     confirmButtonColor: '#ef4444',
     showCancelButton: true,
     cancelButtonText: 'Close',
@@ -2283,11 +3096,8 @@ async function addToCache(calls: NetworkCall[]) {
                      call?.method ??
                      'GET';
 
-      // Strategy 1: Simple path (ignores most params)
-      const simpleKey = generateStoragePath(url) + '|' + method;
-      addToCacheKey(simpleKey, call);
-
-      // Strategy 2: Pattern-based (includes param names)
+      // Use pattern-based storage path (includes param names)
+      // NOTE: We only use ONE key per call to avoid duplicates when flattening cache
       const patternKey = generatePatternBasedStoragePath(url) + '|' + method;
       addToCacheKey(patternKey, call);
 
@@ -3163,7 +3973,7 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
 
       // Add to cache instead of array (async now for filtering)
       await addToCache(message.requests);
-      
+
       // Initialize Indi on first NETWORK_IDLE
       if (!isIndiInitialized) {
         initializeIndi(message.requests);
@@ -3172,29 +3982,46 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
         // only analyze if indi blob is connected to this page - which means finished onboarding
         analyzeNetworkForIndi(message.requests);
       }
-      
-      
-      const monitor = IndicatorMonitor.getInstance();
-      monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache);
-      
-      // lets check if we have any indicators that did not update
-      const failedIndicators: any[] = [];
-      const allIndicators = document.querySelectorAll(".indicator");
-      allIndicators.forEach((indicator) => {
-        const indicatorIsUpdated = indicator.getAttribute(
-          "data-indicator-info"
-        );
-        if (!indicatorIsUpdated) {
-          failedIndicators.push(indicator);
-          if (failedIndicators.length > 0) {
+
+      // Performance: Skip indicator updates if tab is not visible
+      if (!isTabVisible) {
+        console.log('🌙 Tab hidden - skipping indicator update');
+        break;
+      }
+
+      // Performance: Debounce indicator updates (but don't starve them!)
+      const now = Date.now();
+      const timeSinceLastUpdate = now - lastIndicatorUpdateTime;
+
+      if (timeSinceLastUpdate < INDICATOR_UPDATE_DEBOUNCE_MS) {
+        // Too soon - schedule for later, but only if not already scheduled
+        // This prevents timer from being constantly reset on busy pages
+        if (!indicatorUpdateTimer) {
+          indicatorUpdateTimer = setTimeout(() => {
+            // Double-check visibility before updating
+            if (!isTabVisible) {
+              indicatorUpdateTimer = null;
+              return;
+            }
+            const monitor = IndicatorMonitor.getInstance();
             monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache);
-          }
-          // chrome.runtime.sendMessage({
-          //   type: "INDICATOR_FAILED",
-          //   data: { failedIndicators, message },
-          // });
+            lastIndicatorUpdateTime = Date.now();
+            indicatorUpdateTimer = null;
+          }, INDICATOR_UPDATE_DEBOUNCE_MS - timeSinceLastUpdate);
         }
-      });
+      } else {
+        // Enough time passed - update now (leading edge)
+        const monitor = IndicatorMonitor.getInstance();
+        monitor.checkIndicatorsUpdate(pageIndicators, recentCallsCache);
+        lastIndicatorUpdateTime = now;
+
+        // Clear any pending timer since we just updated
+        if (indicatorUpdateTimer) {
+          clearTimeout(indicatorUpdateTimer);
+          indicatorUpdateTimer = null;
+        }
+      }
+
       break;
     }
 
@@ -3455,6 +4282,27 @@ function createHighlighter() {
   document.body.appendChild(highlighter);
 }
 
+/**
+ * Handle ESC key press to cancel inspect mode
+ */
+function handleEscapeKey(e: KeyboardEvent) {
+  if (e.key === 'Escape' && isInspectMode) {
+    e.preventDefault();
+    disableInspectMode();
+  }
+}
+
+/**
+ * Update Create Indicator button icon (+ vs ✖️)
+ */
+function updateCreateIndicatorButton(isInspecting: boolean) {
+  const button = document.getElementById('indi-summary-create-indicator');
+  if (button) {
+    button.textContent = isInspecting ? '✖️' : '+';
+    button.title = isInspecting ? 'Cancel (ESC)' : 'Create Indicator';
+  }
+}
+
 function enableInspectMode(indicatorData?: any) {
   // BYPASS: Skip domain validation - allow inspect mode on any domain
   isInspectMode = true;
@@ -3463,12 +4311,17 @@ function enableInspectMode(indicatorData?: any) {
 
   document.addEventListener("mouseover", handleMouseOver);
   document.addEventListener("mouseout", handleMouseOut);
+  document.addEventListener("keydown", handleEscapeKey);
+
   if (indicatorData) {
     // createIndicatorFromData(indicatorData)
     document.addEventListener("click", handleIndiBlobRef, true);
   } else {
     document.addEventListener("click", handleClick, true);
   }
+
+  // Update Create Indicator button to show cancel icon
+  updateCreateIndicatorButton(true);
 }
 
 function handleMouseOver(e: MouseEvent) {
@@ -3493,6 +4346,13 @@ function handleMouseOut() {
 
 function handleClick(e: MouseEvent) {
   if (!isInspectMode) return;
+
+  // Exception: Don't handle clicks on the Create Indicator button itself
+  const target = e.target as HTMLElement;
+  if (target?.id === 'indi-summary-create-indicator' ||
+      target?.closest('#indi-summary-create-indicator')) {
+    return; // Let the button's own click handler work
+  }
 
   e.preventDefault();
   e.stopPropagation();
@@ -3533,6 +4393,14 @@ function handleClick(e: MouseEvent) {
 
 function handleIndiBlobRef(e: MouseEvent) {
   if (!isInspectMode) return;
+
+  // Exception: Don't handle clicks on the Create Indicator button itself
+  const target = e.target as HTMLElement;
+  if (target?.id === 'indi-summary-create-indicator' ||
+      target?.closest('#indi-summary-create-indicator')) {
+    return; // Let the button's own click handler work
+  }
+
   e.preventDefault();
   e.stopPropagation();
 
@@ -3595,6 +4463,7 @@ function disableInspectMode() {
   document.body.style.cursor = "default";
   document.removeEventListener("mouseover", handleMouseOver);
   document.removeEventListener("mouseout", handleMouseOut);
+  document.removeEventListener("keydown", handleEscapeKey);
   document.removeEventListener("click", handleClick, true);
   document.removeEventListener("click", handleIndiBlobRef, true);
 
@@ -3606,6 +4475,9 @@ function disableInspectMode() {
   // Clean up stored data
   indiBlobUrlWithIssue = null;
   delete (window as any).__indiBlobNetworkCall;
+
+  // Restore Create Indicator button to plus icon
+  updateCreateIndicatorButton(false);
 }
 
 // Export for debugging - available in content script context

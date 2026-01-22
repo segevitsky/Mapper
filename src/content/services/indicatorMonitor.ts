@@ -6,10 +6,19 @@ import {
 } from "../../utils/storage";
 import { AutoIndicatorService } from "./autoIndicatorService";
 import SchemaValidationService from "./schemaValidationService";
+import { StorageQueue } from "./storageQueue";
 
 // src/content/services/indicatorMonitor.ts
 export class IndicatorMonitor {
   private static _instance: IndicatorMonitor | null = null;
+  private storageQueue: StorageQueue;
+  private schemaCache: Map<string, { schema: string; bodyHash: string }> = new Map();
+  private lastPulseTime: Map<string, number> = new Map(); // Track last pulse per indicator
+  private readonly PULSE_COOLDOWN = 1000; // Only pulse once per second per indicator
+
+  private constructor() {
+    this.storageQueue = StorageQueue.getInstance();
+  }
 
   public static getInstance() {
     if (!this._instance) {
@@ -62,28 +71,81 @@ export class IndicatorMonitor {
       }
     }
   
-    // Lets prepare for schema validation
+    // Lets prepare for schema validation with caching
     let schemaDiff = null;
     let backgroundColor = "#f44336"; // Default - red
+
+    // Helper: Generate hash of body for cache key
+    const getBodyHash = (body: any): string => {
+      try {
+        const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+        return bodyStr.substring(0, 100); // Simple hash using first 100 chars
+      } catch {
+        return '';
+      }
+    };
 
     // Lets check if we have a schema and body to validate
     if (indicator.body && !indicator.schema) {
       // Create new schema from the first response
-      const typeDefinition = schemaService.generateTypeDefinition(
-        indicator.body?.body,
-        indicator.name ?? "Indicator-Schema",
-        { format: 'inline' }
-      );
-      indicator.schema = typeDefinition;
+      const bodyHash = getBodyHash(indicator.body?.body);
+      const cacheKey = `${indicator.id}_${bodyHash}`;
+
+      // Check cache first
+      let cached = this.schemaCache.get(cacheKey);
+      if (cached) {
+        indicator.schema = cached.schema;
+      } else {
+        // Generate new schema
+        const typeDefinition = schemaService.generateTypeDefinition(
+          indicator.body?.body,
+          indicator.name ?? "Indicator-Schema",
+          { format: 'inline' }
+        );
+        indicator.schema = typeDefinition;
+
+        // Cache it
+        this.schemaCache.set(cacheKey, { schema: typeDefinition, bodyHash });
+
+        // Limit cache size to 100 entries
+        if (this.schemaCache.size > 100) {
+          const firstKey = this.schemaCache.keys().next().value;
+          if (firstKey) {
+            this.schemaCache.delete(firstKey);
+          }
+        }
+      }
 
     } else if (indicator.schema && newCall?.body) {
       // Compare existing schema against new incoming response
-      const incomingRequestSchema = schemaService.generateTypeDefinition(
-        newCall?.body?.body,
-        indicator?.name ?? 'Unnamed',
-        { format: 'inline' }
-      );
-      schemaDiff = schemaService.compareTypeSchemas(indicator.schema, incomingRequestSchema);
+      const bodyHash = getBodyHash(newCall?.body?.body);
+      const cacheKey = `${indicator.id}_incoming_${bodyHash}`;
+
+      // Check if we've already validated this exact body
+      let cached = this.schemaCache.get(cacheKey);
+      if (!cached) {
+        // Generate schema for incoming request
+        const incomingRequestSchema = schemaService.generateTypeDefinition(
+          newCall?.body?.body,
+          indicator?.name ?? 'Unnamed',
+          { format: 'inline' }
+        );
+
+        // Compare schemas
+        schemaDiff = schemaService.compareTypeSchemas(indicator.schema, incomingRequestSchema);
+
+        // Cache the result
+        this.schemaCache.set(cacheKey, { schema: incomingRequestSchema, bodyHash });
+
+        // Limit cache size
+        if (this.schemaCache.size > 100) {
+          const firstKey = this.schemaCache.keys().next().value;
+          if (firstKey) {
+            this.schemaCache.delete(firstKey);
+          }
+        }
+      }
+      // If cached, schemaDiff stays null (no changes - already validated)
     }
   
     // Set the background color based on the schema diff and status code
@@ -157,44 +219,47 @@ export class IndicatorMonitor {
       if (openTooltip) {
         this.updateTooltipContent(openTooltip, updatedData);
       }
-  
-      (elementToUpdate as HTMLElement).style.transform = "scale(1.2)";
-      setTimeout(() => {
-        (elementToUpdate as HTMLElement).style.transform = "scale(1)";
-      }, 200);
+
+      // Pulse animation with cooldown (only once per second per indicator)
+      const now = Date.now();
+      const lastPulse = this.lastPulseTime.get(indicator.id) || 0;
+
+      if (now - lastPulse > this.PULSE_COOLDOWN) {
+        (elementToUpdate as HTMLElement).style.transform = "scale(1.2)";
+        setTimeout(() => {
+          (elementToUpdate as HTMLElement).style.transform = "scale(1)";
+        }, 200);
+        this.lastPulseTime.set(indicator.id, now);
+      }
     }
   
-    // Finally update the indicator in storage
-    chrome.storage.local.get(["indicators"], (result) => {
-      const indies = result.indicators as { [key: string]: IndicatorData[] };
-      if (!indies) return;
-      
-      const currentPath = generateStoragePath(window.location.href);
-      const indicatorOriginalPath = generateStoragePath(indicator.request?.documentURL);
-      // if our current path is not the document URL, we don't update the indicator
-      if (currentPath !== indicatorOriginalPath) return;
+    // Finally update the indicator in storage using batched writes
+    const currentPath = generateStoragePath(window.location.href);
+    const indicatorOriginalPath = generateStoragePath(indicator.request?.documentURL);
 
+    // If our current path is not the document URL, we don't update the indicator
+    if (currentPath !== indicatorOriginalPath) return;
+
+    // Get current indicators from storage
+    chrome.storage.local.get(["indicators"], (result) => {
+      const indies = result.indicators as { [key: string]: IndicatorData[] } || {};
 
       if (!indies[currentPath]) {
         indies[currentPath] = [];
       }
-      
+
       const index = indies[currentPath].findIndex(
         (el) => el.id === indicator.id
       );
-      
+
       if (index !== -1) {
         indies[currentPath][index] = indicator;
       } else {
         indies[currentPath].push(indicator);
       }
-      
-      try {
-        chrome.storage.local.set({ indicators: indies });
-      } catch (error) {
-        console.error("Error saving indicators:", error);
-      }
-      // chrome.storage.local.set({ indicators: indies });
+
+      // Queue the update instead of writing immediately
+      this.storageQueue.queueUpdate(currentPath, indies[currentPath]);
     });
   }
 
@@ -341,31 +406,32 @@ private updateNestedIndicators(recentCalls: Map<string, NetworkCall[]>): void {
     if (!indies) return;
 
     const currentPath = generateStoragePath(window.location.href);
-    let hasUpdates = false;
+    const pathsToUpdate: Map<string, IndicatorData[]> = new Map();
 
     // Only check indicators whose paths contain current URL
     Object.keys(indies).forEach((path: string) => {
       if (!path.includes(currentPath)) return; // Skip unrelated paths
-      
+
       const arrayOfIndiesPerPath = indies[path];
+      let pathUpdated = false;
 
       arrayOfIndiesPerPath.forEach((indicator, index) => {
         try {
           const normalKey = generateStoragePath(indicator.lastCall?.url) + '|' + indicator.method;
           const patternKey = generatePatternBasedStoragePath(indicator.lastCall?.url) + '|' + indicator.method;
-          
+
           const normalCalls = recentCalls.get(normalKey) || [];
           const patternCalls = recentCalls.get(patternKey) || [];
           const allMatches = [...normalCalls, ...patternCalls];
-          
+
           const matchingCall = allMatches.find(call => {
             const callUrl = call?.response?.response?.url ?? call?.request?.request?.url;
             return generateStoragePath(callUrl) === generateStoragePath(indicator.lastCall?.url);
           });
 
           if (matchingCall) {
-            // Update indicator in storage
-            indies[path][index] = {
+            // Update indicator
+            arrayOfIndiesPerPath[index] = {
               ...indicator,
               lastCall: {
                 ...indicator.lastCall,
@@ -374,18 +440,23 @@ private updateNestedIndicators(recentCalls: Map<string, NetworkCall[]>): void {
                 url: matchingCall.response?.response?.url || indicator.lastCall.url,
               },
             };
-            hasUpdates = true;
+            pathUpdated = true;
           }
         } catch (error) {
           console.error('Error updating nested indicator:', error, indicator);
         }
       });
+
+      // Track paths that need updating
+      if (pathUpdated) {
+        pathsToUpdate.set(path, arrayOfIndiesPerPath);
+      }
     });
 
-    // Save to storage only if there were updates
-    if (hasUpdates) {
-      chrome.storage.local.set({ indicators: indies });
-    }
+    // Queue all updates using batched writes
+    pathsToUpdate.forEach((indicators, path) => {
+      this.storageQueue.queueUpdate(path, indicators);
+    });
   });
 }
 

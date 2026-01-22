@@ -52,31 +52,106 @@ const IndicatorFloatingWindow: React.FC = () => {
       try {
         // ניסיון ראשון - פרסור רגיל
         const parsedData = JSON.parse(decodeURIComponent(dataParam));
-        
-        const actualIndicatorData = parsedData.indicatorData || parsedData;
-        
+
+        let actualIndicatorData = parsedData.indicatorData || parsedData;
+
+        // Normalize body structure - extract from nested locations
+        if (!actualIndicatorData.body) {
+          // Try to extract body from various locations
+          if (actualIndicatorData.response?.body) {
+            actualIndicatorData.body = actualIndicatorData.response.body;
+          } else if (actualIndicatorData.response?.response) {
+            actualIndicatorData.body = actualIndicatorData.response.response;
+          }
+        }
+
+        // Unwrap nested body structure: { base64Encoded: false, body: "..." }
+        if (actualIndicatorData.body && typeof actualIndicatorData.body === 'object' && actualIndicatorData.body.body) {
+          let bodyContent = actualIndicatorData.body.body;
+
+          // Decode base64 if needed
+          if (actualIndicatorData.body.base64Encoded && typeof bodyContent === 'string') {
+            try {
+              bodyContent = atob(bodyContent);
+            } catch (e) {
+              console.error('Failed to decode base64:', e);
+            }
+          }
+
+          // Try to parse JSON string
+          if (typeof bodyContent === 'string') {
+            try {
+              bodyContent = JSON.parse(bodyContent);
+            } catch {
+              // Not JSON, keep as string
+            }
+          }
+
+          actualIndicatorData.body = bodyContent;
+        }
+
         setIndicatorData(actualIndicatorData);
         setIsLoading(false);
         return;
-        
+
       } catch (error) {
         console.error('❌ First parsing attempt failed:', error);
-        
+
         try {
           // ניסיון שני - אולי הדאטה כבר decoded
           const parsedData = JSON.parse(dataParam);
-          
-          const actualIndicatorData = parsedData.indicatorData || parsedData;
+
+          let actualIndicatorData = parsedData.indicatorData || parsedData;
+
+          // Normalize body structure here too
+          if (!actualIndicatorData.body) {
+            if (actualIndicatorData.response?.body) {
+              actualIndicatorData.body = actualIndicatorData.response.body;
+            } else if (actualIndicatorData.response?.response) {
+              actualIndicatorData.body = actualIndicatorData.response.response;
+            }
+          }
+
+          // Unwrap nested body structure: { base64Encoded: false, body: "..." }
+          if (actualIndicatorData.body && typeof actualIndicatorData.body === 'object' && actualIndicatorData.body.body) {
+            let bodyContent = actualIndicatorData.body.body;
+
+            // Decode base64 if needed
+            if (actualIndicatorData.body.base64Encoded && typeof bodyContent === 'string') {
+              try {
+                bodyContent = atob(bodyContent);
+              } catch (e) {
+                console.error('Failed to decode base64:', e);
+              }
+            }
+
+            // Try to parse JSON string
+            if (typeof bodyContent === 'string') {
+              try {
+                bodyContent = JSON.parse(bodyContent);
+              } catch {
+                // Not JSON, keep as string
+              }
+            }
+
+            actualIndicatorData.body = bodyContent;
+          }
+
           setIndicatorData(actualIndicatorData);
           setIsLoading(false);
           return;
           
         } catch (secondError) {
           // ניסיון שלישי - fallback לדאטה מוגבלת
+          console.error('❌ All parsing attempts failed:', secondError);
           setIndicatorData({
             url: 'Data parsing failed',
-            method: 'UNKNOWN',
-            status: 0, // @ts-ignore
+            method: 'ERROR',
+            status: 0,
+            duration: 0,
+            request: {},
+            id: 'error',
+            // @ts-ignore
             error: 'Could not parse indicator data from URL'
           });
           setIsLoading(false);
@@ -86,8 +161,12 @@ const IndicatorFloatingWindow: React.FC = () => {
       console.warn('⚠️ No data parameter found in URL');
       setIndicatorData({
         url: 'No data provided',
-        method: 'UNKNOWN', 
-        status: 0,  // @ts-ignore
+        method: 'ERROR',
+        status: 0,
+        duration: 0,
+        request: {},
+        id: 'error',
+        // @ts-ignore
         error: 'No data parameter in URL'
       });
       setIsLoading(false);
@@ -174,61 +253,79 @@ const IndicatorFloatingWindow: React.FC = () => {
         </div>
       </div>
 
+      {/* Error Banner */}
+      {(indicatorData as any).error && (
+        <div className="mx-6 mt-6 bg-red-50 border-l-4 border-red-500 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <div className="text-2xl">⚠️</div>
+            <div>
+              <h3 className="text-red-800 font-bold mb-1">Error Loading Data</h3>
+              <p className="text-red-600 text-sm">{(indicatorData as any).error}</p>
+              <p className="text-red-500 text-xs mt-2">
+                Try clicking the indicator again, or check if the API call completed successfully.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content - Blobi Blob Style! */}
       <div className="p-6 space-y-4">
 
         {/* 🎯 RESPONSE BODY ACCORDION - The Star! */}
-        {indicatorData.body && (
-          <div className="group">
-            <button
-              onClick={() => toggleSection('body')}
-              className="w-full bg-gradient-to-r from-pink-400 via-rose-400 to-pink-500 hover:from-pink-500 hover:via-rose-500 hover:to-pink-600 text-white rounded-3xl shadow-2xl p-6 transition-all duration-300 hover:scale-[1.02] hover:shadow-pink-300/50"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center animate-bounce">
-                    <span className="text-3xl">📄</span>
-                  </div>
-                  <div className="text-left">
-                    <h2 className="text-2xl font-bold flex items-center gap-3">
-                      Response Body
-                      <span className="px-3 py-1 bg-white/30 backdrop-blur-sm rounded-full text-xs font-semibold animate-pulse">
-                        ⭐ MAIN
-                      </span>
-                    </h2>
-                    <p className="text-pink-100 text-sm">The juicy data you're looking for!</p>
-                  </div>
+        <div className="group">
+          <button
+            onClick={() => toggleSection('body')}
+            className="w-full bg-gradient-to-r from-pink-400 via-rose-400 to-pink-500 hover:from-pink-500 hover:via-rose-500 hover:to-pink-600 text-white rounded-3xl shadow-2xl p-6 transition-all duration-300 hover:scale-[1.02] hover:shadow-pink-300/50"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center animate-bounce">
+                  <span className="text-3xl">📄</span>
                 </div>
-                <ChevronDown
-                  className={`w-8 h-8 transition-all duration-500 ease-in-out ${
-                    expandedSections.body ? 'rotate-180 scale-110' : 'scale-100'
-                  }`}
-                  strokeWidth={3}
-                />
+                <div className="text-left">
+                  <h2 className="text-2xl font-bold flex items-center gap-3">
+                    Response Body
+                    <span className="px-3 py-1 bg-white/30 backdrop-blur-sm rounded-full text-xs font-semibold animate-pulse">
+                      ⭐ MAIN
+                    </span>
+                  </h2>
+                  <p className="text-pink-100 text-sm">
+                    {indicatorData.body ? 'The juicy data you\'re looking for!' : 'No body data available'}
+                  </p>
+                </div>
               </div>
-            </button>
+              <ChevronDown
+                className={`w-8 h-8 transition-all duration-500 ease-in-out ${
+                  expandedSections.body ? 'rotate-180 scale-110' : 'scale-100'
+                }`}
+                strokeWidth={3}
+              />
+            </div>
+          </button>
 
-            <div className={`overflow-hidden transition-all duration-500 ${expandedSections.body ? 'max-h-[800px] mt-3' : 'max-h-0'}`}>
-              <div className="bg-white rounded-2xl shadow-xl p-6 border-4 border-pink-200">
+          <div className={`overflow-hidden transition-all duration-500 ${expandedSections.body ? 'max-h-[800px] mt-3' : 'max-h-0'}`}>
+            <div className="bg-white rounded-2xl shadow-xl p-6 border-4 border-pink-200">
+              {indicatorData.body ? (
                 <JsonViewer
-                  data={(() => {
-                    if (indicatorData.body.body && typeof indicatorData.body.body === 'string') {
-                      try {
-                        return JSON.parse(indicatorData.body.body);
-                      } catch (error) {
-                        return indicatorData.body.body;
-                      }
-                    }
-                    return indicatorData.response?.body || indicatorData.response || indicatorData.body;
-                  })()}
+                  data={indicatorData.body}
                   viewerId="response"
                   title=""
                   maxHeight="700px"
                 />
-              </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="text-6xl mb-4">📭</div>
+                  <h3 className="text-xl font-bold text-gray-700 mb-2">No Response Body</h3>
+                  <p className="text-gray-500 text-sm max-w-md mx-auto">
+                    This API call didn't return a response body, or it wasn't captured.
+                    This can happen with 204 responses, errors, or if the call was made before the extension started monitoring.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
-        )}
+        </div>
 
         <div className='group'>
           <button
@@ -258,13 +355,21 @@ const IndicatorFloatingWindow: React.FC = () => {
           {/* // Schema Accordion Content */}
           <div className={`overflow-hidden transition-all duration-500 ${expandedSections.schema ? 'max-h-[600px] mt-3' : 'max-h-0'}`}>
             <div className="bg-white rounded-2xl shadow-xl p-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 gap-4 mb-6">
                 { indicatorData?.schema && (
-                  <div className="bg-gradient-to-br from-yellow-100 to-yellow-200 rounded-2xl p-6 border-2 border-yellow-300 transform hover:scale-105 transition-transform">
-                    <div className="text-xs font-bold text-yellow-700 mb-2">🧩 REQUEST SCHEMA</div>
-                    <div className="text-sm font-black text-yellow-900">
-                      {indicatorData?.schema}
+                  <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-2xl p-6 border-2 border-yellow-300">
+                    <div className="text-sm font-bold text-yellow-700 mb-3 flex items-center gap-2">
+                      <span>🧩</span>
+                      <span>RESPONSE SCHEMA</span>
                     </div>
+                    <pre className="text-xs font-mono text-yellow-900 whitespace-pre-wrap overflow-x-auto bg-white p-4 rounded-lg border border-yellow-200">
+                      {indicatorData?.schema}
+                    </pre>
+                  </div>
+                )}
+                { !indicatorData?.schema && (
+                  <div className="bg-gray-100 rounded-2xl p-6 border-2 border-gray-300 text-center">
+                    <div className="text-sm text-gray-500">No schema available</div>
                   </div>
                 )}
               </div>

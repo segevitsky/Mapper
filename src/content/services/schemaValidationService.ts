@@ -170,6 +170,25 @@ class SchemaValidationService {
     }
 
     /**
+     * Normalize type string for comparison (remove trailing ?, normalize whitespace)
+     */
+    private normalizeType(type: string): string {
+      return type
+        .replace(/\s*\|\s*null\s*\?/g, ' | null')  // Remove trailing ? after | null
+        .replace(/\s+/g, ' ')  // Normalize whitespace
+        .trim();
+    }
+
+    /**
+     * Check if two types are semantically equivalent
+     */
+    private areTypesEquivalent(typeA: string, typeB: string): boolean {
+      const normalizedA = this.normalizeType(typeA);
+      const normalizedB = this.normalizeType(typeB);
+      return normalizedA === normalizedB;
+    }
+
+    /**
      * Compares two TypeScript schemas and returns added, removed, and changed fields.
      */
     public compareTypeSchemas(
@@ -190,7 +209,8 @@ class SchemaValidationService {
         } else {
           const a = schemaA[key];
           const b = schemaB[key];
-          if (a.type !== b.type || a.optional !== b.optional) {
+          // Use normalized type comparison instead of strict equality
+          if (!this.areTypesEquivalent(a.type, b.type) || a.optional !== b.optional) {
             changed.push({ field: key, from: a, to: b });
           }
         }
@@ -217,7 +237,8 @@ class SchemaValidationService {
 
       if (!isObjectA || !isObjectB) {
         // Not nested objects, just a type change
-        if (typeA !== typeB) {
+        // Use normalized comparison to avoid false positives
+        if (!this.areTypesEquivalent(typeA, typeB)) {
           changes.push({
             path: basePath,
             type: 'modified',
@@ -289,8 +310,8 @@ class SchemaValidationService {
             // Recursively compare nested objects
             const nestedChanges = this.compareNestedFields(fieldA.type, fieldB.type, fieldPath);
             changes.push(...nestedChanges);
-          } else if (fieldA.type !== fieldB.type || fieldA.optional !== fieldB.optional) {
-            // Simple type change
+          } else if (!this.areTypesEquivalent(fieldA.type, fieldB.type) || fieldA.optional !== fieldB.optional) {
+            // Simple type change - use normalized comparison
             changes.push({
               path: fieldPath,
               type: 'modified',

@@ -4,11 +4,13 @@ import { Toolbar } from "./components/Toolbar";
 import { useNetworkCalls } from "./hooks/useNetworkCalls";
 import "../index.css";
 import { NetworkCall } from "../types";
-import { Trash2, RefreshCw, Eye, EyeOff, Circle, Grid3x3, Search, ChevronDown } from "lucide-react";
+import { Trash2, RefreshCw, Eye, EyeOff, Circle, Grid3x3, Search, ChevronDown, Download, Upload } from "lucide-react";
 import ApiResponsePanel from "./components/ResponseModal";
 import FailedIndicatorsReport from "./components/FailedIndicatorsReport";
 import IndicatorsOverview from "./components/IndicatorsOverview";
+import ImportModal from "./components/ImportModal";
 import CleanHeaderDemo from "./Header";
+import { exportIndicators } from "./utils/indicatorTransfer";
 
 const MAX_NETWORK_RESPONSES = 50;
 
@@ -31,6 +33,8 @@ export const Panel: React.FC = () => {
   const [showOverview, setShowOverview] = useState(false);
   const [indicators, setIndicators] = useState<Record<string, any>>({});
   const [isNetworkCallsExpanded, setIsNetworkCallsExpanded] = useState(true);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
 
   // useEffect(() => {
   //   // lets fetch the indicators from storage
@@ -198,6 +202,28 @@ export const Panel: React.FC = () => {
     });
   };
 
+  const handleExport = async () => {
+    setExportLoading(true);
+    try {
+      await exportIndicators();
+    } catch (error) {
+      console.error('Export failed:', error);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleImportComplete = (result: any) => {
+    if (result.success) {
+      // Reload indicators on the page
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0]?.id) {
+          chrome.tabs.sendMessage(tabs[0].id, { type: "RELOAD_INDICATORS" });
+        }
+      });
+    }
+  };
+
   return (
     <div className="w-full h-screen flex flex-col overflow-hidden bg-gradient-to-br from-pink-50 via-rose-50 to-purple-50">
       <CleanHeaderDemo userDetails={userDetails} />
@@ -347,6 +373,42 @@ export const Panel: React.FC = () => {
               </div>
             </button>
 
+            {/* Import/Export Buttons */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* Export Button */}
+              <button
+                onClick={handleExport}
+                disabled={exportLoading}
+                className="bg-gradient-to-r from-emerald-100 to-green-100 hover:from-emerald-200 hover:to-green-200 rounded-2xl shadow-lg p-4 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 border-2 border-emerald-200 overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-r from-emerald-400 to-green-500 rounded-full flex items-center justify-center">
+                    <Download className={`w-5 h-5 text-white ${exportLoading ? 'animate-bounce' : ''}`} />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="text-base font-bold text-emerald-900">Export</h3>
+                    <p className="text-xs text-emerald-600">Save to JSON</p>
+                  </div>
+                </div>
+              </button>
+
+              {/* Import Button */}
+              <button
+                onClick={() => setShowImportModal(true)}
+                className="bg-gradient-to-r from-violet-100 to-purple-100 hover:from-violet-200 hover:to-purple-200 rounded-2xl shadow-lg p-4 hover:shadow-xl hover:scale-[1.02] transition-all duration-300 border-2 border-violet-200 overflow-hidden"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-gradient-to-r from-violet-400 to-purple-500 rounded-full flex items-center justify-center">
+                    <Upload className="w-5 h-5 text-white" />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="text-base font-bold text-violet-900">Import</h3>
+                    <p className="text-xs text-violet-600">Load from JSON</p>
+                  </div>
+                </div>
+              </button>
+            </div>
+
             {/* Reload Indicators */}
             {/* <button
               onClick={handleIndicatorsLoad}
@@ -406,8 +468,14 @@ export const Panel: React.FC = () => {
                 indicatorData: indicator,
                 networkCall: indicator,
               }
-            });   
+            });
         }}
+      />
+
+      <ImportModal
+        isVisible={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImportComplete={handleImportComplete}
       />
     </div>
   );

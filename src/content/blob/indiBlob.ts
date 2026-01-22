@@ -1,6 +1,6 @@
 // src/content/blob/IndiBlob.ts
 
-export type EmotionType = 'happy' | 'calm' | 'worried' | 'panic';
+export type EmotionType = 'happy' | 'calm' | 'satisfied' | 'excited';
 
 interface Position {
   x: number;
@@ -30,7 +30,9 @@ export class IndiBlob {
   private isDragging: boolean = false;
   private hasDragged: boolean = false;
   private dragOffset: Position = { x: 0, y: 0 };
+  private dragStartPos: Position = { x: 0, y: 0 };
   private position: Position = { x: 0, y: 0 };
+  private readonly DRAG_THRESHOLD = 5; // pixels - minimum movement to consider it a drag
   private blinkInterval: number | null = null;
   private summaryTooltip: HTMLElement | null = null;
   private currentSummary: string | null = null;
@@ -38,6 +40,8 @@ export class IndiBlob {
   private currentSummaryData: any = null;
   private isMuted: boolean = false;
   private muteButton: HTMLElement | null = null;
+  private minimizeButton: HTMLElement | null = null;
+  private isMinimized: boolean = false;
   private originalPosition: Position | null = null; // Saved position before viewport adjustment
   private _backendConfigured: boolean = false; // Cached backend config status
   private tooltipEventListenersAttached: boolean = false; // Track if event listeners are attached
@@ -83,16 +87,19 @@ export class IndiBlob {
       position: fixed;
       bottom: 160px;
       right: 40px;
-      background: #fff;
+      background: #ffffff;
       border-radius: 16px;
-      padding: 16px;
-      min-width: 280px;
-      max-width: 350px;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+      padding: 20px;
+      min-width: 450px;
+      max-width: 600px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25);
       z-index: 999997;
       display: none;
       transform: translateY(10px);
       transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+      color: #1f2937 !important;
+      font-weight: 500 !important;
+      font-size: 14px !important;
     `;
 
     // Add arrow pointing to blob
@@ -113,6 +120,52 @@ export class IndiBlob {
     this.summaryTooltip.innerHTML = '<div style="text-align: center; padding: 12px;">Loading...</div>' + arrow.outerHTML;
 
     document.body.appendChild(this.summaryTooltip);
+  }
+
+  /**
+   * Show loading state in Blobi
+   * Performance: Gives instant feedback to user while analysis runs
+   */
+  public showLoading(): void {
+    if (!this.summaryTooltip) {
+      this.createTooltipElement();
+    }
+
+    if (this.summaryTooltip) {
+      const loadingHTML = `
+        <div style="
+          padding: 40px 20px;
+          text-align: center;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        ">
+          <div style="
+            width: 48px;
+            height: 48px;
+            margin: 0 auto 20px;
+            border: 4px solid #f3f4f6;
+            border-top-color: #8b5cf6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+          "></div>
+          <style>
+            @keyframes spin {
+              to { transform: rotate(360deg); }
+            }
+          </style>
+          <div style="font-size: 16px; font-weight: 600; color: #374151; margin-bottom: 8px;">
+            Analyzing network traffic...
+          </div>
+          <div style="font-size: 13px; color: #6b7280;">
+            Blobi is crunching the data 🔍
+          </div>
+        </div>
+      `;
+      this.summaryTooltip.innerHTML = loadingHTML;
+
+      if (this.isTooltipVisible()) {
+        this.summaryTooltip.style.display = 'block';
+      }
+    }
   }
 
   /**
@@ -193,19 +246,109 @@ export class IndiBlob {
         return; // Stop further event handling
       }
 
+      // Handle pop-out button clicks
+      if (target.classList.contains('pop-out-btn') || target.closest('.pop-out-btn')) {
+        e.stopPropagation(); // Prevent expanding/collapsing the network call
+
+        const button = target.classList.contains('pop-out-btn') ? target : target.closest('.pop-out-btn') as HTMLElement;
+        const callData = button?.getAttribute('data-call-data');
+
+        if (callData) {
+          try {
+            // Parse the JSON directly (single quotes are already escaped as &#39;)
+            const call = JSON.parse(callData);
+
+            // Show success feedback immediately
+            const originalText = button.textContent;
+            button.textContent = '✅ Opened';
+            setTimeout(() => {
+              button.textContent = originalText;
+            }, 2000);
+
+            // Generate schema if body exists (async, doesn't block UI feedback)
+            if (call.body || call.response?.body || call.response?.response) {
+              import('../../content/services/schemaValidationService').then((module) => {
+                const SchemaValidationService = module.default;
+                const schemaService = new SchemaValidationService();
+
+                const bodyData = call.body || call.response?.body || call.response?.response;
+                const schema = schemaService.generateTypeDefinition(
+                  bodyData,
+                  'ResponseSchema',
+                  { format: 'multiline' }
+                );
+                call.schema = schema;
+
+                // Send message with schema
+                chrome.runtime.sendMessage({
+                  type: "OPEN_FLOATING_WINDOW",
+                  data: {
+                    indicatorData: call,
+                    networkCall: call,
+                  }
+                });
+              }).catch((err) => {
+                console.warn('Schema generation failed, sending without schema:', err);
+                // Send without schema
+                chrome.runtime.sendMessage({
+                  type: "OPEN_FLOATING_WINDOW",
+                  data: {
+                    indicatorData: call,
+                    networkCall: call,
+                  }
+                });
+              });
+            } else {
+              // No body, send without schema
+              chrome.runtime.sendMessage({
+                type: "OPEN_FLOATING_WINDOW",
+                data: {
+                  indicatorData: call,
+                  networkCall: call,
+                }
+              });
+            }
+          } catch (error) {
+            console.error('Failed to open floating window:', error);
+            button.textContent = '❌ Failed';
+            setTimeout(() => {
+              button.textContent = '📤 Pop Out';
+            }, 2000);
+          }
+        }
+        return; // Stop further event handling
+      }
+
       // Handle tab clicks
       if (target.classList.contains('indi-tab') || target.closest('.indi-tab')) {
         const tabButton = target.classList.contains('indi-tab') ? target : target.closest('.indi-tab') as HTMLElement;
         const tab = tabButton?.dataset.tab;
 
         if (tab) {
-          // Access pageSummary from window (set by content.ts)
+          // Performance: Only update tab content, not entire HTML
           const pageSummary = (window as any).pageSummary;
-          if (pageSummary) {
+          if (pageSummary && this.summaryTooltip) {
             pageSummary.setActiveTab(tab);
-            const summary = pageSummary.getCurrentSummaryData();
-            const html = pageSummary.generateSummaryHTML(summary);
-            this.updateContent(html, summary, this.currentNetworkCalls);
+
+            // Update tab active states (CSS only, no HTML regeneration)
+            const allTabs = this.summaryTooltip.querySelectorAll('.indi-tab');
+            allTabs.forEach((t: Element) => {
+              const htmlTab = t as HTMLElement;
+              const isActive = htmlTab.dataset.tab === tab;
+              htmlTab.setAttribute('data-active', String(isActive));
+              htmlTab.style.background = isActive
+                ? 'linear-gradient(135deg, #f857a6, #ff5858)'
+                : 'transparent';
+              htmlTab.style.color = isActive ? '#fff' : '#6b7280';
+            });
+
+            // Only regenerate the tab content area
+            const tabContentArea = this.summaryTooltip.querySelector('[data-tab-content]');
+            if (tabContentArea) {
+              const summary = pageSummary.getCurrentSummaryData();
+              const contentHTML = pageSummary.generateTabContent(summary);
+              tabContentArea.innerHTML = contentHTML;
+            }
           }
         }
         return;
@@ -232,6 +375,38 @@ export class IndiBlob {
               details.classList.add('expanded');
             }
           }
+        }
+        return;
+      }
+
+      // Handle Clear button clicks
+      if (target.id === 'network-clear-btn') {
+        e.stopPropagation();
+        const pageSummary = (window as any).pageSummary;
+        if (pageSummary) {
+          pageSummary.clearNetworkCalls();
+          const summary = pageSummary.getCurrentSummaryData();
+          const html = pageSummary.generateSummaryHTML(summary);
+          this.updateContent(html, summary, []);
+        }
+        return;
+      }
+    });
+
+    // Handle network search input
+    this.summaryTooltip?.addEventListener('input', (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      if (target.id === 'network-search-input') {
+        const searchTerm = target.value.toLowerCase();
+        const networkList = this.summaryTooltip?.querySelector('#network-calls-list');
+
+        if (networkList) {
+          const items = networkList.querySelectorAll('.network-call-item');
+          items.forEach((item: Element) => {
+            const htmlItem = item as HTMLElement;
+            const text = htmlItem.textContent?.toLowerCase() || '';
+            htmlItem.style.display = text.includes(searchTerm) ? '' : 'none';
+          });
         }
       }
     });
@@ -404,9 +579,9 @@ export class IndiBlob {
           <svg class="indi-blob-svg" viewBox="0 0 100 100">
             <defs>
               <linearGradient id="blobGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stop-color="#a78bfa" id="colorStop1" />
-                <stop offset="50%" stop-color="#8b5cf6" id="colorStop2" />
-                <stop offset="100%" stop-color="#7c3aed" id="colorStop3" />
+                <stop offset="0%" stop-color="#a78bfa" id="colorStop1" style="transition: stop-color 0.6s ease;" />
+                <stop offset="50%" stop-color="#8b5cf6" id="colorStop2" style="transition: stop-color 0.6s ease;" />
+                <stop offset="100%" stop-color="#7c3aed" id="colorStop3" style="transition: stop-color 0.6s ease;" />
               </linearGradient>
             </defs>
             
@@ -426,6 +601,7 @@ export class IndiBlob {
               stroke="rgba(0, 0, 0, 0.3)"
               stroke-width="2"
               stroke-linecap="round"
+              style="transition: d 0.4s ease;"
             />
 
             <!-- Zipper mouth (hidden by default) -->
@@ -466,6 +642,17 @@ export class IndiBlob {
         <div class="indi-mute-button" id="muteButton" title="Mute/Unmute Indi">
           <span class="mute-icon">🔊</span>
         </div>
+
+        <div class="indi-minimize-button" id="minimizeButton" title="Minimize Indi">
+          <span class="minimize-icon">➖</span>
+        </div>
+
+        <!-- ZZZ sleep indicator (hidden by default) -->
+        <div class="indi-sleep-indicator" id="sleepIndicator">
+          <span>z</span>
+          <span>z</span>
+          <span>z</span>
+        </div>
       </div>
     `;
 
@@ -486,7 +673,9 @@ export class IndiBlob {
       .indi-summary-tooltip,
       .indi-summary-tooltip *,
       .indi-notification-badge,
-      .indi-mute-button {
+      .indi-mute-button,
+      .indi-minimize-button,
+      .indi-sleep-indicator {
         direction: ltr !important;
         text-align: left !important;
         unicode-bidi: normal !important;
@@ -495,6 +684,8 @@ export class IndiBlob {
         letter-spacing: normal !important;
         word-spacing: normal !important;
         text-transform: none !important;
+        color: #1f2937 !important;
+        font-weight: 500 !important;
       }
       /* ==================== END CSS RESET ==================== */
 
@@ -538,6 +729,50 @@ export class IndiBlob {
         transform: scale(1.05);
       }
 
+      /* Click feedback animation */
+      @keyframes clickBounce {
+        0% { transform: scale(1); }
+        50% { transform: scale(0.92); }
+        100% { transform: scale(1); }
+      }
+
+      .indi-blob-container.clicked .indi-blob {
+        animation: clickBounce 0.3s ease;
+      }
+
+      /* Celebration mode animation */
+      @keyframes celebrate {
+        0%, 100% {
+          transform: translateY(0) rotate(0deg) scale(1);
+        }
+        10% {
+          transform: translateY(-8px) rotate(-5deg) scale(1.05);
+        }
+        20% {
+          transform: translateY(-12px) rotate(5deg) scale(1.08);
+        }
+        30% {
+          transform: translateY(-8px) rotate(-3deg) scale(1.05);
+        }
+        40% {
+          transform: translateY(0) rotate(0deg) scale(1);
+        }
+        50% {
+          transform: translateY(-4px) rotate(2deg) scale(1.02);
+        }
+        60% {
+          transform: translateY(0) rotate(0deg) scale(1);
+        }
+      }
+
+      .indi-blob-container.celebrating .indi-blob {
+        animation: celebrate 1.5s ease-in-out;
+      }
+
+      .indi-blob-container.celebrating .indi-aura {
+        animation: indi-urgent-pulse 0.5s ease-in-out 3;
+      }
+
       .indi-aura {
         position: absolute;
         inset: -20px;
@@ -545,6 +780,7 @@ export class IndiBlob {
         opacity: 0.5;
         animation: indi-gentle-pulse 3s ease-in-out infinite;
         pointer-events: none;
+        transition: background 0.6s ease, opacity 0.3s ease;
       }
 
       .indi-blob-container.panic .indi-aura {
@@ -580,6 +816,7 @@ export class IndiBlob {
         box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.1);
         overflow: hidden;
         position: relative;
+        transition: transform 0.3s ease;
       }
 
       .indi-iris {
@@ -589,7 +826,7 @@ export class IndiBlob {
         position: relative;
         background: radial-gradient(circle at 35% 35%, #8b5cf6dd, #7c3aedaa); /* Default purple background */
         box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.3);
-        transition: transform 0.15s ease-out;
+        transition: background 0.6s ease, transform 0.15s ease-out, box-shadow 0.3s ease;
       }
 
       .indi-pupil {
@@ -614,6 +851,29 @@ export class IndiBlob {
         border-radius: 50%;
       }
 
+      /* Eye sparkle effect when excited or satisfied */
+      @keyframes eyeSparkle {
+        0%, 100% {
+          box-shadow: 0 0 10px rgba(255, 255, 255, 0.3),
+                      0 0 20px rgba(255, 255, 255, 0.2),
+                      inset 0 0 10px rgba(255, 255, 255, 0.1);
+        }
+        50% {
+          box-shadow: 0 0 20px rgba(255, 255, 255, 0.6),
+                      0 0 30px rgba(255, 255, 255, 0.4),
+                      inset 0 0 15px rgba(255, 255, 255, 0.3);
+        }
+      }
+
+      .indi-blob-container.satisfied .indi-iris,
+      .indi-blob-container.excited .indi-iris {
+        animation: eyeSparkle 2s ease-in-out infinite;
+      }
+
+      .indi-blob-container.excited .indi-iris {
+        animation-duration: 1s; /* Faster sparkle when super excited! */
+      }
+
       .indi-blush {
         position: absolute;
         top: 52%;
@@ -631,6 +891,20 @@ export class IndiBlob {
 
       .indi-blob-container:hover .indi-blush {
         opacity: 1;
+      }
+
+      /* Hover personality effects */
+      .indi-blob-container:hover .indi-eye {
+        transform: scale(1.08);
+      }
+
+      .indi-blob-container:hover .indi-iris {
+        box-shadow: 0 0 15px rgba(139, 92, 246, 0.6),
+                    inset 0 1px 4px rgba(0, 0, 0, 0.3);
+      }
+
+      .indi-blob-container:hover .indi-aura {
+        opacity: 0.7;
       }
 
       .indi-sweat {
@@ -656,21 +930,23 @@ export class IndiBlob {
         position: absolute;
         top: -8px;
         right: -8px;
-        min-width: 34px;
+        min-width: 38px;
         height: 34px;
-        padding: 0 10px;
+        padding: 0 8px;
         background: linear-gradient(135deg, #ff4757 0%, #ff6348 100%);
         border-radius: 17px;
         border: 4px solid white;
         display: none;
         align-items: center;
         justify-content: center;
-        font-size: 15px;
-        font-weight: 800;
-        color: white;
+        font-size: 14px !important;
+        font-weight: 800 !important;
+        color: #ffffff !important;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         box-shadow: 0 4px 20px rgba(255, 71, 87, 0.6);
         cursor: pointer;
         z-index: 20;
+        gap: 2px;
       }
 
       .indi-notification-badge.visible {
@@ -727,6 +1003,138 @@ export class IndiBlob {
         animation: mute-button-press 0.4s ease;
       }
 
+      .indi-minimize-button {
+        position: absolute;
+        top: -8px;
+        left: -8px;
+        width: 32px;
+        height: 32px;
+        background: rgba(255, 255, 255, 0.95);
+        border-radius: 50%;
+        border: 3px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        cursor: pointer;
+        z-index: 21;
+        transition: all 0.3s ease;
+      }
+
+      .indi-minimize-button:hover {
+        transform: scale(1.1);
+        background: #ffffff;
+        border-color: #d1d5db;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+      }
+
+      .minimize-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.3s ease;
+      }
+
+      .indi-minimize-button:active .minimize-icon {
+        transform: scale(0.9);
+      }
+
+      /* Minimized state */
+      .indi-blob-container.minimized {
+        width: 32px;
+        height: 32px;
+        cursor: pointer;
+        transition: all 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+      }
+
+      .indi-blob-container.minimized .indi-blob {
+        transform: scale(0.4);
+        filter: grayscale(0.7);
+        opacity: 0.8;
+      }
+
+      .indi-blob-container.minimized:hover .indi-blob {
+        transform: scale(0.45);
+        filter: grayscale(0.3);
+        opacity: 1;
+      }
+
+      .indi-blob-container.minimized .indi-shadow {
+        opacity: 0;
+      }
+
+      .indi-blob-container.minimized .indi-notification-badge,
+      .indi-blob-container.minimized .indi-mute-button,
+      .indi-blob-container.minimized .indi-minimize-button {
+        display: none;
+      }
+
+      .indi-blob-container.minimized .indi-eye-container {
+        transform: translate(-50%, -50%) scaleY(0.1);
+      }
+
+      /* Sleep indicator (zzz) */
+      .indi-sleep-indicator {
+        position: absolute;
+        top: -30px;
+        right: 0px;
+        display: none;
+        flex-direction: column;
+        gap: 2px;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+
+      .indi-blob-container.minimized .indi-sleep-indicator {
+        display: flex;
+        animation: fadeInSleep 0.5s ease 0.3s forwards;
+      }
+
+      .indi-sleep-indicator span {
+        font-size: 12px;
+        color: #8b5cf6;
+        font-weight: bold;
+        animation: floatUp 2s ease-in-out infinite;
+        opacity: 0.7;
+      }
+
+      .indi-sleep-indicator span:nth-child(1) {
+        animation-delay: 0s;
+        font-size: 10px;
+      }
+
+      .indi-sleep-indicator span:nth-child(2) {
+        animation-delay: 0.3s;
+        font-size: 14px;
+      }
+
+      .indi-sleep-indicator span:nth-child(3) {
+        animation-delay: 0.6s;
+        font-size: 16px;
+      }
+
+      @keyframes floatUp {
+        0% {
+          transform: translateY(0px);
+          opacity: 0.3;
+        }
+        50% {
+          transform: translateY(-5px);
+          opacity: 0.9;
+        }
+        100% {
+          transform: translateY(-10px);
+          opacity: 0;
+        }
+      }
+
+      @keyframes fadeInSleep {
+        to {
+          opacity: 1;
+        }
+      }
+
       @keyframes indi-gentle-pulse {
         0%, 100% { 
           transform: scale(1); 
@@ -765,6 +1173,7 @@ export class IndiBlob {
     this.colorStop2 = document.getElementById('colorStop2') as unknown as SVGStopElement;
     this.colorStop3 = document.getElementById('colorStop3') as unknown as SVGStopElement;
     this.muteButton = document.getElementById('muteButton');
+    this.minimizeButton = document.getElementById('minimizeButton');
   }
 
   private init(): void {
@@ -796,8 +1205,11 @@ export class IndiBlob {
 
     // Click handler
     this.container.addEventListener('click', () => {
+      console.log('🖱️ Container clicked', { isDragging: this.isDragging, hasDragged: this.hasDragged });
       if (!this.isDragging && !this.hasDragged) {
         this.handleClick();
+      } else {
+        console.log('⚠️ Click blocked by drag state');
       }
     });
 
@@ -818,6 +1230,15 @@ export class IndiBlob {
     });
   }
 
+  // Minimize button
+  if (this.minimizeButton) {
+    this.minimizeButton.addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent triggering container click
+      console.log('🔘 Minimize button clicked');
+      this.minimize();
+    });
+  }
+
   // Window resize listener to keep blob visible
   window.addEventListener('resize', () => {
     this.adjustPositionToViewport();
@@ -825,6 +1246,9 @@ export class IndiBlob {
 
   // Load mute state from storage
   this.loadMuteState();
+
+  // Load minimize state from storage
+  this.loadMinimizeState();
   }
 
   private handleBadgeClick(): void {
@@ -881,6 +1305,12 @@ export class IndiBlob {
     this.hasDragged = false;
     this.container.classList.add('dragging');
 
+    // Store initial mouse position for drag threshold detection
+    this.dragStartPos = {
+      x: e.clientX,
+      y: e.clientY,
+    };
+
     const rect = this.container.getBoundingClientRect();
     this.dragOffset = {
       x: e.clientX - rect.left,
@@ -892,7 +1322,16 @@ export class IndiBlob {
 
   private drag = (e: MouseEvent): void => {
     if (!this.isDragging) return;
-    this.hasDragged = true;
+
+    // Calculate distance from start position
+    const deltaX = e.clientX - this.dragStartPos.x;
+    const deltaY = e.clientY - this.dragStartPos.y;
+    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+    // Only mark as dragged if moved beyond threshold
+    if (distance > this.DRAG_THRESHOLD) {
+      this.hasDragged = true;
+    }
 
     const x = e.clientX - this.dragOffset.x;
     const y = e.clientY - this.dragOffset.y;
@@ -909,21 +1348,19 @@ export class IndiBlob {
     this.container.classList.remove('dragging');
     this.updateBubblePositions();
 
-    // CRITICAL FIX: Reset hasDragged after a short delay
+    // Reset hasDragged after a short delay to allow click event to fire
     // This prevents the click event from being blocked forever after dragging
     setTimeout(() => {
       this.hasDragged = false;
     }, 100);
 
-    // Clear original position if user manually moved blob
-    this.originalPosition = null;
-
-    // Save position to storage
-    this.savePosition();
-
-      setTimeout(() => {
-    this.hasDragged = false;
-  }, 100);
+    // Only save position if actually dragged beyond threshold
+    if (this.hasDragged) {
+      // Clear original position if user manually moved blob
+      this.originalPosition = null;
+      // Save position to storage
+      this.savePosition();
+    }
   };
 
   private updateBubblePositions(): void {
@@ -969,10 +1406,25 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
   }
 
   private handleClick(): void {
+    console.log('🎯 Blob clicked - dispatching event');
+
+    // If minimized, restore instead of regular click
+    if (this.isMinimized) {
+      this.restore();
+      return;
+    }
+
+    // Add click feedback animation
+    if (this.container) {
+      this.container.classList.add('clicked');
+      setTimeout(() => {
+        this.container?.classList.remove('clicked');
+      }, 300);
+    }
+
     if (this.speechBubble && this.speechBubble.isShowing()) {
       this.speechBubble.hide();
     }
-    // TODO: Dispatch custom event for panel opening
     const event = new CustomEvent('indi-blob-clicked');
     document.dispatchEvent(event);
   }
@@ -1002,10 +1454,10 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
 
   private getEmotionColors(emotion: EmotionType): EmotionColors {
     const colorMap: Record<EmotionType, EmotionColors> = {
-      happy: { primary: '#a78bfa', secondary: '#8b5cf6', tertiary: '#7c3aed' },
-      calm: { primary: '#60a5fa', secondary: '#3b82f6', tertiary: '#2563eb' },
-      worried: { primary: '#fbbf24', secondary: '#f59e0b', tertiary: '#d97706' },
-      panic: { primary: '#f87171', secondary: '#ef4444', tertiary: '#dc2626' },
+      happy: { primary: '#a78bfa', secondary: '#8b5cf6', tertiary: '#7c3aed' }, // Purple - default
+      calm: { primary: '#60a5fa', secondary: '#3b82f6', tertiary: '#2563eb' }, // Blue - chill
+      satisfied: { primary: '#f9a8d4', secondary: '#ec4899', tertiary: '#db2777' }, // Pink - caught something!
+      excited: { primary: '#fbbf24', secondary: '#f59e0b', tertiary: '#d97706' }, // Gold/Yellow - big win!
     };
     return colorMap[emotion];
   }
@@ -1025,13 +1477,25 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
     this.zipperMouth.setAttribute('opacity', '0');
 
     const mouthShapes: Record<EmotionType, string> = {
-      happy: 'M35,65 Q50,72 65,65',
-      calm: 'M40,68 L60,68',
-      worried: 'M35,70 Q50,67 65,70',
-      panic: 'M40,65 Q50,72 60,65',
+      happy: 'M35,65 Q50,72 65,65', // Medium smile - default
+      calm: 'M38,67 Q50,71 62,67', // Small smile - chill
+      satisfied: 'M33,64 Q50,74 67,64', // Big smile - caught something!
+      excited: 'M30,62 Q50,76 70,62', // Huge smile - big win!
     };
 
     this.mouthPath.setAttribute('d', mouthShapes[emotion]);
+  }
+
+  /**
+   * Trigger celebration animation when everything's perfect!
+   */
+  public celebrate(): void {
+    if (!this.container) return;
+
+    this.container.classList.add('celebrating');
+    setTimeout(() => {
+      this.container?.classList.remove('celebrating');
+    }, 1500);
   }
 
   public setNotifications(count: number): void {
@@ -1040,16 +1504,16 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
     if (!this.badge) return;
 
     if (count > 0) {
-      this.badge.textContent = count.toString();
+      this.badge.textContent = `✨ ${count}`;
       this.badge.classList.add('visible');
 
-      // Auto-set emotion based on count
+      // Auto-set emotion based on count (MORE catches = MORE excited!)
       if (count >= 6) {
-        this.setEmotion('panic');
+        this.setEmotion('excited'); // Big win! Caught lots of things!
       } else if (count >= 3) {
-        this.setEmotion('worried');
+        this.setEmotion('satisfied'); // Nice! Got some catches
       } else {
-        this.setEmotion('calm');
+        this.setEmotion('calm'); // A few things
       }
     } else {
       this.badge.classList.remove('visible');
@@ -1064,9 +1528,9 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
     } else if (count <= 15) {
         this.setEmotion('calm');
     } else if (count <= 30) {
-        this.setEmotion('worried');
+        this.setEmotion('satisfied');
     } else {
-        this.setEmotion('panic');
+        this.setEmotion('excited');
     }
   };
 
@@ -1145,6 +1609,101 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
 
   public getMuteState(): boolean {
     return this.isMuted;
+  }
+
+  // ========== MINIMIZE FUNCTIONALITY ==========
+
+  private async loadMinimizeState(): Promise<void> {
+    const domainKey = `indi_minimized_${window.location.hostname}`;
+    return new Promise((resolve) => {
+      chrome.storage.local.get([domainKey], (result) => {
+        const minimized = result[domainKey] || false;
+        if (minimized) {
+          // Apply minimized state without animation
+          this.isMinimized = true;
+          if (this.container) {
+            this.container.classList.add('minimized');
+          }
+          // Hide tooltip and speech bubble
+          if (this.summaryTooltip) {
+            this.summaryTooltip.style.display = 'none';
+          }
+          if (this.speechBubble) {
+            this.speechBubble.hide();
+          }
+          // Dispatch minimize event to notify content script
+          const event = new CustomEvent('indi-minimized');
+          document.dispatchEvent(event);
+        }
+        resolve();
+      });
+    });
+  }
+
+  private saveMinimizeState(): void {
+    const domainKey = `indi_minimized_${window.location.hostname}`;
+    chrome.storage.local.set({
+      [domainKey]: this.isMinimized,
+    });
+  }
+
+  private minimize(): void {
+    if (this.isMinimized) return;
+
+    this.isMinimized = true;
+
+    // Move to bottom-right corner (accounting for minimized size of 32px)
+    const x = window.innerWidth - 32 - 20; // 20px padding from edge
+    const y = window.innerHeight - 32 - 20;
+    this.setPosition(x, y);
+
+    // Add minimized class to container
+    if (this.container) {
+      this.container.classList.add('minimized');
+    }
+
+    // Hide tooltip
+    if (this.summaryTooltip) {
+      this.summaryTooltip.style.display = 'none';
+    }
+
+    // Hide speech bubble
+    if (this.speechBubble) {
+      this.speechBubble.hide();
+    }
+
+    // Save state
+    this.saveMinimizeState();
+
+    // Dispatch minimize event to notify content script (to detach debugger)
+    const event = new CustomEvent('indi-minimized');
+    document.dispatchEvent(event);
+
+    console.log('😴 Indi minimized - monitoring paused');
+  }
+
+  public restore(): void {
+    if (!this.isMinimized) return;
+
+    this.isMinimized = false;
+
+    // Remove minimized class (position stays where it was dragged to)
+    if (this.container) {
+      this.container.classList.remove('minimized');
+    }
+
+    // Save state
+    this.saveMinimizeState();
+
+    // Dispatch restore event to notify content script (to re-attach debugger)
+    const event = new CustomEvent('indi-restored');
+    document.dispatchEvent(event);
+
+    console.log('👀 Indi restored - monitoring resumed');
+  }
+
+  public getMinimizedState(): boolean {
+    return this.isMinimized;
   }
 
     public destroy(): void {

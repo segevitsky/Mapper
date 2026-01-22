@@ -60,45 +60,67 @@ export function removeDuplicatedIndicatorElements() {
   });
 }
 
-export function waitForIndicator(
-  indicatorId: string,
-  timeout: number = 5000
-): Promise<Element | null> {
-  return new Promise((resolve) => {
-    const elementId = `indi-${indicatorId}`;
-    const existingElement = document.getElementById(elementId);
+// Performance: Shared MutationObserver for all indicators
+// Instead of creating one observer per indicator, use a single shared observer
+class SharedIndicatorObserver {
+  private static instance: SharedIndicatorObserver;
+  private observer: MutationObserver;
+  private pendingWaits: Map<string, { resolve: (element: Element | null) => void; timeoutId: ReturnType<typeof setTimeout> }>;
 
-    if (existingElement) {
-      resolve(existingElement);
-      return;
-    }
-
-    const timeoutId = setTimeout(() => {
-      observer.disconnect();
-      resolve(null);
-    }, timeout);
-
-    const observer = new MutationObserver((mutations) => {
-      // מחפשים בכל המוטציות החדשות
-      for (const mutation of mutations) {
-        // בודקים אם נוסף האלמנט שלנו
-        if (mutation.type === "childList") {
-          const element = document.getElementById(elementId);
-          if (element) {
-            clearTimeout(timeoutId);
-            observer.disconnect();
-            resolve(element);
-            return;
-          }
+  private constructor() {
+    this.pendingWaits = new Map();
+    this.observer = new MutationObserver(() => {
+      // Check all pending indicators on each mutation
+      for (const [elementId, { resolve, timeoutId }] of this.pendingWaits.entries()) {
+        const element = document.getElementById(elementId);
+        if (element) {
+          clearTimeout(timeoutId);
+          this.pendingWaits.delete(elementId);
+          resolve(element);
         }
       }
     });
 
-    observer.observe(document.body, {
+    // Start observing document body once
+    this.observer.observe(document.body, {
       childList: true,
       subtree: true,
-      attributes: true,
-      attributeFilter: ["id"], // נצפה רק על שינויים ב-ID
     });
-  });
+  }
+
+  static getInstance(): SharedIndicatorObserver {
+    if (!SharedIndicatorObserver.instance) {
+      SharedIndicatorObserver.instance = new SharedIndicatorObserver();
+    }
+    return SharedIndicatorObserver.instance;
+  }
+
+  waitForElement(elementId: string, timeout: number): Promise<Element | null> {
+    return new Promise((resolve) => {
+      // Check if element already exists
+      const existingElement = document.getElementById(elementId);
+      if (existingElement) {
+        resolve(existingElement);
+        return;
+      }
+
+      // Set up timeout
+      const timeoutId = setTimeout(() => {
+        this.pendingWaits.delete(elementId);
+        resolve(null);
+      }, timeout);
+
+      // Add to pending waits
+      this.pendingWaits.set(elementId, { resolve, timeoutId });
+    });
+  }
+}
+
+export function waitForIndicator(
+  indicatorId: string,
+  timeout: number = 2000  // Reduced from 5s to 2s for better performance
+): Promise<Element | null> {
+  const elementId = `indi-${indicatorId}`;
+  const observer = SharedIndicatorObserver.getInstance();
+  return observer.waitForElement(elementId, timeout);
 }

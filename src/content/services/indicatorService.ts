@@ -13,6 +13,8 @@ import initFloatingButton from "../floatingRecorderButton";
 import SchemaValidationService from "./schemaValidationService";
 import { createInteractiveJsonViewer, jsonViewerStyles, setupJsonViewerListeners } from "./components/jsonViewer";
 import { modalStyles } from "./components/networkModalStyles";
+import { IndicatorCache } from "./indicatorCache";
+import { IndicatorMonitor } from "./indicatorMonitor";
 
 export let pageIndicators: IndicatorData[] = [];
 
@@ -34,78 +36,68 @@ type TooltipContent = {
 
 export function loadIndicators() {
   const storagePath = generateStoragePath(window.location.href);
-  
-  chrome.storage.local.get(["indicators"], (result) => {
-    const { indicators } = result;
-    // const { domains, status } = userData || {};
-    // lets see if our current location is included in the domains
-    // const currentLocationHost = window.location.host;
-    // const domainIsAllowed = currentLocationHost.includes('localhost') || domains?.find((d: Domain) => d.value.includes(currentLocationHost));
-    // if (!domainIsAllowed) {
-    //   console.log('Domain not allowed, but attempting to load indicators anyway for debugging');
-    //   // Don't return early - still try to load indicators for better debugging
-    //   chrome.runtime.sendMessage({
-    //     type: "DOMAIN_NOT_ALLOWED",
-    //     data: {
-    //       message: `This domain is not allowed. Please contact your administrator.`,
-    //       status: 403,
-    //     },
-    //   });
-    // }
-    
 
-    const currentPageIndicators = indicators[storagePath] || [];
-    pageIndicators = currentPageIndicators.slice();
+  // Use memory cache instead of storage for faster access
+  const cache = IndicatorCache.getInstance();
+  const currentPageIndicators = cache.get(storagePath) || [];
 
-    // Calculate total indicators across all pages
-    const totalIndicators = Object.values(indicators || {}).reduce((acc: number, pageIndis: any) => {
-      return acc + (Array.isArray(pageIndis) ? pageIndis.length : 0);
-    }, 0);
+  pageIndicators = currentPageIndicators.slice();
 
-    if (currentPageIndicators.length === 0) {
-      return;
-    }
+  if (currentPageIndicators.length === 0) {
+    return;
+  }
 
-    // Create all indicators (in-flight tracking prevents duplicates)
-    currentPageIndicators?.forEach(createIndicatorFromData);
-
-    // Make sure we have all indicators with better error handling
-    currentPageIndicators?.forEach(async (indicator: any, index: number) => {
-      try {
-        const indicatorElement = await waitForIndicator(indicator.id, 5000); // Increased to 5s
-        if (!indicatorElement && !creatingIndicators.has(indicator.id)) {
-          // Only retry if not currently being created and not in DOM
-          const stillNotInDom = !document.getElementById(`indi-${indicator.id}`);
-          if (stillNotInDom) {
-            setTimeout(() => {
-              createIndicatorFromData(indicator);
-            }, 500 + (index * 200)); // Stagger indicator creation
-          }
-        }
-      } catch (error) {
-        // Only retry if not currently being created
-        if (!creatingIndicators.has(indicator.id)) {
-          const stillNotInDom = !document.getElementById(`indi-${indicator.id}`);
-          if (stillNotInDom) {
-            setTimeout(() => {
-              createIndicatorFromData(indicator);
-            }, 1000 + (index * 200));
-          }
-        }
-      }
-    });
-
-    const currentPageIndicatorsUuuidArray = currentPageIndicators?.map(
-      (indi: IndicatorData) => indi.id
-    );
-    document.querySelectorAll(".indicator").forEach((indicator: any) => {
-      if (
-        !currentPageIndicatorsUuuidArray.includes(indicator.dataset.indicatorId)
-      ) {
-        indicator.remove();
-      }
-    });
+  // Create all indicators (in-flight tracking prevents duplicates)
+  currentPageIndicators?.forEach((indicator) => {
+    createIndicatorFromData(indicator);
   });
+
+  // Make sure we have all indicators with better error handling
+  currentPageIndicators?.forEach(async (indicator: any, index: number) => {
+    try {
+      const indicatorElement = await waitForIndicator(indicator.id, 5000); // Increased to 5s
+      if (!indicatorElement && !creatingIndicators.has(indicator.id)) {
+        // Only retry if not currently being created and not in DOM
+        const stillNotInDom = !document.getElementById(`indi-${indicator.id}`);
+        if (stillNotInDom) {
+          setTimeout(() => {
+            createIndicatorFromData(indicator);
+          }, 500 + (index * 200)); // Stagger indicator creation
+        }
+      }
+    } catch (error) {
+      // Only retry if not currently being created
+      if (!creatingIndicators.has(indicator.id)) {
+        const stillNotInDom = !document.getElementById(`indi-${indicator.id}`);
+        if (stillNotInDom) {
+          setTimeout(() => {
+            createIndicatorFromData(indicator);
+          }, 1000 + (index * 200));
+        }
+      }
+    }
+  });
+
+  const currentPageIndicatorsUuuidArray = currentPageIndicators?.map(
+    (indi: IndicatorData) => indi.id
+  );
+  document.querySelectorAll(".indicator").forEach((indicator: any) => {
+    if (
+      !currentPageIndicatorsUuuidArray.includes(indicator.dataset.indicatorId)
+    ) {
+      indicator.remove();
+    }
+  });
+
+  // FIX: Update indicators from recent network calls (for tab switching)
+  // When user switches tabs, indicators are created but no new network calls happen
+  // Check recentCallsCache for existing data and populate indicators
+  setTimeout(() => {
+    if (currentPageIndicators.length > 0) {
+      const monitor = IndicatorMonitor.getInstance();
+      monitor.checkIndicatorsUpdate(currentPageIndicators, recentCallsCache);
+    }
+  }, 50); // Small delay to let DOM settle
 
   // initFloatingButton();
 }
@@ -446,22 +438,26 @@ indicator.addEventListener('mouseenter', () => {
             .indi-tooltip {
                 position: fixed;
                 background: linear-gradient(to right, rgb(255, 129, 119) 0%, rgb(255, 134, 122) 0%, rgb(255, 140, 127) 21%, rgb(249, 145, 133) 52%, rgb(207, 85, 108) 78%, rgb(177, 42, 91) 100%);
-                color: white !important;
+                color: #ffffff !important;
                 padding: 12px 20px;
                 border-radius: 10px;
                 max-width: 200px;
                 text-align: center;
                 line-height: 1.4;
-                font-size: 14px;
-                font-weight: 600;
+                font-size: 14px !important;
+                font-weight: 700 !important;
                 z-index: 999999;
                 box-shadow: 0 4px 15px rgba(177, 42, 91, 0.3);
-                text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+                text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
                 white-space: pre-line;
                 word-wrap: break-word;
                 pointer-events: none;
                 opacity: 0;
                 transition: opacity 0.3s ease;
+            }
+            .indi-tooltip * {
+                color: #ffffff !important;
+                font-weight: 700 !important;
             }
         `;
         document.head.appendChild(style);
@@ -470,9 +466,15 @@ indicator.addEventListener('mouseenter', () => {
     const key = generateStoragePath(indicatorData.lastCall?.url) + '|' + indicatorData.method;
     const recentCalls = recentCallsCache.get(key) || [];
     const netWorkData = recentCalls[0]; // Newest first since we unshift
-    
+
     let tooltipContent;
-    const data = dataAttribute ? JSON.parse(dataAttribute) : netWorkData ;
+    // Merge indicatorData with network data for complete tooltip info (name, description, duration, etc.)
+    const data = dataAttribute ? JSON.parse(dataAttribute) : {
+      ...netWorkData,
+      ...indicatorData,
+      duration: netWorkData?.timing?.duration || indicatorData?.lastCall?.timing?.duration || 0,
+      timestamp: netWorkData?.timestamp || indicatorData?.lastCall?.timestamp || Date.now()
+    };
     if (!data) {
         console.warn("No data found in data-indicator-info attribute");
         tooltipContent = "No data available for this indicator. please refresh the page.";
@@ -486,7 +488,7 @@ indicator.addEventListener('mouseenter', () => {
         } else {
             // lets update to local time and date
             const localDate = new Date(timestamp).toLocaleDateString() + ' ' + new Date(timestamp).toLocaleTimeString();
-            tooltipContent = `Last Updated: ${localDate}\nDuration: ${Math.floor(duration)} seconds\nName: ${name || '-'}\nDescription: ${description || '-'}`;
+            tooltipContent = `Last Updated: ${localDate}\nDuration: ${Math.floor(duration)} seconds\nName: ${name || '-'}`;
             if (schemaStatus) {
                 tooltipContent += `\nSchema Status: ${schemaStatus}`;
             }
@@ -647,14 +649,15 @@ indicator.addEventListener("click", async () => {
         position: fixed;
         top: 10rem;
         left: 33%;
-        background: #fff;
+        background: #ffffff;
         padding: 12px 16px;
         border-radius: 8px;
-        font-size: 13px;
+        font-size: 13px !important;
         line-height: 1.4;
-        color: #333;
+        color: #1f2937 !important;
+        font-weight: 500 !important;
         z-index: 999999;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
         border-left: 3px solid #cf556c;
         transform-origin: center;
         direction: ltr;
@@ -733,72 +736,79 @@ indicator.addEventListener("click", async () => {
   <div style="margin-bottom: 16px;">
     <div style="margin-bottom: 12px;">
       <div style="
-        font-size: 12px;
-        font-weight: 600;
-        color: #6b7280;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        color: #cf556c !important;
         text-transform: uppercase;
         letter-spacing: 1px;
         margin-bottom: 4px;
-        background: linear-gradient(to right, #ff8177, #cf556c);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
       ">
         Name:
       </div>
-      <div style="
-        font-size: 14px;
-        color: ${currentData?.name || parsedDataFromAttr?.name ? '#374151' : '#9ca3af'};
-        font-weight: 500;
-        padding: 8px 12px;
-        background: rgba(255, 255, 255, 0.6);
-        border-radius: 8px;
-        border: 1px solid rgba(255, 129, 119, 0.1);
-        ${!currentData?.name && !parsedDataFromAttr?.name ? 'font-style: italic;' : ''}
-      ">
-        ${currentData?.name || parsedDataFromAttr?.name || "-"}
-      </div>
+      <input
+        class="indi-name-input"
+        type="text"
+        value="${currentData?.name || parsedDataFromAttr?.name || ''}"
+        placeholder="Enter indicator name..."
+        style="
+          width: 100%;
+          font-size: 14px !important;
+          color: #1f2937 !important;
+          font-weight: 500 !important;
+          padding: 8px 12px;
+          background: rgba(255, 255, 255, 0.9);
+          border-radius: 8px;
+          border: 1px solid rgba(255, 129, 119, 0.2);
+          outline: none;
+          transition: all 0.2s;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        "
+      />
     </div>
     <div style="margin-bottom: 12px;">
       <div style="
-        font-size: 12px;
-        font-weight: 600;
-        color: #6b7280;
+        font-size: 12px !important;
+        font-weight: 700 !important;
+        color: #cf556c !important;
         text-transform: uppercase;
         letter-spacing: 1px;
         margin-bottom: 4px;
-        background: linear-gradient(to right, #ff8177, #cf556c);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
       ">
         Description:
       </div>
-      <div style="
-        font-size: 14px;
-        color: ${currentData?.description || parsedDataFromAttr?.description ? '#374151' : '#9ca3af'};
-        font-weight: 500;
-        padding: 8px 12px;
-        background: rgba(255, 255, 255, 0.6);
-        border-radius: 8px;
-        border: 1px solid rgba(255, 129, 119, 0.1);
-        ${!currentData?.description && !parsedDataFromAttr?.description ? 'font-style: italic;' : ''}
-      ">
-        ${currentData?.description || parsedDataFromAttr?.description || '-'}
-      </div>
+      <textarea
+        class="indi-description-input"
+        placeholder="Enter indicator description..."
+        style="
+          width: 100%;
+          font-size: 14px !important;
+          color: #1f2937 !important;
+          font-weight: 500 !important;
+          padding: 8px 12px;
+          background: rgba(255, 255, 255, 0.9);
+          border-radius: 8px;
+          border: 1px solid rgba(255, 129, 119, 0.2);
+          outline: none;
+          transition: all 0.2s;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          resize: vertical;
+          min-height: 60px;
+        "
+      >${currentData?.description || parsedDataFromAttr?.description || ''}</textarea>
     </div>
   </div>
 
   <div class='indi-url' style="
-    background: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(10px);
     padding: 14px;
     border-radius: 12px;
-    color: #374151;
-    font-size: 13px;
+    color: #1f2937 !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
     word-break: break-all;
     margin: 8px 0 16px 0;
-    border: 1px solid rgba(255, 129, 119, 0.2);
+    border: 1px solid rgba(255, 129, 119, 0.3);
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   ">
@@ -810,10 +820,10 @@ indicator.addEventListener("click", async () => {
       parsedDataFromAttr?.status === 200 || currentData?.lastCall?.status === 200
         ? "#059669"
         : "#dc2626"
-    };
+    } !important;
     margin-bottom: 20px;
-    font-weight: 600;
-    font-size: 15px;
+    font-weight: 700 !important;
+    font-size: 15px !important;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -910,6 +920,24 @@ indicator.addEventListener("click", async () => {
     ">
       📊 Response
     </button>
+    <button class="pop-out-window btn-success" style="
+      padding: 10px 14px;
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: white;
+      border: none;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+      position: relative;
+      overflow: hidden;
+    ">
+      📤 Pop Out
+    </button>
     <button class="change-position btn-warning" style="
       padding: 10px 14px;
       background: linear-gradient(135deg, #f59e0b, #d97706);
@@ -958,13 +986,13 @@ indicator.addEventListener("click", async () => {
   </div>
 
   <div style="
-    color: #6b7280;
-    font-size: 11px;
+    color: #6b7280 !important;
+    font-size: 11px !important;
     text-align: center;
     margin-top: 16px;
     padding-top: 16px;
     border-top: 1px solid rgba(255, 129, 119, 0.1);
-    font-weight: 500;
+    font-weight: 600 !important;
     text-transform: uppercase;
     letter-spacing: 1px;
   ">
@@ -1189,6 +1217,125 @@ indicator.addEventListener("click", async () => {
         tooltip.remove();
       });
 
+    // Function to save name/description changes
+    const saveIndicatorMetadata = (field: 'name' | 'description', value: string) => {
+      const currentPath = generateStoragePath(window.location.href);
+
+      chrome.storage.local.get(["indicators"], (result) => {
+        const indies = result.indicators as { [key: string]: IndicatorData[] } || {};
+
+        if (!indies[currentPath]) {
+          indies[currentPath] = [];
+        }
+
+        const index = indies[currentPath].findIndex((el) => el.id === currentData.id);
+
+        if (index !== -1) {
+          // Update the field
+          indies[currentPath][index][field] = value;
+
+          // Also update currentData reference
+          currentData[field] = value;
+
+          // Update storage
+          chrome.storage.local.set({ indicators: indies }, () => {
+            // Update the indicator element's data attribute
+            const updatedData = indies[currentPath][index];
+            indicator.setAttribute("data-indicator-info", JSON.stringify(updatedData));
+
+            // Show visual feedback
+            const inputElement = field === 'name'
+              ? tooltip.querySelector(".indi-name-input") as HTMLInputElement
+              : tooltip.querySelector(".indi-description-input") as HTMLTextAreaElement;
+
+            if (inputElement) {
+              // Flash green border to show save success
+              inputElement.style.borderColor = '#10b981';
+              inputElement.style.boxShadow = '0 0 0 3px rgba(16, 185, 129, 0.1)';
+
+              setTimeout(() => {
+                inputElement.style.borderColor = 'rgba(255, 129, 119, 0.2)';
+                inputElement.style.boxShadow = 'none';
+              }, 500);
+            }
+          });
+        }
+      });
+    };
+
+    // Name input event listeners
+    const nameInput = tooltip.querySelector(".indi-name-input") as HTMLInputElement;
+    if (nameInput) {
+      // Save on blur (when user clicks away)
+      nameInput.addEventListener("blur", () => {
+        const newName = nameInput.value.trim();
+        saveIndicatorMetadata('name', newName);
+      });
+
+      // Save on Enter key
+      nameInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const newName = nameInput.value.trim();
+          saveIndicatorMetadata('name', newName);
+          nameInput.blur(); // Remove focus
+        }
+      });
+    }
+
+    // Description textarea event listeners
+    const descriptionInput = tooltip.querySelector(".indi-description-input") as HTMLTextAreaElement;
+    if (descriptionInput) {
+      // Save on blur (when user clicks away)
+      descriptionInput.addEventListener("blur", () => {
+        const newDescription = descriptionInput.value.trim();
+        saveIndicatorMetadata('description', newDescription);
+      });
+
+      // Save on Ctrl+Enter (common pattern for multiline inputs)
+      descriptionInput.addEventListener("keydown", (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          e.preventDefault();
+          const newDescription = descriptionInput.value.trim();
+          saveIndicatorMetadata('description', newDescription);
+          descriptionInput.blur(); // Remove focus
+        }
+      });
+    }
+
+    // Pop Out button - only opens floating window
+    tooltip.querySelector(".pop-out-window")?.addEventListener("click", () => {
+      // lets get the data from the attribute data-indicator-info
+      const allIndicatorData = JSON.parse(
+        indicator.getAttribute("data-indicator-info") || "{}"
+      );
+
+      if (!allIndicatorData || Object.keys(allIndicatorData).length === 0) {
+          const key = generateStoragePath(indicatorData.lastCall?.url) + '|' + indicatorData.method;
+          const recentCalls = recentCallsCache.get(key) || [];
+          if (recentCalls.length > 0) {
+            const dataToSend = recentCalls[0];
+            chrome.runtime.sendMessage({
+              type: "OPEN_FLOATING_WINDOW",
+              data: {
+                indicatorData: dataToSend,
+                networkCall: dataToSend,
+              }
+            });
+          }
+          return;
+      }
+
+      chrome.runtime.sendMessage({
+        type: "OPEN_FLOATING_WINDOW",
+        data: {
+          indicatorData: allIndicatorData,
+          networkCall: allIndicatorData,
+        }
+      });
+    });
+
+    // Response button - only toggles response panel display
     tooltip.querySelector(".show-response")?.addEventListener("click", () => {
         // toggle the display from block to none
         const topPart = tooltip.querySelector("#top-part");
@@ -1202,30 +1349,13 @@ indicator.addEventListener("click", async () => {
       const allIndicatorData = JSON.parse(
         indicator.getAttribute("data-indicator-info") || "{}"
       );
-      if (!allIndicatorData) {
+      if (!allIndicatorData || Object.keys(allIndicatorData).length === 0) {
           const key = generateStoragePath(indicatorData.lastCall?.url) + '|' + indicatorData.method;
           const recentCalls = recentCallsCache.get(key) || [];
           if (recentCalls.length > 0) {
             const allIndicatorData = recentCalls[0];
-            // lets send the message to the background script to open the floating window
-            chrome.runtime.sendMessage({
-            type: "OPEN_FLOATING_WINDOW",
-            data: {
-              indicatorData: allIndicatorData,
-              networkCall: allIndicatorData,
-                }
-              });
-            }
-          return;
+          }
       }
-
-      chrome.runtime.sendMessage({
-        type: "OPEN_FLOATING_WINDOW",
-        data: {
-          indicatorData: allIndicatorData,
-          networkCall: allIndicatorData,
-        }
-      });
 
       // Toggle display of the panel regardless of data
       const isHidden = (responsePanel as HTMLElement).style.display === "none";
@@ -2063,11 +2193,11 @@ export function injectStyles() {
     /* Font Override */
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif !important;
     font-size: 14px !important;
-    font-weight: 400 !important;
+    font-weight: 500 !important;
     line-height: 1.5 !important;
 
     /* Reset common inherited properties */
-    color: inherit !important;
+    color: #1f2937 !important;
     letter-spacing: normal !important;
     word-spacing: normal !important;
     text-transform: none !important;

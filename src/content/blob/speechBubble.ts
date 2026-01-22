@@ -76,17 +76,19 @@ export class SpeechBubble {
         letter-spacing: normal !important;
         word-spacing: normal !important;
         text-transform: none !important;
+        color: #1f2937 !important;
+        font-weight: 500 !important;
       }
       /* ==================== END CSS RESET ==================== */
 
       .indi-speech-bubble {
         position: fixed;
-        background: #fff;
+        background: #ffffff;
         border-radius: 20px;
         padding: 24px;
         min-width: 320px;
         max-width: 400px;
-        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
         z-index: 999998;
         opacity: 0;
         transform: translateY(20px);
@@ -127,9 +129,9 @@ export class SpeechBubble {
 
       .indi-speech-bubble-title {
         margin: 0;
-        font-size: 18px;
-        font-weight: 600;
-        color: #1f2937;
+        font-size: 18px !important;
+        font-weight: 700 !important;
+        color: #1f2937 !important;
         white-space: pre-line;
         flex: 1;
       }
@@ -137,8 +139,9 @@ export class SpeechBubble {
       .indi-speech-bubble-close {
         background: none;
         border: none;
-        font-size: 24px;
-        color: #9ca3af;
+        font-size: 24px !important;
+        color: #6b7280 !important;
+        font-weight: 700 !important;
         cursor: pointer;
         padding: 0;
         width: 24px;
@@ -154,14 +157,15 @@ export class SpeechBubble {
 
       .indi-speech-bubble-close:hover {
         background: #f3f4f6;
-        color: #1f2937;
+        color: #1f2937 !important;
       }
 
       .indi-speech-bubble-message {
         margin: 0 0 16px 0;
-        font-size: 14px;
+        font-size: 14px !important;
         line-height: 1.6;
-        color: #4b5563;
+        color: #374151 !important;
+        font-weight: 500 !important;
         white-space: pre-line;
         word-wrap: break-word;
         overflow-wrap: break-word;
@@ -185,8 +189,8 @@ export class SpeechBubble {
         padding: 12px 24px;
         border: none;
         border-radius: 8px;
-        font-size: 14px;
-        font-weight: 600;
+        font-size: 14px !important;
+        font-weight: 700 !important;
         cursor: pointer;
         transition: all 0.2s;
         white-space: nowrap;
@@ -194,8 +198,9 @@ export class SpeechBubble {
 
       .indi-speech-bubble-action.primary {
         background: linear-gradient(135deg, #8b5cf6, #7c3aed);
-        color: #fff;
+        color: #ffffff !important;
         box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
       }
 
       .indi-speech-bubble-action.primary:hover {
@@ -204,25 +209,25 @@ export class SpeechBubble {
       }
 
       .indi-speech-bubble-action.secondary {
-        background: rgba(139, 92, 246, 0.1);
-        color: #8b5cf6;
-        border: 2px solid rgba(139, 92, 246, 0.2);
+        background: rgba(139, 92, 246, 0.15);
+        color: #6d28d9 !important;
+        border: 2px solid rgba(139, 92, 246, 0.3);
       }
 
       .indi-speech-bubble-action.secondary:hover {
-        background: rgba(139, 92, 246, 0.15);
-        border-color: rgba(139, 92, 246, 0.3);
+        background: rgba(139, 92, 246, 0.25);
+        border-color: rgba(139, 92, 246, 0.4);
       }
 
       .indi-speech-bubble-action.third {
-        background: white;
-        color: #8b5cf6;
-        border: 2px solid rgba(139, 92, 246, 0.2);
+        background: #ffffff;
+        color: #6d28d9 !important;
+        border: 2px solid rgba(139, 92, 246, 0.3);
       }
 
       .indi-speech-bubble-action.third:hover {
-        background: pink;
-        border-color: rgba(139, 92, 246, 0.3);
+        background: #fce7f3;
+        border-color: rgba(139, 92, 246, 0.4);
       }
 
 
