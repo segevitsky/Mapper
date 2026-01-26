@@ -710,7 +710,32 @@ export class ElementFinder {
     }
 
     // Search ALL matching elements in the document (including portals at body end)
-    const elements = document.querySelectorAll(searchSelector);
+    let elements = document.querySelectorAll(searchSelector);
+
+    // If searching for dropdown items, also search in common portal containers
+    if (searchSelector.includes('select-item') || searchSelector.includes('option') || searchSelector.includes('menu-item')) {
+      const portalSelectors = [
+        '.ant-select-dropdown',
+        '.MuiMenu-root',
+        '.MuiPopover-root',
+        '[data-radix-popper-content-wrapper]',
+        '[role="listbox"]',
+        '[role="menu"]',
+        '.dropdown-menu'
+      ];
+
+      // Search specifically in portal containers for better results
+      for (const portalSelector of portalSelectors) {
+        const portals = document.querySelectorAll(portalSelector);
+        portals.forEach(portal => {
+          const portalElements = portal.querySelectorAll(searchSelector);
+          if (portalElements.length > 0) {
+            elements = portalElements;
+            console.log(`  🎯 Found dropdown items in portal: ${portalSelector}`);
+          }
+        });
+      }
+    }
 
     // Try exact match first
     let found = Array.from(elements).find(
@@ -750,10 +775,73 @@ export class ElementFinder {
       );
     }
 
+    // If still not found and this looks like a dropdown option, try broader search
+    if (!found && (searchSelector.includes('select') || searchSelector.includes('option') || searchSelector.includes('menu'))) {
+      console.log(`  🔍 Broadening search for dropdown option: "${text}"`);
+      const dropdownOption = this.findDropdownOptionByText(text);
+      if (dropdownOption) {
+        return dropdownOption;
+      }
+    }
+
     // Ensure we return HTMLElement or null
     if (found && found instanceof HTMLElement) {
       return found;
     }
+    return null;
+  }
+
+  /**
+   * Find dropdown option by text across all common dropdown implementations
+   */
+  private static findDropdownOptionByText(text: string): HTMLElement | null {
+    // Common dropdown option selectors
+    const optionSelectors = [
+      // Ant Design
+      '.ant-select-item-option',
+      '.ant-select-item',
+      '.ant-dropdown-menu-item',
+      // Material UI
+      '.MuiMenuItem-root',
+      '.MuiListItem-root',
+      // Radix / Headless UI
+      '[data-radix-collection-item]',
+      '[role="option"]',
+      '[role="menuitem"]',
+      // Bootstrap
+      '.dropdown-item',
+      // Generic
+      '[role="listbox"] > *',
+      '[role="menu"] > *',
+      '.select-option',
+      '.option'
+    ];
+
+    for (const selector of optionSelectors) {
+      const options = document.querySelectorAll(selector);
+      for (const option of Array.from(options)) {
+        const optionText = option.textContent?.trim() || '';
+
+        // Exact match
+        if (optionText === text) {
+          console.log(`  ✅ Found dropdown option with selector ${selector}: "${text}"`);
+          return option as HTMLElement;
+        }
+
+        // Contains match
+        if (optionText.includes(text) || text.includes(optionText)) {
+          console.log(`  ✅ Found dropdown option (contains) with selector ${selector}: "${optionText}" ~ "${text}"`);
+          return option as HTMLElement;
+        }
+
+        // Fuzzy match
+        if (this.fuzzyMatch(optionText, text, 0.8)) {
+          console.log(`  ✅ Found dropdown option (fuzzy) with selector ${selector}: "${optionText}" ≈ "${text}"`);
+          return option as HTMLElement;
+        }
+      }
+    }
+
     return null;
   }
 

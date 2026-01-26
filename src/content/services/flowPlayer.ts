@@ -1,6 +1,6 @@
 // Flow Player - Replay recorded flows
 
-import { IndiFlow, FlowStep, FlowPlaybackResult, StepResult, APIValidationResult, ExpectedAPI } from '../../types/flow';
+import { IndiFlow, FlowStep, FlowPlaybackResult, StepResult, APIValidationResult, ExpectedAPI, ElementFingerprint } from '../../types/flow';
 import { NetworkCall } from '../../types';
 import { ElementFinder } from './elementIdentifier';
 import { recentCallsCache } from '../content';
@@ -186,9 +186,34 @@ export class FlowPlayer {
         return result;
       }
 
+      // Check if this might be a dropdown option click (element in a dropdown/listbox)
+      const isLikelyDropdownOption = this.isLikelyDropdownOption(step.action.element);
+      if (isLikelyDropdownOption) {
+        console.log('🔽 Detected likely dropdown option, waiting for dropdown to be visible...');
+        await this.waitForAnyDropdownToAppear(1500);
+      }
+
       const element = await ElementFinder.findElement(step.action.element, 5000);
 
       if (!element) {
+        // If element not found and it looks like a dropdown option, try waiting longer
+        if (isLikelyDropdownOption) {
+          console.log('⏳ Dropdown option not found, waiting and retrying...');
+          await this.wait(500);
+          const retryElement = await ElementFinder.findElement(step.action.element, 3000);
+          if (retryElement) {
+            console.log('✅ Found element on retry');
+            // Continue with retryElement below
+            const validElement = retryElement;
+            // Scroll and perform action
+            validElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await this.wait(300);
+            await this.performAction(validElement, step);
+            result.actionPerformed = true;
+            result.passed = true;
+            return result;
+          }
+        }
         result.elementFound = false;
         result.error = 'Element not found';
         return result;
@@ -243,22 +268,12 @@ export class FlowPlayer {
         // Highlight element briefly
         this.highlightElement(element);
 
-        // Special handling for Ant Design select - can't programmatically open dropdown
-        if (element.classList.contains('ant-select') || element.closest('.ant-select')) {
-          const selectWrapper = element.classList.contains('ant-select')
-            ? element
-            : element.closest('.ant-select');
-
-          // Find the selector/input inside and click it to trigger dropdown
-          const selector = selectWrapper?.querySelector('.ant-select-selector, input');
-          if (selector) {
-            console.log('🎯 Detected Ant Design select, clicking internal selector to open dropdown');
-            (selector as HTMLElement).click();
-
-            // Wait for dropdown to appear in DOM
-            await this.wait(200);
-            break; // Next action will click the option
-          }
+        // Check if this is a dropdown trigger
+        const dropdownInfo = this.detectDropdownTrigger(element);
+        if (dropdownInfo.isDropdown) {
+          console.log(`🎯 Detected dropdown: ${dropdownInfo.type}`);
+          await this.handleDropdownClick(element, dropdownInfo);
+          break;
         }
 
         // Special handling for native select elements - can't programmatically open dropdown
@@ -267,28 +282,8 @@ export class FlowPlayer {
           break; // The 'change' action that follows will set the value
         }
 
-        // Try native click first, fallback to dispatching MouseEvent
-        try {
-          if (typeof element.click === 'function') {
-            element.click();
-          } else {
-            // Fallback: dispatch click event manually
-            const clickEvent = new MouseEvent('click', {
-              bubbles: true,
-              cancelable: true,
-              view: window
-            });
-            element.dispatchEvent(clickEvent);
-          }
-        } catch (error) {
-          console.error('Click failed, trying dispatch:', error);
-          const clickEvent = new MouseEvent('click', {
-            bubbles: true,
-            cancelable: true,
-            view: window
-          });
-          element.dispatchEvent(clickEvent);
-        }
+        // Perform comprehensive click (works better with React/Vue)
+        await this.performComprehensiveClick(element, action.position);
         break;
 
       case 'input':
@@ -319,9 +314,122 @@ export class FlowPlayer {
         break;
 
       case 'hover':
-        element.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+        // Highlight element to show hover is happening
+        this.highlightElement(element);
+
+        // Dispatch comprehensive hover events to trigger all hover effects
+        const hoverPosition = action.position || { x: 0, y: 0 };
+        const mouseEventOptions = {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+          clientX: hoverPosition.x,
+          clientY: hoverPosition.y
+        };
+
+        // Dispatch mouseenter (triggers :hover CSS, doesn't bubble)
+        element.dispatchEvent(new MouseEvent('mouseenter', {
+          ...mouseEventOptions,
+          bubbles: false // mouseenter doesn't bubble
+        }));
+
+        // Dispatch mouseover (bubbles, triggers event handlers)
+        element.dispatchEvent(new MouseEvent('mouseover', mouseEventOptions));
+
+        // Dispatch mousemove (some libraries listen for this)
+        element.dispatchEvent(new MouseEvent('mousemove', mouseEventOptions));
+
+        // Focus if element is focusable (helps with keyboard-accessible menus)
+        if (element instanceof HTMLElement && typeof element.focus === 'function') {
+          try {
+            element.focus();
+          } catch (e) {
+            // Element not focusable, ignore
+          }
+        }
+
+        // Wait to simulate hover dwell time (300ms - enough for most animations)
+        await this.wait(300);
+
+        console.log(`✨ Hover performed on:`, element);
+        break;
+
+      case 'keypress':
+        // Highlight element
+        this.highlightElement(element);
+
+        const key = action.value || 'Enter';
+        const modifiers = action.modifiers || { ctrl: false, alt: false, shift: false, meta: false };
+
+        // Focus the element first
+        if (element instanceof HTMLElement && typeof element.focus === 'function') {
+          element.focus();
+          await this.wait(50); // Brief wait for focus to take effect
+        }
+
+        // Dispatch keydown event
+        const keydownEvent = new KeyboardEvent('keydown', {
+          key: key,
+          code: this.getKeyCode(key),
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: modifiers.ctrl,
+          altKey: modifiers.alt,
+          shiftKey: modifiers.shift,
+          metaKey: modifiers.meta
+        });
+        element.dispatchEvent(keydownEvent);
+
+        // Small delay between keydown and keyup
+        await this.wait(50);
+
+        // Dispatch keyup event
+        const keyupEvent = new KeyboardEvent('keyup', {
+          key: key,
+          code: this.getKeyCode(key),
+          bubbles: true,
+          cancelable: true,
+          ctrlKey: modifiers.ctrl,
+          altKey: modifiers.alt,
+          shiftKey: modifiers.shift,
+          metaKey: modifiers.meta
+        });
+        element.dispatchEvent(keyupEvent);
+
+        // For Enter key on forms, might need to trigger submit
+        if (key === 'Enter' && element instanceof HTMLInputElement) {
+          const form = element.closest('form');
+          if (form) {
+            // Some forms submit on Enter
+            form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+          }
+        }
+
+        console.log(`⌨️ Keypress performed: ${key}`, element);
         break;
     }
+  }
+
+  /**
+   * Helper to get KeyboardEvent code from key name
+   */
+  private getKeyCode(key: string): string {
+    const keyCodeMap: { [key: string]: string } = {
+      'Enter': 'Enter',
+      'Tab': 'Tab',
+      'Escape': 'Escape',
+      'ArrowUp': 'ArrowUp',
+      'ArrowDown': 'ArrowDown',
+      'ArrowLeft': 'ArrowLeft',
+      'ArrowRight': 'ArrowRight',
+      'Backspace': 'Backspace',
+      'Delete': 'Delete',
+      'Home': 'Home',
+      'End': 'End',
+      'PageUp': 'PageUp',
+      'PageDown': 'PageDown'
+    };
+    return keyCodeMap[key] || key;
   }
 
   /**
@@ -462,6 +570,248 @@ export class FlowPlayer {
   stop(): void {
     this.playing = false;
     this.clearPlaybackState();
+  }
+
+  // ==================== DROPDOWN HANDLING ====================
+
+  /**
+   * Detect if element is a dropdown trigger
+   */
+  private detectDropdownTrigger(element: HTMLElement): { isDropdown: boolean; type: string; clickTarget?: HTMLElement } {
+    // Ant Design Select
+    if (element.classList.contains('ant-select') || element.closest('.ant-select')) {
+      const selectWrapper = element.classList.contains('ant-select')
+        ? element
+        : element.closest('.ant-select') as HTMLElement;
+      const clickTarget = selectWrapper?.querySelector('.ant-select-selector, input') as HTMLElement;
+      return { isDropdown: true, type: 'antd-select', clickTarget: clickTarget || element };
+    }
+
+    // Ant Design Dropdown
+    if (element.classList.contains('ant-dropdown-trigger') || element.closest('.ant-dropdown-trigger')) {
+      return { isDropdown: true, type: 'antd-dropdown', clickTarget: element };
+    }
+
+    // Material UI Select
+    if (element.classList.contains('MuiSelect-select') || element.closest('.MuiSelect-root')) {
+      const selectRoot = element.closest('.MuiSelect-root') as HTMLElement;
+      return { isDropdown: true, type: 'mui-select', clickTarget: selectRoot || element };
+    }
+
+    // Radix UI / Headless UI triggers
+    if (element.hasAttribute('data-radix-collection-item') ||
+        element.hasAttribute('data-headlessui-state') ||
+        element.closest('[data-radix-popper-content-wrapper]')) {
+      return { isDropdown: true, type: 'radix-headless', clickTarget: element };
+    }
+
+    // Generic dropdown detection via ARIA attributes
+    const ariaExpanded = element.getAttribute('aria-expanded');
+    const ariaHaspopup = element.getAttribute('aria-haspopup');
+    if (ariaHaspopup === 'true' || ariaHaspopup === 'listbox' || ariaHaspopup === 'menu') {
+      return { isDropdown: true, type: 'aria-dropdown', clickTarget: element };
+    }
+
+    // Bootstrap dropdown
+    if (element.classList.contains('dropdown-toggle') || element.hasAttribute('data-bs-toggle')) {
+      return { isDropdown: true, type: 'bootstrap-dropdown', clickTarget: element };
+    }
+
+    // Custom dropdown patterns (common class names)
+    const dropdownClasses = ['dropdown-trigger', 'select-trigger', 'menu-trigger', 'popover-trigger'];
+    if (dropdownClasses.some(cls => element.classList.contains(cls))) {
+      return { isDropdown: true, type: 'custom-dropdown', clickTarget: element };
+    }
+
+    return { isDropdown: false, type: 'none' };
+  }
+
+  /**
+   * Handle clicking on a dropdown trigger
+   */
+  private async handleDropdownClick(element: HTMLElement, dropdownInfo: { type: string; clickTarget?: HTMLElement }): Promise<void> {
+    const clickTarget = dropdownInfo.clickTarget || element;
+
+    console.log(`📂 Opening dropdown (${dropdownInfo.type})...`);
+
+    // Perform comprehensive click to open
+    await this.performComprehensiveClick(clickTarget);
+
+    // Wait for dropdown to appear with retry logic
+    const dropdownAppeared = await this.waitForDropdownToAppear(dropdownInfo.type, 2000);
+
+    if (!dropdownAppeared) {
+      console.warn(`⚠️ Dropdown may not have opened, trying focus + click...`);
+      // Try focus first, then click again
+      clickTarget.focus();
+      await this.wait(100);
+      await this.performComprehensiveClick(clickTarget);
+      await this.wait(300);
+    }
+
+    console.log(`✅ Dropdown should now be open`);
+  }
+
+  /**
+   * Wait for dropdown menu to appear in DOM
+   */
+  private async waitForDropdownToAppear(dropdownType: string, timeout: number): Promise<boolean> {
+    const startTime = Date.now();
+
+    // Selectors for various dropdown menus (usually rendered as portals at body end)
+    const dropdownSelectors: Record<string, string[]> = {
+      'antd-select': ['.ant-select-dropdown:not(.ant-select-dropdown-hidden)', '.ant-select-dropdown'],
+      'antd-dropdown': ['.ant-dropdown:not(.ant-dropdown-hidden)', '.ant-dropdown-menu'],
+      'mui-select': ['.MuiMenu-root', '.MuiPopover-root', '.MuiMenu-paper'],
+      'radix-headless': ['[data-radix-popper-content-wrapper]', '[data-headlessui-state="open"]'],
+      'aria-dropdown': ['[role="listbox"]', '[role="menu"]', '[role="combobox"][aria-expanded="true"]'],
+      'bootstrap-dropdown': ['.dropdown-menu.show', '.dropdown-menu[data-bs-popper]'],
+      'custom-dropdown': ['.dropdown-menu', '.select-dropdown', '.popover', '[role="listbox"]']
+    };
+
+    const selectors = dropdownSelectors[dropdownType] || dropdownSelectors['custom-dropdown'];
+
+    while (Date.now() - startTime < timeout) {
+      for (const selector of selectors) {
+        const dropdown = document.querySelector(selector);
+        if (dropdown) {
+          // Check if it's actually visible
+          const rect = dropdown.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            console.log(`✅ Dropdown found with selector: ${selector}`);
+            return true;
+          }
+        }
+      }
+      await this.wait(50);
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if element fingerprint looks like a dropdown option
+   */
+  private isLikelyDropdownOption(fingerprint: ElementFingerprint): boolean {
+    // Check locator selectors for dropdown-related patterns
+    const dropdownPatterns = [
+      'select-item', 'select-option', 'option',
+      'menu-item', 'menuitem', 'MenuItem',
+      'dropdown-item', 'listbox',
+      'ant-select', 'MuiMenuItem', 'MuiListItem',
+      'radix-collection-item'
+    ];
+
+    for (const locator of fingerprint.locators) {
+      const selectorLower = locator.selector.toLowerCase();
+      if (dropdownPatterns.some(pattern => selectorLower.includes(pattern.toLowerCase()))) {
+        return true;
+      }
+    }
+
+    // Check verification data
+    if (fingerprint.verification?.role === 'option' || fingerprint.verification?.role === 'menuitem') {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Wait for any dropdown to appear in the DOM
+   */
+  private async waitForAnyDropdownToAppear(timeout: number): Promise<boolean> {
+    const startTime = Date.now();
+
+    const dropdownSelectors = [
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden)',
+      '.ant-dropdown:not(.ant-dropdown-hidden)',
+      '.MuiMenu-root',
+      '.MuiPopover-root',
+      '[data-radix-popper-content-wrapper]',
+      '[role="listbox"]',
+      '[role="menu"]:not([aria-hidden="true"])',
+      '.dropdown-menu.show',
+      '.dropdown-menu[style*="display: block"]'
+    ];
+
+    while (Date.now() - startTime < timeout) {
+      for (const selector of dropdownSelectors) {
+        const dropdown = document.querySelector(selector);
+        if (dropdown) {
+          const rect = dropdown.getBoundingClientRect();
+          if (rect.width > 0 && rect.height > 0) {
+            console.log(`✅ Dropdown visible: ${selector}`);
+            return true;
+          }
+        }
+      }
+      await this.wait(50);
+    }
+
+    console.log('⚠️ No dropdown found within timeout');
+    return false;
+  }
+
+  /**
+   * Perform comprehensive click - dispatches full mouse event sequence
+   * This works better with React, Vue, and other frameworks that use synthetic events
+   */
+  private async performComprehensiveClick(element: HTMLElement, position?: { x: number; y: number }): Promise<void> {
+    // Get element center if position not provided
+    const rect = element.getBoundingClientRect();
+    const x = position?.x ?? rect.left + rect.width / 2;
+    const y = position?.y ?? rect.top + rect.height / 2;
+
+    const eventOptions: MouseEventInit = {
+      bubbles: true,
+      cancelable: true,
+      view: window,
+      clientX: x,
+      clientY: y,
+      screenX: x,
+      screenY: y,
+      button: 0,
+      buttons: 1
+    };
+
+    // Focus element first (important for accessibility and some frameworks)
+    if (typeof element.focus === 'function') {
+      element.focus();
+    }
+
+    // Dispatch mouseenter (doesn't bubble)
+    element.dispatchEvent(new MouseEvent('mouseenter', { ...eventOptions, bubbles: false }));
+
+    // Dispatch mouseover
+    element.dispatchEvent(new MouseEvent('mouseover', eventOptions));
+
+    // Small delay to simulate real user
+    await this.wait(10);
+
+    // Dispatch mousedown
+    element.dispatchEvent(new MouseEvent('mousedown', eventOptions));
+
+    // Small delay between mousedown and mouseup
+    await this.wait(50);
+
+    // Dispatch mouseup
+    element.dispatchEvent(new MouseEvent('mouseup', eventOptions));
+
+    // Dispatch click
+    element.dispatchEvent(new MouseEvent('click', eventOptions));
+
+    // Also try native click as fallback
+    try {
+      if (typeof element.click === 'function') {
+        element.click();
+      }
+    } catch (e) {
+      // Native click failed, but we already dispatched events
+    }
+
+    // Wait a bit for any animations/reactions
+    await this.wait(100);
   }
 
   // ==================== STORAGE (SURVIVE PAGE RELOADS) ====================

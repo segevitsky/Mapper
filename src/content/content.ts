@@ -105,6 +105,9 @@ async function initializeIndi(networkData: NetworkCall[]) {
   }
   if (isIndiInitialized) return;
 
+  // Set flag immediately to prevent race conditions from multiple NETWORK_IDLE messages
+  isIndiInitialized = true;
+
   try {
 
     // 1. Create Indi blob
@@ -138,9 +141,11 @@ async function initializeIndi(networkData: NetworkCall[]) {
     // 5. Set up event listeners
     setupIndiEventListeners();
 
-    isIndiInitialized = true;
+    // Flag already set at start - initialization complete
   } catch (error) {
     console.error('Failed to initialize Indi components:', error);
+    // Reset flag on failure to allow retry
+    isIndiInitialized = false;
   }
 }
 
@@ -1222,6 +1227,11 @@ function setupIndiEventListeners() {
  * Handle Create Flow button click - Toggle recording on/off
  */
 async function handleCreateFlowClick(button: HTMLElement) {
+  // Close the summary tooltip if it's visible
+  if (indiBlob && indiBlob.isTooltipVisible()) {
+    indiBlob.toggleTooltip();
+  }
+
   if (flowRecorder.isRecording()) {
     // Stop recording
     const session = flowRecorder.stopRecording();
@@ -1328,6 +1338,11 @@ async function handleCreateFlowClick(button: HTMLElement) {
  * Handle Play Flow button click - Show flow selection and playback
  */
 async function handlePlayFlowClick() {
+  // Close the summary tooltip if it's visible
+  if (indiBlob && indiBlob.isTooltipVisible()) {
+    indiBlob.toggleTooltip();
+  }
+
   // Get flows for current domain
   const flows = await FlowStorage.getFlowsForDomain();
 
@@ -1702,9 +1717,27 @@ function showPlaybackProgressUI(flow: any) {
   `;
 
   progressOverlay.innerHTML = `
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
-      <div style="width: 12px; height: 12px; background: white; border-radius: 50%; animation: pulse 1.5s infinite;"></div>
-      <strong>Playing Flow: ${flow.name}</strong>
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div style="width: 12px; height: 12px; background: white; border-radius: 50%; animation: pulse 1.5s infinite;"></div>
+        <strong>Playing Flow: ${flow.name}</strong>
+      </div>
+      <button id="indi-stop-playback-btn" style="
+        padding: 6px 14px;
+        background: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(8px);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 12px;
+        transition: all 0.15s ease;
+        margin-left: 12px;
+      " onmouseover="this.style.background='rgba(255, 255, 255, 0.3)';"
+         onmouseout="this.style.background='rgba(255, 255, 255, 0.2)';">
+        ⏹️ Stop
+      </button>
     </div>
     <div style="font-size: 12px; opacity: 0.9; margin-top: 4px;">
       Step <span id="indi-current-step">0</span> of ${flow.steps.length}
@@ -1715,6 +1748,27 @@ function showPlaybackProgressUI(flow: any) {
   `;
 
   document.body.appendChild(progressOverlay);
+
+  // Add stop button click handler
+  const stopBtn = document.getElementById('indi-stop-playback-btn');
+  if (stopBtn) {
+    stopBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      // Stop the flow player
+      flowPlayer.stop();
+      // Remove the overlay
+      progressOverlay.remove();
+      // Show notification
+      Swal.fire({
+        icon: 'info',
+        title: 'Playback Stopped',
+        text: 'Flow playback was stopped.',
+        timer: 2000,
+        showConfirmButton: false,
+        customClass: { popup: 'jira-popup' }
+      });
+    });
+  }
 
   // BUG FIX #8: Listen for resume event to restore UI after navigation
   const handleResume = (event: any) => {

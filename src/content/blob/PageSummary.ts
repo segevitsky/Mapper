@@ -997,9 +997,36 @@ export class PageSummary {
     const hasMore = logs.length > 30;
 
     return `
-      <div style="max-height: 300px; overflow-y: auto; padding: 4px;">
-        ${hasMore ? `<div style="padding: 8px; background: #fef3c7; border-radius: 6px; margin-bottom: 8px; font-size: 11px; color: #92400e; text-align: center;">Showing 30 most recent logs (${logs.length} total captured)</div>` : ''}
-        ${recentLogs.map((log, index) => this.generateConsoleLogItem(log, index)).join('')}
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 4px; margin-bottom: 4px;">
+          <div style="font-size: 11px; color: #6b7280; font-weight: 600;">
+            ${logs.length} log${logs.length !== 1 ? 's' : ''} captured
+          </div>
+          <button
+            id="clear-console-btn"
+            style="
+              padding: 4px 12px;
+              background: linear-gradient(135deg, #ef4444, #dc2626);
+              color: white;
+              border: none;
+              border-radius: 6px;
+              font-size: 11px;
+              font-weight: 600;
+              cursor: pointer;
+              transition: all 0.2s;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+            "
+            onmouseover="this.style.transform='scale(1.05)'"
+            onmouseout="this.style.transform='scale(1)'"
+          >
+            🗑️ Clear
+          </button>
+        </div>
+        <div style="max-height: 300px; overflow-y: auto; padding: 4px;">
+          ${hasMore ? `<div style="padding: 8px; background: #fef3c7; border-radius: 6px; margin-bottom: 8px; font-size: 11px; color: #92400e; text-align: center;">Showing 30 most recent logs (${logs.length} total captured)</div>` : ''}
+          ${recentLogs.map((log, index) => this.generateConsoleLogItem(log, index)).join('')}
+        </div>
       </div>
     `;
   }

@@ -1,6 +1,6 @@
 // Flow Recorder - Capture user interactions and API calls
 
-import { FlowStep, FlowAction, RecordingSession, ExpectedAPI } from '../../types/flow';
+import { FlowStep, FlowAction, RecordingSession, ExpectedAPI, ActionType } from '../../types/flow';
 import { NetworkCall } from '../../types';
 import { ElementIdentifier } from './elementIdentifier';
 
@@ -29,6 +29,12 @@ export class FlowRecorder {
   // Debouncing for certain events
   private lastScrollTime = 0;
   private lastMouseMoveTime = 0;
+
+  // Hover tracking
+  private hoverDwellTime = 500; // ms - only record hover if mouse stays this long
+  private currentHoverElement: HTMLElement | null = null;
+  private hoverStartTime = 0;
+  private hoverTimer: number | null = null;
 
   private constructor() {}
 
@@ -100,6 +106,9 @@ export class FlowRecorder {
     // Clean up observers
     this.observers.forEach(observer => observer.disconnect());
     this.observers = [];
+
+    // Clean up hover tracking
+    this.cancelHover();
 
     // SIMPLIFIED: Skip API correlation for now
     // Focusing on reliable element interaction first
@@ -326,15 +335,194 @@ export class FlowRecorder {
   }
 
   private onMouseMove(e: MouseEvent): void {
-    console.log({e})
-    // TODO: Implement hover detection if needed
-    // For now, we'll skip recording every mouse move to avoid noise
+    if (!this.recording || !this.currentSession) return;
+
+    const now = Date.now();
+
+    // Throttle to every 100ms to avoid excessive processing
+    if (now - this.lastMouseMoveTime < 100) return;
+    this.lastMouseMoveTime = now;
+
+    let target = e.target as HTMLElement;
+
+    // Ignore Indi elements
+    if (target.closest('#indi-blob-container') || target.closest('[id^="indi-"]')) {
+      return;
+    }
+
+    // Find the interactive element (button, link, dropdown trigger, etc.)
+    const hoverableElement = this.findHoverableParent(target);
+    if (!hoverableElement) {
+      // Mouse moved to non-hoverable area, cancel any pending hover
+      this.cancelHover();
+      return;
+    }
+
+    // Check if we're hovering over a new element
+    if (this.currentHoverElement !== hoverableElement) {
+      // Cancel previous hover if any
+      this.cancelHover();
+
+      // Start tracking new hover
+      this.currentHoverElement = hoverableElement;
+      this.hoverStartTime = now;
+
+      // Set timer to record hover after dwell time
+      this.hoverTimer = window.setTimeout(() => {
+        this.recordHover(hoverableElement, e.clientX, e.clientY);
+      }, this.hoverDwellTime);
+    }
+    // If still hovering over same element, timer is already running
+  }
+
+  /**
+   * Cancel pending hover recording
+   */
+  private cancelHover(): void {
+    if (this.hoverTimer !== null) {
+      window.clearTimeout(this.hoverTimer);
+      this.hoverTimer = null;
+    }
+    this.currentHoverElement = null;
+    this.hoverStartTime = 0;
+  }
+
+  /**
+   * Record a hover action after dwell time threshold
+   */
+  private recordHover(element: HTMLElement, x: number, y: number): void {
+    if (!this.recording || !this.currentSession) return;
+
+    const step: FlowStep = {
+      id: this.generateId(),
+      timestamp: Date.now(),
+      action: {
+        type: 'hover',
+        element: ElementIdentifier.captureElement(element),
+        position: { x, y }
+      },
+      triggeredAPIs: []
+    };
+
+    this.currentSession.steps.push(step);
+    this.saveSessionToStorage();
+
+    console.log(`✨ Captured hover on:`, element);
+
+    // Reset hover tracking
+    this.currentHoverElement = null;
+    this.hoverTimer = null;
+  }
+
+  /**
+   * Find parent element that should trigger hover effects
+   * Similar to findClickableParent but for hover interactions
+   */
+  private findHoverableParent(element: HTMLElement): HTMLElement | null {
+    let current: HTMLElement | null = element;
+    let depth = 0;
+    const maxDepth = 5;
+
+    while (current && depth < maxDepth) {
+      // Check for common hoverable patterns
+      if (
+        // Dropdown triggers
+        current.hasAttribute('aria-haspopup') ||
+        current.hasAttribute('data-dropdown-trigger') ||
+        current.classList.contains('dropdown-trigger') ||
+        current.classList.contains('menu-trigger') ||
+
+        // Navigation items with submenus
+        (current.tagName === 'LI' && current.querySelector('[role="menu"]')) ||
+        (current.tagName === 'LI' && current.querySelector('.submenu')) ||
+
+        // Buttons with hover effects
+        (current.tagName === 'BUTTON' && (
+          current.hasAttribute('aria-expanded') ||
+          current.classList.contains('has-tooltip') ||
+          current.classList.contains('has-popover')
+        )) ||
+
+        // Links with dropdowns
+        (current.tagName === 'A' && (
+          current.hasAttribute('aria-expanded') ||
+          current.closest('[data-dropdown]')
+        )) ||
+
+        // Tooltip triggers
+        current.hasAttribute('data-tooltip') ||
+        current.hasAttribute('title') && current.title.length > 0 ||
+
+        // Custom hover classes
+        current.classList.contains('hoverable') ||
+        current.classList.contains('hover-trigger')
+      ) {
+        return current;
+      }
+
+      current = current.parentElement;
+      depth++;
+    }
+
+    return null;
   }
 
   private onKeyDown(e: KeyboardEvent): void {
-    console.log({e})
-    // TODO: Capture special keys like Enter, Tab, Escape if needed
-    // For MVP, input/change events should be enough
+    if (!this.recording || !this.currentSession) return;
+
+    const target = e.target as HTMLElement;
+
+    // Ignore Indi elements
+    if (target.closest('#indi-blob-container') || target.closest('[id^="indi-"]')) {
+      return;
+    }
+
+    // List of special keys we want to capture
+    const specialKeys = [
+      'Enter',
+      'Tab',
+      'Escape',
+      'ArrowUp',
+      'ArrowDown',
+      'ArrowLeft',
+      'ArrowRight',
+      'Backspace',
+      'Delete',
+      'Home',
+      'End',
+      'PageUp',
+      'PageDown'
+    ];
+
+    // Only record if it's a special key
+    if (!specialKeys.includes(e.key)) {
+      // Regular character keys are handled by input/change events
+      return;
+    }
+
+    // Record the keyboard action
+    const step: FlowStep = {
+      id: this.generateId(),
+      timestamp: Date.now(),
+      action: {
+        type: 'keypress' as ActionType,
+        element: ElementIdentifier.captureElement(target),
+        value: e.key,
+        // Capture modifiers
+        modifiers: {
+          ctrl: e.ctrlKey,
+          alt: e.altKey,
+          shift: e.shiftKey,
+          meta: e.metaKey
+        }
+      },
+      triggeredAPIs: []
+    };
+
+    this.currentSession.steps.push(step);
+    this.saveSessionToStorage();
+
+    console.log(`⌨️ Captured keypress: ${e.key}`, target);
   }
 
   // ==================== NAVIGATION TRACKING ====================

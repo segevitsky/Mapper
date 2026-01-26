@@ -574,6 +574,8 @@ indicator.addEventListener('mouseenter', () => {
 });
 
 let clickTimeout: string | number | NodeJS.Timeout | undefined;
+let isDoubleClickInProgress = false;
+
 indicator.addEventListener("click", async () => {
     // Don't open tooltip if user was dragging
     if (hasDragged) {
@@ -581,8 +583,19 @@ indicator.addEventListener("click", async () => {
       return;
     }
 
+    // Don't open tooltip if double-click is in progress
+    if (isDoubleClickInProgress) {
+      console.log('⏭️ Skipping single-click - double-click in progress');
+      return;
+    }
+
     clearTimeout(clickTimeout);
     clickTimeout = setTimeout(async () => {
+      // Check again before opening tooltip (in case double-click happened during delay)
+      if (isDoubleClickInProgress) {
+        console.log('⏭️ Cancelling tooltip - double-click detected during delay');
+        return;
+      }
           const tooltipId = `indicator-tooltip-${indicatorData.id}`;
     const tooltipInstance = document.getElementById(tooltipId);
     if (tooltipInstance) {
@@ -1750,37 +1763,93 @@ indicator.addEventListener("click", async () => {
     }, 300);
   });
 
-  indicator.addEventListener('dblclick', () => {
-    clearTimeout(clickTimeout); // ביטול ה-single click
-    // lets send a message to the background script to open the floating window
-    const dataAttribute = indicator.getAttribute('data-indicator-info');
-    const body = JSON.parse(dataAttribute || '{}')?.body;
-    if (!dataAttribute || !body) {
-        const key = generateStoragePath(indicatorData.lastCall?.url) + '|' + indicatorData.method;
-        const recentCalls = recentCallsCache.get(key) || [];
-        if (recentCalls.length > 0) {
-          const allIndicatorData = recentCalls[0]; // Newest first
+  indicator.addEventListener('dblclick', async () => {
+    // Set flag to prevent single-click handler from interfering
+    isDoubleClickInProgress = true;
+    clearTimeout(clickTimeout); // Cancel the single click
 
-          // lets send the message to the background script to open the floating window
-        chrome.runtime.sendMessage({
-        type: "OPEN_FLOATING_WINDOW",
-        data: {
-          indicatorData: allIndicatorData,
-          networkCall: allIndicatorData,
-            }
-          });
+    console.log('🔍 Double-click detected on indicator:', indicatorData.id);
+
+    // Reset flag after a short delay
+    setTimeout(() => {
+      isDoubleClickInProgress = false;
+    }, 500);
+
+    // Try to get data from multiple sources with fallbacks
+    let dataToSend = null;
+
+    // Source 1: data-indicator-info attribute (most recent/complete data)
+    const dataAttribute = indicator.getAttribute('data-indicator-info');
+    if (dataAttribute) {
+      try {
+        const parsedData = JSON.parse(dataAttribute);
+        if (parsedData && Object.keys(parsedData).length > 0) {
+          dataToSend = parsedData;
+          console.log('✅ Using data from indicator attribute');
         }
-        return;
+      } catch (e) {
+        console.warn('Failed to parse data-indicator-info:', e);
+      }
     }
-    
-    const allIndicatorData = JSON.parse(dataAttribute);
-        chrome.runtime.sendMessage({
+
+    // Source 2: recentCallsCache (in-memory cache)
+    if (!dataToSend) {
+      const key = generateStoragePath(indicatorData.lastCall?.url) + '|' + indicatorData.method;
+      const recentCalls = recentCallsCache.get(key) || [];
+      if (recentCalls.length > 0) {
+        dataToSend = recentCalls[0]; // Newest first
+        console.log('✅ Using data from recentCallsCache');
+      }
+    }
+
+    // Source 3: pageIndicators array (current page indicators)
+    if (!dataToSend) {
+      const foundIndicator = pageIndicators.find((ind: IndicatorData) => ind.id === indicatorData.id);
+      if (foundIndicator) {
+        dataToSend = foundIndicator;
+        console.log('✅ Using data from pageIndicators');
+      }
+    }
+
+    // Source 4: Chrome storage (most reliable fallback)
+    if (!dataToSend) {
+      console.log('⏳ Fetching from storage...');
+      try {
+        const result = await chrome.storage.local.get(["indicators"]);
+        const indicators = result.indicators || {};
+        const pathToUpdate = generateStoragePath(window.location.href);
+        const currentPageIndicators = indicators[pathToUpdate] || [];
+        const storageIndicator = currentPageIndicators.find(
+          (ind: IndicatorData) => ind.id === indicatorData.id
+        );
+        if (storageIndicator) {
+          dataToSend = storageIndicator;
+          console.log('✅ Using data from storage');
+        }
+      } catch (e) {
+        console.error('Failed to fetch from storage:', e);
+      }
+    }
+
+    // Final fallback: use indicatorData from closure
+    if (!dataToSend) {
+      dataToSend = indicatorData;
+      console.log('⚠️ Using indicatorData from closure as last resort');
+    }
+
+    // Send message to open floating window
+    if (dataToSend) {
+      console.log('🚀 Opening floating window with data:', dataToSend);
+      chrome.runtime.sendMessage({
         type: "OPEN_FLOATING_WINDOW",
         data: {
-          indicatorData: allIndicatorData,
-          networkCall: allIndicatorData,
+          indicatorData: dataToSend,
+          networkCall: dataToSend,
         }
       });
+    } else {
+      console.error('❌ No data available to open floating window for indicator:', indicatorData.id);
+    }
   })
 }
 

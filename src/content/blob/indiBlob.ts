@@ -81,6 +81,14 @@ export class IndiBlob {
   private createTooltipElement(): void {
     if (this.summaryTooltip) return; // Already created
 
+    // Check if tooltip already exists in DOM (from a previous instance)
+    const existingTooltip = document.querySelector('.indi-summary-tooltip') as HTMLElement;
+    if (existingTooltip) {
+      console.warn('⚠️ Summary tooltip already exists in DOM, reusing it');
+      this.summaryTooltip = existingTooltip;
+      return;
+    }
+
     this.summaryTooltip = document.createElement('div');
     this.summaryTooltip.className = 'indi-summary-tooltip';
     this.summaryTooltip.style.cssText = `
@@ -379,7 +387,7 @@ export class IndiBlob {
         return;
       }
 
-      // Handle Clear button clicks
+      // Handle Clear button clicks (Network tab)
       if (target.id === 'network-clear-btn') {
         e.stopPropagation();
         const pageSummary = (window as any).pageSummary;
@@ -388,6 +396,25 @@ export class IndiBlob {
           const summary = pageSummary.getCurrentSummaryData();
           const html = pageSummary.generateSummaryHTML(summary);
           this.updateContent(html, summary, []);
+        }
+        return;
+      }
+
+      // Handle Clear button clicks (Console tab)
+      if (target.id === 'clear-console-btn') {
+        e.stopPropagation();
+        const { consoleCapture } = await import('../../content/services/consoleCapture');
+        consoleCapture.clearErrors();
+
+        // Refresh the console tab
+        const pageSummary = (window as any).pageSummary;
+        if (pageSummary && this.summaryTooltip) {
+          const tabContentArea = this.summaryTooltip.querySelector('[data-tab-content]');
+          if (tabContentArea) {
+            const summary = pageSummary.getCurrentSummaryData();
+            const contentHTML = pageSummary.generateTabContent(summary);
+            tabContentArea.innerHTML = contentHTML;
+          }
         }
         return;
       }
@@ -569,6 +596,13 @@ export class IndiBlob {
 
 
   private createBlobDOM(parent: HTMLElement): void {
+    // Check if container already exists to prevent duplicates
+    const existingContainer = document.getElementById('indiContainer');
+    if (existingContainer) {
+      console.warn('⚠️ IndiBlob container already exists, skipping DOM creation');
+      return;
+    }
+
     const blobHTML = `
       <div class="indi-blob-container happy" id="indiContainer">
         <div class="indi-shadow"></div>
@@ -696,6 +730,7 @@ export class IndiBlob {
         cursor: grab;
         user-select: none;
         z-index: 999999;
+        pointer-events: auto !important;
       }
 
       .indi-blob-container.dragging {
@@ -719,6 +754,7 @@ export class IndiBlob {
         width: 100%;
         height: 100%;
         transition: transform 0.3s ease;
+        pointer-events: auto !important;
       }
 
       .indi-blob-container:hover .indi-blob {
@@ -947,6 +983,7 @@ export class IndiBlob {
         cursor: pointer;
         z-index: 20;
         gap: 2px;
+        pointer-events: auto !important;
       }
 
       .indi-notification-badge.visible {
@@ -970,6 +1007,7 @@ export class IndiBlob {
         cursor: pointer;
         z-index: 21;
         transition: all 0.3s ease;
+        pointer-events: auto !important;
       }
 
       .indi-mute-button:hover {
@@ -1020,6 +1058,7 @@ export class IndiBlob {
         cursor: pointer;
         z-index: 21;
         transition: all 0.3s ease;
+        pointer-events: auto !important;
       }
 
       .indi-minimize-button:hover {
@@ -1203,41 +1242,58 @@ export class IndiBlob {
       }
     }, 4000 + Math.random() * 2000);
 
-    // Click handler
-    this.container.addEventListener('click', () => {
+    // Click handler - use capture phase to ensure we catch clicks before websites can intercept
+    this.container.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+
+      // Skip if click is on badge, mute button, or minimize button (they have their own handlers)
+      if (this.badge && (target === this.badge || this.badge.contains(target))) {
+        return; // Let badge handler handle it
+      }
+      if (this.muteButton && (target === this.muteButton || this.muteButton.contains(target))) {
+        return; // Let mute button handler handle it
+      }
+      if (this.minimizeButton && (target === this.minimizeButton || this.minimizeButton.contains(target))) {
+        return; // Let minimize button handler handle it
+      }
+
+      e.stopPropagation(); // Prevent website from handling our clicks
       console.log('🖱️ Container clicked', { isDragging: this.isDragging, hasDragged: this.hasDragged });
       if (!this.isDragging && !this.hasDragged) {
         this.handleClick();
       } else {
         console.log('⚠️ Click blocked by drag state');
       }
-    });
+    }, true); // true = capture phase
 
-      if (this.badge) {
-    this.badge.addEventListener('click', (e) => {
-      e.stopPropagation(); // Prevent triggering container click
-      if (!this.isDragging && !this.hasDragged) {
-        this.handleBadgeClick();
-      }
-    });
-  }
+    // Badge click handler
+    if (this.badge) {
+      this.badge.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent triggering container click
+        console.log('🏷️ Badge clicked');
+        if (!this.isDragging && !this.hasDragged) {
+          this.handleBadgeClick();
+        }
+      }, true); // capture phase
+    }
 
-  // Mute button
-  if (this.muteButton) {
-    this.muteButton.addEventListener('click', (e) => {
-      e.stopPropagation(); // Prevent triggering container click
-      this.toggleMute();
-    });
-  }
+    // Mute button
+    if (this.muteButton) {
+      this.muteButton.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent triggering container click
+        console.log('🔇 Mute button clicked');
+        this.toggleMute();
+      }, true); // capture phase
+    }
 
-  // Minimize button
-  if (this.minimizeButton) {
-    this.minimizeButton.addEventListener('click', (e) => {
-      e.stopPropagation(); // Prevent triggering container click
-      console.log('🔘 Minimize button clicked');
-      this.minimize();
-    });
-  }
+    // Minimize button
+    if (this.minimizeButton) {
+      this.minimizeButton.addEventListener('click', (e) => {
+        e.stopPropagation(); // Prevent triggering container click
+        console.log('🔘 Minimize button clicked');
+        this.minimize();
+      }, true); // capture phase
+    }
 
   // Window resize listener to keep blob visible
   window.addEventListener('resize', () => {

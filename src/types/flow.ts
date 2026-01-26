@@ -38,7 +38,17 @@ export interface ElementFingerprint {
 /**
  * User action types
  */
-export type ActionType = 'click' | 'input' | 'change' | 'scroll' | 'navigate' | 'hover' | 'wait';
+export type ActionType = 'click' | 'input' | 'change' | 'scroll' | 'navigate' | 'hover' | 'wait' | 'keypress';
+
+/**
+ * Keyboard modifiers
+ */
+export interface KeyboardModifiers {
+  ctrl: boolean;
+  alt: boolean;
+  shift: boolean;
+  meta: boolean;
+}
 
 /**
  * Recorded user action
@@ -46,10 +56,11 @@ export type ActionType = 'click' | 'input' | 'change' | 'scroll' | 'navigate' | 
 export interface FlowAction {
   type: ActionType;
   element?: ElementFingerprint; // Not needed for navigate
-  value?: string; // For input/change events
+  value?: string; // For input/change/keypress events
   url?: string; // For navigate events
   position?: { x: number; y: number }; // For click/hover
   scrollPosition?: { x: number; y: number }; // For scroll
+  modifiers?: KeyboardModifiers; // For keypress events
 }
 
 /**
