@@ -180,6 +180,42 @@ export class FlowPlayer {
         return result;
       }
 
+      // Scroll action doesn't need element
+      if (step.action.type === 'scroll') {
+        if (step.action.scrollPosition) {
+          const targetX = step.action.scrollPosition.x;
+          const targetY = step.action.scrollPosition.y;
+          console.log(`📜 Scrolling to: ${targetX}, ${targetY}`);
+
+          // Show visual scroll indicator
+          this.showScrollIndicator(step.action.scrollPosition);
+
+          // Try multiple scroll methods to ensure it works
+          try {
+            // Method 1: window.scrollTo with options
+            window.scrollTo({
+              left: targetX,
+              top: targetY,
+              behavior: 'smooth'
+            });
+          } catch {
+            // Method 2: Direct scroll (fallback for older browsers)
+            window.scrollTo(targetX, targetY);
+          }
+
+          // Method 3: Also set on documentElement and body for good measure
+          document.documentElement.scrollTop = targetY;
+          document.documentElement.scrollLeft = targetX;
+
+          await this.wait(800); // Wait for scroll animation
+
+          console.log(`📜 Scroll complete. Current position: ${window.scrollX}, ${window.scrollY}`);
+        }
+        result.actionPerformed = true;
+        result.passed = true;
+        return result;
+      }
+
       // Find element
       if (!step.action.element) {
         result.error = 'No element fingerprint';
@@ -308,8 +344,14 @@ export class FlowPlayer {
         break;
 
       case 'scroll':
+        // Scroll is handled in playStep before element finding
+        // This case should not be reached, but handle it just in case
         if (action.scrollPosition) {
-          window.scrollTo(action.scrollPosition.x, action.scrollPosition.y);
+          window.scrollTo({
+            left: action.scrollPosition.x,
+            top: action.scrollPosition.y,
+            behavior: 'smooth'
+          });
         }
         break;
 
@@ -551,6 +593,59 @@ export class FlowPlayer {
   }
 
   /**
+   * Show visual scroll indicator during playback
+   */
+  private showScrollIndicator(position: { x: number; y: number }): void {
+    // Remove any existing indicator first
+    const existing = document.getElementById('indi-scroll-indicator');
+    if (existing) {
+      existing.remove();
+    }
+
+    // Create scroll indicator overlay
+    const indicator = document.createElement('div');
+    indicator.id = 'indi-scroll-indicator';
+    indicator.style.position = 'fixed';
+    indicator.style.top = '50%';
+    indicator.style.left = '50%';
+    indicator.style.transform = 'translate(-50%, -50%)';
+    indicator.style.background = 'linear-gradient(135deg, #3b82f6, #8b5cf6)';
+    indicator.style.color = 'white';
+    indicator.style.padding = '20px 40px';
+    indicator.style.borderRadius = '16px';
+    indicator.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+    indicator.style.fontSize = '18px';
+    indicator.style.fontWeight = '600';
+    indicator.style.boxShadow = '0 8px 32px rgba(59, 130, 246, 0.4)';
+    indicator.style.zIndex = '999999';
+    indicator.style.display = 'flex';
+    indicator.style.alignItems = 'center';
+    indicator.style.gap = '12px';
+    indicator.style.transition = 'opacity 0.3s ease';
+
+    indicator.innerHTML = `
+      <span style="font-size: 28px;">📜</span>
+      <span>Scrolling to Y: ${Math.round(position.y)}px</span>
+    `;
+
+    document.body.appendChild(indicator);
+
+    // Remove after delay - use a reference to ensure cleanup
+    const removeIndicator = () => {
+      const el = document.getElementById('indi-scroll-indicator');
+      if (el) {
+        el.style.opacity = '0';
+        window.setTimeout(() => {
+          const toRemove = document.getElementById('indi-scroll-indicator');
+          if (toRemove) toRemove.remove();
+        }, 300);
+      }
+    };
+
+    window.setTimeout(removeIndicator, 500);
+  }
+
+  /**
    * Wait helper
    */
   private wait(ms: number): Promise<void> {
@@ -780,34 +875,16 @@ export class FlowPlayer {
       element.focus();
     }
 
-    // Dispatch mouseenter (doesn't bubble)
-    element.dispatchEvent(new MouseEvent('mouseenter', { ...eventOptions, bubbles: false }));
-
-    // Dispatch mouseover
-    element.dispatchEvent(new MouseEvent('mouseover', eventOptions));
-
-    // Small delay to simulate real user
-    await this.wait(10);
-
-    // Dispatch mousedown
-    element.dispatchEvent(new MouseEvent('mousedown', eventOptions));
-
-    // Small delay between mousedown and mouseup
-    await this.wait(50);
-
-    // Dispatch mouseup
-    element.dispatchEvent(new MouseEvent('mouseup', eventOptions));
-
-    // Dispatch click
-    element.dispatchEvent(new MouseEvent('click', eventOptions));
-
-    // Also try native click as fallback
+    // Just use native click - it's most reliable and won't cause double-click issues
     try {
-      if (typeof element.click === 'function') {
-        element.click();
-      }
+      element.click();
     } catch (e) {
-      // Native click failed, but we already dispatched events
+      // If native click fails, try dispatching events
+      console.log('Native click failed, using event dispatch');
+      element.dispatchEvent(new MouseEvent('mousedown', eventOptions));
+      await this.wait(50);
+      element.dispatchEvent(new MouseEvent('mouseup', eventOptions));
+      element.dispatchEvent(new MouseEvent('click', eventOptions));
     }
 
     // Wait a bit for any animations/reactions

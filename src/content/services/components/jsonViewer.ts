@@ -465,10 +465,13 @@ function jsonToPlainText(data: any, indent = 0): string {
 // CSS styles for the JSON viewer
 export const jsonViewerStyles = `
   .json-viewer-container {
-    max-height: 500px;
+    max-height: 60vh;
     overflow-y: auto;
     font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
     font-size: 12px;
+    background: #fafafa;
+    border-radius: 8px;
+    border: 1px solid #e0e0e0;
   }
 
   .json-viewer-controls {

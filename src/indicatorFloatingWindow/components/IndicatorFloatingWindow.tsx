@@ -56,13 +56,18 @@ const IndicatorFloatingWindow: React.FC = () => {
         let actualIndicatorData = parsedData.indicatorData || parsedData;
 
         // Normalize body structure - extract from nested locations
+        // Note: response field contains CDP metadata (alternateProtocolUsage, etc.), NOT the body
+        // The actual body is in the 'body' field, which is { base64Encoded: boolean, body: string }
         if (!actualIndicatorData.body) {
-          // Try to extract body from various locations
-          if (actualIndicatorData.response?.body) {
-            actualIndicatorData.body = actualIndicatorData.response.body;
-          } else if (actualIndicatorData.response?.response) {
-            actualIndicatorData.body = actualIndicatorData.response.response;
+          // Try to get body from calls array if available
+          if (actualIndicatorData.calls?.length > 0) {
+            const lastCall = actualIndicatorData.calls[actualIndicatorData.calls.length - 1];
+            if (lastCall?.body) {
+              actualIndicatorData.body = lastCall.body;
+            }
           }
+          // Note: Do NOT fallback to response.body or response.response
+          // as 'response' contains CDP metadata, not the actual response body
         }
 
         // Unwrap nested body structure: { base64Encoded: false, body: "..." }
@@ -104,11 +109,14 @@ const IndicatorFloatingWindow: React.FC = () => {
           let actualIndicatorData = parsedData.indicatorData || parsedData;
 
           // Normalize body structure here too
+          // Note: response field contains CDP metadata, NOT the body
           if (!actualIndicatorData.body) {
-            if (actualIndicatorData.response?.body) {
-              actualIndicatorData.body = actualIndicatorData.response.body;
-            } else if (actualIndicatorData.response?.response) {
-              actualIndicatorData.body = actualIndicatorData.response.response;
+            // Try to get body from calls array if available
+            if (actualIndicatorData.calls?.length > 0) {
+              const lastCall = actualIndicatorData.calls[actualIndicatorData.calls.length - 1];
+              if (lastCall?.body) {
+                actualIndicatorData.body = lastCall.body;
+              }
             }
           }
 

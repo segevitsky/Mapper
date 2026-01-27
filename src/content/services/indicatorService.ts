@@ -660,20 +660,25 @@ indicator.addEventListener("click", async () => {
     tooltip.id = `indicator-tooltip-${indicatorData.id}`;
     tooltip.style.cssText = `
         position: fixed;
-        top: 10rem;
-        left: 33%;
+        top: 5%;
+        left: 50%;
+        transform: translateX(-50%);
         background: #ffffff;
-        padding: 12px 16px;
-        border-radius: 8px;
+        padding: 16px 20px;
+        border-radius: 12px;
         font-size: 13px !important;
         line-height: 1.4;
         color: #1f2937 !important;
         font-weight: 500 !important;
         z-index: 999999;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-        border-left: 3px solid #cf556c;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        border-left: 4px solid #cf556c;
         transform-origin: center;
         direction: ltr;
+        width: 600px;
+        max-width: 90vw;
+        max-height: 90vh;
+        overflow-y: auto;
     `;
 
     tooltip.innerHTML = `
@@ -1012,12 +1017,11 @@ indicator.addEventListener("click", async () => {
     ← ↑ ↓ → Use arrow keys to fine tune your indi's position
   </div>
 
-  <div class="response-container" style="display: none;">
+  <div class="response-container" style="display: none; margin-top: 16px; border-top: 2px solid rgba(255, 129, 119, 0.2); padding-top: 16px;">
     <div class="response-tabs" style="
       display: flex;
       gap: 8px;
       margin-bottom: 12px;
-      margin-top: 16px;
     ">
       <button class="tab-button active" data-tab="security" style="
         padding: 6px 12px;
@@ -1792,13 +1796,18 @@ indicator.addEventListener("click", async () => {
       }
     }
 
-    // Source 2: recentCallsCache (in-memory cache)
-    if (!dataToSend) {
-      const key = generateStoragePath(indicatorData.lastCall?.url) + '|' + indicatorData.method;
-      const recentCalls = recentCallsCache.get(key) || [];
-      if (recentCalls.length > 0) {
-        dataToSend = recentCalls[0]; // Newest first
+    // Source 2: recentCallsCache (in-memory cache) - ALWAYS check for body data
+    const cacheKey = generateStoragePath(indicatorData.lastCall?.url) + '|' + indicatorData.method;
+    const recentCalls = recentCallsCache.get(cacheKey) || [];
+    if (recentCalls.length > 0) {
+      const cachedData = recentCalls[0]; // Newest first
+      if (!dataToSend) {
+        dataToSend = cachedData;
         console.log('✅ Using data from recentCallsCache');
+      } else if (!dataToSend.body && cachedData.body) {
+        // Merge body from cache if not present in dataToSend
+        dataToSend.body = cachedData.body;
+        console.log('✅ Merged body from recentCallsCache');
       }
     }
 
