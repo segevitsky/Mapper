@@ -342,8 +342,76 @@ export const modalStyles = `
     color: #6b7280;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: normal;
+    word-break: break-all;
+    margin-top: 8px;
+    padding: 8px 12px;
+    background: #f8fafc;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+    font-family: monospace;
+  }
+
+  .api-call-query-params {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    margin-bottom: 4px;
+  }
+
+  .api-call-query-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border: 1px solid #e2e8f0;
+    border-radius: 20px;
+    font-size: 11px;
+    color: #64748b;
+    transition: all 0.2s ease;
+  }
+
+  .api-call-query-chip:hover {
+    background: linear-gradient(135deg, #fff8f4 0%, #fef7f0 100%);
+    border-color: #ff8177;
+    transform: translateY(-1px);
+  }
+
+  .api-call-query-chip .query-key {
+    font-weight: 600;
+    color: #475569;
+    margin-right: 2px;
+  }
+
+  .api-call-query-chip .query-value {
+    color: #64748b;
+    margin-left: 2px;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
-    margin-bottom: 8px;
+  }
+
+  .api-call-expand-section {
+    margin-top: 8px;
+  }
+
+  .api-call-expand-btn {
+    background: none;
+    border: none;
+    color: #ff8177;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    font-weight: 500;
+  }
+
+  .api-call-expand-btn:hover {
+    background: rgba(255, 129, 119, 0.1);
+    color: #cf556c;
   }
 
   .api-call-status-indicator {

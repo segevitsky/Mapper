@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Clock, CheckCircle, XCircle, ChevronDown } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, ChevronDown, Copy, Check } from 'lucide-react';
 import JsonViewer from './JsonViewer';
 import logoIcon from "../../assets/bug.png";
 import { Panel } from '../../panel/Panel';
@@ -16,6 +16,7 @@ interface IndicatorData {
   headers?: Record<string, string>;
   response?: any;
   body?: any;
+  requestBody?: any;
   duration: number;
   request: any;
   schema?: string;
@@ -35,11 +36,98 @@ const IndicatorFloatingWindow: React.FC = () => {
     schema: false
   });
 
+  const [schemaCopied, setSchemaCopied] = useState(false);
+  const [curlCopied, setCurlCopied] = useState(false);
+
   const toggleSection = (section: keyof typeof expandedSections) => {
     setExpandedSections(prev => ({
       ...prev,
       [section]: !prev[section]
     }));
+  };
+
+  const copySchemaToClipboard = () => {
+    if (!indicatorData?.schema) return;
+
+    // Format schema with each property on its own line for IDE readability
+    const formatSchema = (schema: string): string => {
+      // First normalize to single line
+      let result = schema
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .join(' ')
+        .replace(/\s+/g, ' ');
+
+      // Now format with proper line breaks
+      let indent = 0;
+      let formatted = '';
+      let i = 0;
+
+      while (i < result.length) {
+        const char = result[i];
+
+        if (char === '{') {
+          formatted += '{\n';
+          indent++;
+          formatted += '  '.repeat(indent);
+        } else if (char === '}') {
+          indent--;
+          formatted += '\n' + '  '.repeat(indent) + '}';
+        } else if (char === ';' && result[i + 1] === ' ') {
+          formatted += ';\n' + '  '.repeat(indent);
+          i++; // skip the space after semicolon
+        } else {
+          formatted += char;
+        }
+        i++;
+      }
+
+      return formatted;
+    };
+
+    const formattedSchema = formatSchema(indicatorData.schema);
+
+    navigator.clipboard.writeText(formattedSchema).then(() => {
+      setSchemaCopied(true);
+      setTimeout(() => setSchemaCopied(false), 2000);
+    });
+  };
+
+  const generateCurlCommand = (): string => {
+    if (!indicatorData) return '';
+
+    const url = indicatorData.url || indicatorData.request?.request?.url || '';
+    const method = indicatorData.method || indicatorData.request?.request?.method || 'GET';
+    const headers = indicatorData.request?.request?.headers || indicatorData.request?.headers || {};
+
+    let curl = `curl -X ${method} '${url}'`;
+
+    // Add headers
+    Object.entries(headers).forEach(([key, value]) => {
+      if (!['host', 'connection', 'content-length'].includes(key.toLowerCase())) {
+        curl += ` \\\n  -H '${key}: ${value}'`;
+      }
+    });
+
+    // Add request body if exists
+    const postData = indicatorData.request?.request?.postData || indicatorData.requestBody;
+    if (postData) {
+      const bodyStr = typeof postData === 'string' ? postData : JSON.stringify(postData);
+      curl += ` \\\n  --data '${bodyStr.replace(/'/g, "'\\''")}'`;
+    }
+
+    return curl;
+  };
+
+  const copyCurlToClipboard = () => {
+    const curl = generateCurlCommand();
+    if (!curl) return;
+
+    navigator.clipboard.writeText(curl).then(() => {
+      setCurlCopied(true);
+      setTimeout(() => setCurlCopied(false), 2000);
+    });
   };
 
   useEffect(() => {
@@ -243,21 +331,39 @@ const IndicatorFloatingWindow: React.FC = () => {
     <div className="w-screen max-w-screen min-h-screen bg-gradient-to-br from-pink-50 to-rose-50">
       {/* Header */}
       <div className="bg-gradient-to-r from-pink-500 to-rose-500 text-white p-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4 min-w-0 flex-1">
             <img
               title='Reload Indicator'
               onClick={handleReloadIndicator}
-            src={logoIcon} alt="Indi API" className="w-8 h-8 rounded drop-shadow-lg cursor-pointer" />
-            <div>
+            src={logoIcon} alt="Indi API" className="w-8 h-8 rounded drop-shadow-lg cursor-pointer flex-shrink-0" />
+            <div className="min-w-0">
               {/* // lets add a button to show our panel here */}
               <h1 className="font-headline text-2xl font-bold">🎯 Indicator Details</h1>
               <h3 onClick={() => setShowPanel(true)} className="cursor-pointer text-white hover:underline">Go back to panel</h3>
-              <p className="text-pink-100">
+              <p className="text-pink-100 truncate">
                 {indicatorData.method} • Status: {indicatorData.status}
               </p>
             </div>
           </div>
+          <button
+            onClick={copyCurlToClipboard}
+            className="flex-shrink-0 flex items-center gap-2 px-4 py-2 bg-white/20 hover:bg-white/30 backdrop-blur-sm rounded-lg transition-all duration-200 text-sm font-medium border border-white/30"
+            title="Copy as cURL command"
+            id='copy-curl-button'
+          >
+            {curlCopied ? (
+              <>
+                <Check className="w-4 h-4" />
+                <span>Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-4 h-4" />
+                <span>Copy cURL</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 
@@ -366,9 +472,28 @@ const IndicatorFloatingWindow: React.FC = () => {
               <div className="grid grid-cols-1 gap-4 mb-6">
                 { indicatorData?.schema && (
                   <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-2xl p-6 border-2 border-yellow-300">
-                    <div className="text-sm font-bold text-yellow-700 mb-3 flex items-center gap-2">
-                      <span>🧩</span>
-                      <span>RESPONSE SCHEMA</span>
+                    <div className="text-sm font-bold text-yellow-700 mb-3 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span>🧩</span>
+                        <span>RESPONSE SCHEMA</span>
+                      </div>
+                      <button
+                        onClick={copySchemaToClipboard}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-yellow-200 hover:bg-yellow-300 text-yellow-800 rounded-lg transition-all duration-200 text-xs font-medium"
+                        title="Copy compact schema for IDE"
+                      >
+                        {schemaCopied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copy</span>
+                          </>
+                        )}
+                      </button>
                     </div>
                     <pre className="text-xs font-mono text-yellow-900 whitespace-pre-wrap overflow-x-auto bg-white p-4 rounded-lg border border-yellow-200">
                       {indicatorData?.schema}

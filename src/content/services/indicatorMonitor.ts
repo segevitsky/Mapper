@@ -1,5 +1,6 @@
 import { IndicatorData, NetworkCall, NetworkRequest } from "../../types";
 import { waitForIndicator } from "../../utils/general";
+import { getNetworkCallUrl } from "../utils/networkCallUtils";
 import {
   generatePatternBasedStoragePath,
   generateStoragePath,
@@ -49,7 +50,7 @@ export class IndicatorMonitor {
         duration,
       },
       timestamp: Date.now(),
-      url: newCall?.response?.url ?? indicator.lastCall.url,
+      url: getNetworkCallUrl(newCall as any) || indicator.lastCall.url,
       updatedInThisRound: true,
     };
     
@@ -354,15 +355,15 @@ export class IndicatorMonitor {
         
         // 1. Try exact path match first
         matchingCall = uniqueMatches.find(call => {
-          const callUrl = call?.response?.url ?? call?.request?.request?.url;
+          const callUrl = getNetworkCallUrl(call);
           return generateStoragePath(callUrl) === generateStoragePath(indicator.lastCall?.url);
         });
-        
+
         // 2. Try pattern-based match
         if (!matchingCall) {
           matchingCall = uniqueMatches.find(call => {
-            const callUrl = call?.response?.url ?? call?.request?.request?.url;
-            return generatePatternBasedStoragePath(callUrl) === 
+            const callUrl = getNetworkCallUrl(call);
+            return generatePatternBasedStoragePath(callUrl) ===
                    generatePatternBasedStoragePath(indicator.lastCall?.url);
           });
         }
@@ -425,7 +426,7 @@ private updateNestedIndicators(recentCalls: Map<string, NetworkCall[]>): void {
           const allMatches = [...normalCalls, ...patternCalls];
 
           const matchingCall = allMatches.find(call => {
-            const callUrl = call?.response?.response?.url ?? call?.request?.request?.url;
+            const callUrl = getNetworkCallUrl(call);
             return generateStoragePath(callUrl) === generateStoragePath(indicator.lastCall?.url);
           });
 

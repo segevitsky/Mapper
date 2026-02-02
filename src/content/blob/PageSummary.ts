@@ -577,7 +577,7 @@ export class PageSummary {
           <input
             type="text"
             id="network-search-input"
-            placeholder="Search by URL, method, or status..."
+            placeholder="Search URL, method, status, or response fields..."
             style="
               flex: 1;
               padding: 6px 12px;
@@ -634,6 +634,9 @@ export class PageSummary {
     const duration = this.getDuration(call);
     const timestamp = new Date(call.timestamp || Date.now()).toLocaleTimeString();
 
+    // Extract field names from response body for search
+    const bodyFields = this.extractBodyFieldNames(call);
+
     // Status color coding
     let statusColor = '#10b981'; // Green for 2xx
     if (status >= 400) statusColor = '#ef4444'; // Red for 4xx/5xx
@@ -677,7 +680,7 @@ export class PageSummary {
           transform: scale(0.95);
         }
       </style>
-      <div class="network-call-item" style="margin-bottom: 8px; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
+      <div class="network-call-item" data-body-fields="${bodyFields}" style="margin-bottom: 8px; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
         <!-- Collapsed Header (clickable) -->
         <div
           class="network-call-header"
@@ -726,8 +729,8 @@ export class PageSummary {
               </button>
             </div>
           </div>
-          <div style="font-size: 11px; color: #374151; word-break: break-all; font-family: monospace; cursor: help;" title="${url}">
-            ${this.shortUrl(url)}
+          <div style="cursor: help;" title="${url}">
+            ${this.formatUrlDisplay(url)}
           </div>
           <div style="font-size: 10px; color: #9ca3af; margin-top: 4px;">
             ${timestamp}
@@ -1591,6 +1594,50 @@ export class PageSummary {
     return 0;
   }
 
+  /**
+   * Extract all field names from response body recursively
+   * Used for search functionality
+   */
+  private extractBodyFieldNames(call: NetworkCall): string {
+    const fieldNames = new Set<string>();
+
+    const extractFields = (obj: any, prefix: string = ''): void => {
+      if (!obj || typeof obj !== 'object') return;
+
+      if (Array.isArray(obj)) {
+        // For arrays, extract fields from first item as sample
+        if (obj.length > 0 && typeof obj[0] === 'object') {
+          extractFields(obj[0], prefix);
+        }
+        return;
+      }
+
+      for (const key of Object.keys(obj)) {
+        fieldNames.add(key.toLowerCase());
+        const value = obj[key];
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+          extractFields(value, `${prefix}${key}.`);
+        } else if (Array.isArray(value) && value.length > 0 && typeof value[0] === 'object') {
+          extractFields(value[0], `${prefix}${key}[].`);
+        }
+      }
+    };
+
+    try {
+      // Try to get body from various locations
+      const bodyData = call?.body?.body || call?.response?.body?.body || call?.response?.response;
+
+      if (bodyData) {
+        const parsed = typeof bodyData === 'string' ? JSON.parse(bodyData) : bodyData;
+        extractFields(parsed);
+      }
+    } catch (e) {
+      // Silently ignore parse errors
+    }
+
+    return Array.from(fieldNames).join(' ');
+  }
+
   private extractTimestamps(networkData: NetworkCall[]): number[] {
     return networkData
       .map(call => {
@@ -1716,6 +1763,17 @@ export class PageSummary {
       .filter(url => url);
   }
 
+  // UUID pattern - matches standard UUID format
+  private static readonly UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+  // Numeric ID pattern - matches numeric IDs in path segments (4+ digits)
+  private static readonly NUMERIC_ID_PATTERN = /\/(\d{4,})(\/|$)/g;
+
+  private replaceIdsInPath(path: string): string {
+    return path
+      .replace(PageSummary.UUID_PATTERN, '{uuid}')
+      .replace(PageSummary.NUMERIC_ID_PATTERN, '/{id}$2');
+  }
+
   private shortUrl(url: string): string {
     try {
       const urlObj = new URL(url);
@@ -1723,6 +1781,51 @@ export class PageSummary {
       return path.length > 50 ? path.substring(0, 50) + '...' : path;
     } catch {
       return url.length > 50 ? url.substring(0, 50) + '...' : url;
+    }
+  }
+
+  /**
+   * Generate a clean, visually clear URL display with query params as chips
+   * Includes hidden full URL text for search functionality
+   */
+  private formatUrlDisplay(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      const cleanPath = this.replaceIdsInPath(urlObj.pathname);
+      const queryParams = Array.from(urlObj.searchParams.entries());
+
+      // Query params as chips
+      const queryParamsHTML = queryParams.length > 0
+        ? `<div style="display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px;">
+            ${queryParams.map(([key, value]) =>
+              `<span style="
+                display: inline-flex;
+                align-items: center;
+                padding: 2px 6px;
+                background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+                border: 1px solid #e2e8f0;
+                border-radius: 10px;
+                font-size: 9px;
+                color: #64748b;
+              " title="${key}=${value}">
+                <span style="font-weight: 600; color: #475569;">${key}</span>=<span style="max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${value.length > 12 ? value.substring(0, 12) + '...' : value}</span>
+              </span>`
+            ).join('')}
+          </div>`
+        : '';
+
+      // Hidden span with full URL for search (display:none doesn't affect textContent)
+      const hiddenSearchText = `<span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0);">${url}</span>`;
+
+      return `
+        <div style="font-size: 11px; color: #374151; font-family: monospace;">
+          <div style="font-weight: 500;">${cleanPath}</div>
+          ${queryParamsHTML}
+          ${hiddenSearchText}
+        </div>
+      `;
+    } catch {
+      return `<div style="font-size: 11px; color: #374151; word-break: break-all; font-family: monospace;">${url}</div>`;
     }
   }
 

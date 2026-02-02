@@ -274,12 +274,13 @@ export class IndiBlob {
             }, 2000);
 
             // Generate schema if body exists (async, doesn't block UI feedback)
-            if (call.body || call.response?.body || call.response?.response) {
+            // Extract the actual body content (not the wrapper with base64Encoded)
+            const bodyData = call.body?.body || call.response?.body?.body || call.response?.response;
+            if (bodyData) {
               import('../../content/services/schemaValidationService').then((module) => {
                 const SchemaValidationService = module.default;
                 const schemaService = new SchemaValidationService();
 
-                const bodyData = call.body || call.response?.body || call.response?.response;
                 const schema = schemaService.generateTypeDefinition(
                   bodyData,
                   'ResponseSchema',
@@ -432,7 +433,10 @@ export class IndiBlob {
           items.forEach((item: Element) => {
             const htmlItem = item as HTMLElement;
             const text = htmlItem.textContent?.toLowerCase() || '';
-            htmlItem.style.display = text.includes(searchTerm) ? '' : 'none';
+            // Also search in response body field names
+            const bodyFields = htmlItem.dataset.bodyFields?.toLowerCase() || '';
+            const matches = text.includes(searchTerm) || bodyFields.includes(searchTerm);
+            htmlItem.style.display = matches ? '' : 'none';
           });
         }
       }

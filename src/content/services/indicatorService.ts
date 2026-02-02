@@ -159,14 +159,19 @@ export async function createIndicatorFromData(
 
   // Check if indicator belongs to current page with more flexible matching
   const currentPagePath = generateStoragePath(window.location.href);
-  const indicatorPagePath = generateStoragePath(
-    currentPageUUID
-      ? updateUrlWithNewUUID(indicatorData?.request?.documentURL || indicatorData.baseUrl, currentPageUUID)
-      : indicatorData?.request?.documentURL || indicatorData.baseUrl
-  );
+  const indicatorBaseUrl = indicatorData?.request?.documentURL || indicatorData.baseUrl;
 
-  if (indicatorPagePath !== currentPagePath && indicatorData.baseUrl !== 'global') {
-    return;
+  // If no base URL is set, skip the page check (indicator was likely created on this page pattern)
+  if (indicatorBaseUrl && indicatorData.baseUrl !== 'global') {
+    const indicatorPagePath = generateStoragePath(
+      currentPageUUID
+        ? updateUrlWithNewUUID(indicatorBaseUrl, currentPageUUID)
+        : indicatorBaseUrl
+    );
+
+    // if (indicatorPagePath !== currentPagePath) {
+    //   return;
+    // }
   }
   
   // claude code addition

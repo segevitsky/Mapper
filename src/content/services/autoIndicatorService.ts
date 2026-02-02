@@ -4,6 +4,7 @@ import {
   generatePatternBasedStoragePath,
   generateStoragePath,
 } from "../../utils/storage";
+import { getNetworkCallUrl, getNetworkCallMethod } from "../utils/networkCallUtils";
 import { IndicatorData } from "../../types";
 
 type IndiConfig = {
@@ -99,14 +100,13 @@ export class AutoIndicatorService {
   ): IndicatorData {
     const matchingNetworkCalls = networkCalls.filter(
       (call) =>
-        generatePatternBasedStoragePath(
-          call?.response?.url ?? call?.request?.request?.url
-        ) === generatePatternBasedStoragePath(config.url)
+        generatePatternBasedStoragePath(getNetworkCallUrl(call)) ===
+        generatePatternBasedStoragePath(config.url)
     );
 
     if (matchingNetworkCalls.length > 0) {
       const filteredCalls = matchingNetworkCalls.filter(
-        (el) => config.method.toUpperCase() === el?.request?.request?.method
+        (el) => config.method.toUpperCase() === getNetworkCallMethod(el)
       );
       if (filteredCalls.length > 0) {
         // const dataOld = filteredCalls[filteredCalls.length - 1];

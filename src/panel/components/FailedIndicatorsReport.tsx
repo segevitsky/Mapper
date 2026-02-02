@@ -1,6 +1,7 @@
 import React from "react";
 import { X, AlertCircle } from "lucide-react";
 import { generateStoragePath } from "./IndicatorsList";
+import { getNetworkCallUrl } from "../../utils/networkCallUtils";
 
 interface Timing {
   duration: number;
@@ -74,7 +75,7 @@ const FailedIndicatorsReport: React.FC<FailedIndicatorsReportProps> = ({
     indicator: IndicatorData
   ): NetworkRequest | undefined => {
     return allNetworkCalls.find((call) => {
-      const callUrl = call?.response?.url || call?.request?.request?.url;
+      const callUrl = getNetworkCallUrl(call as any);
       return (
         generateStoragePath(callUrl) ===
         generateStoragePath(indicator.lastCall?.url)

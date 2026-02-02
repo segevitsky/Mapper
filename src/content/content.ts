@@ -2,10 +2,14 @@
 import { IndicatorData, NetworkCall } from "../types";
 // import { analyzeSecurityIssues } from "../utils/securityAnalyzer";
 import { generatePatternBasedStoragePath, generateStoragePath } from "../utils/storage";
+import { getNetworkCallUrl, getNetworkCallMethod, getNetworkCallDuration } from "./utils/networkCallUtils";
 import { identifyDynamicParams } from "../utils/urlUrils";
 import { SecurityEngine } from "../utils/securityEngine";
 import { SecurityIssue } from "../types/security";
 import { consoleCapture } from './services/consoleCapture';
+
+
+
 
 // Prevent content script from running multiple times
 if ((window as any).__INDI_CONTENT_SCRIPT_LOADED__) {
@@ -2584,13 +2588,14 @@ function generateCurlCommand(call: NetworkCall): string {
 async function showDetailedIssuesModal(summary: PageSummaryData) {
   // Build detailed HTML for all issues
   let html = '<div style="text-align: left; font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', sans-serif;">';
-
+  const funnyPhrasesOfFailedApis = ['APIs That Swear They Worked Yesterday', 'Troublemaker APIs', 'APIs on Strike', 'Rebellious APIs', 'APIs Needing TLC', 'APIs Blaming the Network', 'APIs Needing a Little Love ❤️'];
+  const randomPhrase = funnyPhrasesOfFailedApis[Math.floor(Math.random() * funnyPhrasesOfFailedApis.length)];
   // Failed APIs Section
   if (summary.errorCalls > 0 && cumulativeFailedCalls.length > 0) {
     html += `
       <div style="margin-bottom: 24px;">
         <h3 style="margin: 0 0 12px 0; font-size: 16px; color: #dc2626; display: flex; align-items: center; gap: 8px;">
-          ❌ Failed APIs (${summary.errorCalls})
+          ${randomPhrase} (${summary.errorCalls})
         </h3>
         <div style="max-height: 300px; overflow-y: auto;">
     `;
@@ -3107,13 +3112,9 @@ async function addToCache(calls: NetworkCall[]) {
 
   for (const call of calls) {
     try {
-      // Extract URL and method from various possible locations
-      const url = call?.response?.response?.url ??
-                  call?.response?.url ??
-                  call?.request?.request?.url ??
-                  call?.url;
-
-      const method = call?.request?.request?.method ?? call?.method ?? 'GET';
+      // Extract URL and method using shared utilities
+      const url = getNetworkCallUrl(call);
+      const method = getNetworkCallMethod(call);
 
       if (!url) {
         console.warn('Call without URL, skipping cache', call);
@@ -3141,14 +3142,8 @@ async function addToCache(calls: NetworkCall[]) {
   // Now add filtered calls to cache
   filteredCalls.forEach(call => {
     try {
-      const url = call?.response?.response?.url ??
-                  call?.response?.url ??
-                  call?.request?.request?.url ??
-                  call?.url;
-
-      const method = call?.request?.request?.method ??
-                     call?.method ??
-                     'GET';
+      const url = getNetworkCallUrl(call);
+      const method = getNetworkCallMethod(call);
 
       // Use pattern-based storage path (includes param names)
       // NOTE: We only use ONE key per call to avoid duplicates when flattening cache
@@ -3450,12 +3445,13 @@ chrome.runtime.sendMessage({
 function createContainers() {
   modalContainer = document.createElement("div");
   modalContainer.id = "api-mapper-modal-container";
-  modalContainer.style.zIndex = "999999"; // ערך גבוה יותר
+  modalContainer.style.zIndex = "999999";
   modalContainer.style.position = "fixed";
   modalContainer.style.top = "0";
   modalContainer.style.bottom = "0";
   modalContainer.style.left = "0";
   modalContainer.style.right = "0";
+  modalContainer.style.pointerEvents = "none"; // Allow clicks to pass through to page
 
   innerModalContainer = document.createElement("div");
   innerModalContainer.id = "inner-modal-container";
@@ -3463,6 +3459,7 @@ function createContainers() {
   position: relative;
   width: 100%;
   height: 100%;
+  pointer-events: none;
 `;
 
   modalContainer.appendChild(innerModalContainer);
@@ -3697,27 +3694,32 @@ function createCallsList(networkCalls: NetworkCall[]): HTMLElement {
 }
 
 /**
- * Extract URL from NetworkCall - handles various data structures
+ * Extract URL from NetworkCall - uses shared utility
  */
 function extractNetworkCallUrl(call: NetworkCall): string {
-  return call?.response?.response?.url ??
-         call?.response?.url ??
-         call?.request?.request?.url ??
-         call?.url ??
-         'Unknown URL';
+  return getNetworkCallUrl(call) || 'Unknown URL';
 }
 
 /**
- * Extract HTTP method from NetworkCall - handles various data structures
+ * Extract HTTP method from NetworkCall - uses shared utility
  */
 function extractNetworkCallMethod(call: NetworkCall): string {
-  return call?.request?.request?.method ??
-         call?.method ??
-         'GET';
+  return getNetworkCallMethod(call);
 }
 
 function renderCallItems(container: HTMLElement, calls: NetworkCall[]) {
   container.innerHTML = calls.map(call => createCallItemHTML(call)).join('');
+}
+
+// UUID pattern - matches standard UUID format
+const UUID_PATTERN = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+// Numeric ID pattern - matches numeric IDs in path segments (4+ digits)
+const NUMERIC_ID_PATTERN = /\/(\d{4,})(\/|$)/g;
+
+function replaceIdsInPath(path: string): string {
+  return path
+    .replace(UUID_PATTERN, '{uuid}')
+    .replace(NUMERIC_ID_PATTERN, '/{id}$2');
 }
 
 function createCallItemHTML(call: NetworkCall): string {
@@ -3728,13 +3730,31 @@ function createCallItemHTML(call: NetworkCall): string {
   const statusClass = isSuccess ? 'api-call-badge-success' : 'api-call-badge-error';
   const indicatorClass = isSuccess ? 'api-call-status-success' : 'api-call-status-error';
 
-  const formatUrl = (url: string) => {
-    try {
-      const urlObj = new URL(url);
-      return urlObj.pathname + urlObj.search;
-    } catch {
-    }
-  };
+  // Parse URL for cleaner display
+  let cleanPath = url;
+  let queryParams: { key: string; value: string }[] = [];
+
+  try {
+    const urlObj = new URL(url);
+    cleanPath = replaceIdsInPath(urlObj.pathname);
+    queryParams = Array.from(urlObj.searchParams.entries()).map(([key, value]) => ({ key, value }));
+  } catch {
+    // If URL parsing fails, just use the raw URL
+  }
+
+  // Generate query params chips HTML
+  const queryParamsHTML = queryParams.length > 0
+    ? `<div class="api-call-query-params">
+        ${queryParams.map(({ key, value }) =>
+          `<span class="api-call-query-chip" title="${key}=${value}">
+            <span class="query-key">${key}</span>=<span class="query-value">${value.length > 15 ? value.substring(0, 15) + '...' : value}</span>
+          </span>`
+        ).join('')}
+      </div>`
+    : '';
+
+  // Unique ID for this call's expandable section
+  const expandId = `expand-${call.id}`;
 
   return `
     <div class="api-call-item" data-call-id="${call.id}">
@@ -3752,8 +3772,14 @@ function createCallItemHTML(call: NetworkCall): string {
               ${call.status}
             </span>
           </div>
-          <div class="api-call-url-main">${formatUrl(url)}</div>
-          <div class="api-call-url-full">${url}</div>
+          <div class="api-call-url-main">${cleanPath}</div>
+          ${queryParamsHTML}
+          <div class="api-call-expand-section">
+            <button class="api-call-expand-btn" onclick="event.stopPropagation(); const el = document.getElementById('${expandId}'); const btn = this; if(el.style.display === 'none') { el.style.display = 'block'; btn.innerHTML = '▼ Hide Full URL'; } else { el.style.display = 'none'; btn.innerHTML = '▶ Full URL'; }">
+              ▶ Full URL
+            </button>
+            <div id="${expandId}" class="api-call-url-full" style="display: none;">${url}</div>
+          </div>
         </div>
         <div class="api-call-status-indicator ${indicatorClass}"></div>
       </div>
