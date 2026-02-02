@@ -47,36 +47,51 @@ export function loadIndicators() {
     return;
   }
 
+
   // Create all indicators (in-flight tracking prevents duplicates)
   currentPageIndicators?.forEach((indicator) => {
     createIndicatorFromData(indicator);
   });
 
-  // Make sure we have all indicators with better error handling
-  currentPageIndicators?.forEach(async (indicator: any, index: number) => {
-    try {
-      const indicatorElement = await waitForIndicator(indicator.id, 5000); // Increased to 5s
-      if (!indicatorElement && !creatingIndicators.has(indicator.id)) {
-        // Only retry if not currently being created and not in DOM
-        const stillNotInDom = !document.getElementById(`indi-${indicator.id}`);
-        if (stillNotInDom) {
-          setTimeout(() => {
-            createIndicatorFromData(indicator);
-          }, 500 + (index * 200)); // Stagger indicator creation
-        }
-      }
-    } catch (error) {
-      // Only retry if not currently being created
-      if (!creatingIndicators.has(indicator.id)) {
-        const stillNotInDom = !document.getElementById(`indi-${indicator.id}`);
-        if (stillNotInDom) {
-          setTimeout(() => {
-            createIndicatorFromData(indicator);
-          }, 1000 + (index * 200));
-        }
-      }
+  // React-friendly retry mechanism with exponential backoff
+  // React apps may render elements after initial load
+  const retryDelays = [1000, 2000, 4000, 8000]; // Retry at 1s, 2s, 4s, 8s
+
+  const retryMissingIndicators = (attemptIndex: number) => {
+    if (attemptIndex >= retryDelays.length) {
+      console.log('🔴 Indicator retry attempts exhausted');
+      return;
     }
-  });
+
+    const missingIndicators = currentPageIndicators.filter((indicator: IndicatorData) => {
+      const inDom = document.getElementById(`indi-${indicator.id}`);
+      const beingCreated = creatingIndicators.has(indicator.id);
+      return !inDom && !beingCreated;
+    });
+
+    if (missingIndicators.length === 0) {
+      console.log('✅ All indicators loaded successfully');
+      return;
+    }
+
+    console.log(`🔄 Retry attempt ${attemptIndex + 1}: ${missingIndicators.length} indicators still missing`);
+
+    missingIndicators.forEach((indicator: IndicatorData, index: number) => {
+      setTimeout(() => {
+        createIndicatorFromData(indicator);
+      }, index * 100); // Stagger by 100ms
+    });
+
+    // Schedule next retry
+    setTimeout(() => {
+      retryMissingIndicators(attemptIndex + 1);
+    }, retryDelays[attemptIndex]);
+  };
+
+  // Start retry mechanism after initial attempt
+  setTimeout(() => {
+    retryMissingIndicators(0);
+  }, 500);
 
   const currentPageIndicatorsUuuidArray = currentPageIndicators?.map(
     (indi: IndicatorData) => indi.id
@@ -186,6 +201,8 @@ export async function createIndicatorFromData(
 
   const elementByPath = await waitForElement(indicatorData.elementInfo.path);
   if (!elementByPath) {
+    console.warn(`⚠️ Indicator "${indicatorData.name}" - element not found: ${indicatorData.elementInfo.path}`);
+    creatingIndicators.delete(indicatorData.id); // Clean up so retries can work
     return;
   }
   
