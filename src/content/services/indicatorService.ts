@@ -2443,19 +2443,22 @@ export function injectStyles() {
         margin: 0 0.3rem;
       }
 
-     .response-container {
+     #indicator-tooltip .response-container,
+     .indicator .response-container {
    margin-top: 16px;
    border-top: 1px solid #eee;
-   padding-top: 16px;x
+   padding-top: 16px;
  }
 
- .response-tabs {
+ #indicator-tooltip .response-tabs,
+ .indicator .response-tabs {
    display: flex;
    gap: 8px;
    margin-bottom: 12px;
  }
 
- .tab-button {
+ #indicator-tooltip .tab-button,
+ .indicator .tab-button {
    padding: 6px 12px;
    border: none;
    border-radius: 4px;
@@ -2464,34 +2467,44 @@ export function injectStyles() {
    font-size: 13px;
  }
 
- .tab-button.active {
+ #indicator-tooltip .tab-button.active,
+ .indicator .tab-button.active {
    background: #cf556c;
    color: white;
  }
 
- .tab-pane {
+ #indicator-tooltip .tab-pane,
+ .indicator .tab-pane {
    display: none;
    padding: 12px;
    background: #f9f9f9;
    border-radius: 4px;
  }
 
- .tab-pane.active {
+ #indicator-tooltip .tab-pane.active,
+ .indicator .tab-pane.active {
    display: block;
  }
 
- .security-section,
- .performance-section,
- .request-section {
+ #indicator-tooltip .security-section,
+ #indicator-tooltip .performance-section,
+ #indicator-tooltip .request-section,
+ .indicator .security-section,
+ .indicator .performance-section,
+ .indicator .request-section {
    margin-bottom: 16px;
  }
 
- h4 {
+ #indicator-tooltip h4,
+ .indicator h4,
+ #api-mapper-modal-container h4 {
    margin: 0 0 8px 0;
    font-size: 14px;
  }
 
- pre {
+ #indicator-tooltip pre,
+ .indicator pre,
+ #api-mapper-modal-container pre {
    background: #f5f5f5;
    padding: 8px;
    border-radius: 4px;
@@ -2501,19 +2514,29 @@ export function injectStyles() {
    font-size: 12px;
  }
 
-.json-key {
+#indicator-tooltip .json-key,
+.indicator .json-key,
+#api-mapper-modal-container .json-key {
   color: #7952b3;
 }
-.json-string {
+#indicator-tooltip .json-string,
+.indicator .json-string,
+#api-mapper-modal-container .json-string {
   color: #28a745;
 }
-.json-number {
+#indicator-tooltip .json-number,
+.indicator .json-number,
+#api-mapper-modal-container .json-number {
   color: #1e88e5;
 }
-.json-boolean {
+#indicator-tooltip .json-boolean,
+.indicator .json-boolean,
+#api-mapper-modal-container .json-boolean {
   color: #ff5722;
 }
-.json-null {
+#indicator-tooltip .json-null,
+.indicator .json-null,
+#api-mapper-modal-container .json-null {
   color: #757575;
 }
 

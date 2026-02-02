@@ -619,7 +619,7 @@ export const jsonViewerStyles = `
     display: block;
   }
 
-  .hidden {
+  .json-viewer-container .hidden {
     display: none !important;
   }
 
