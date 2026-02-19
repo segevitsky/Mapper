@@ -6,7 +6,11 @@
       "Bash(rm:*)",
       "Bash(npm run build:*)",
       "Bash(source ~/.zshrc)",
-      "Bash(source ~/.bashrc)"
+      "Bash(source ~/.bashrc)",
+      "Bash(more:*)",
+      "Bash(findstr:*)",
+      "Bash(powershell -Command \"Select-String -Path ''C:\\\\workspace\\\\Mapper\\\\dist\\\\content.js'' -Pattern ''\\\\bexport\\\\s+\\(function|const|class|let|var|default\\)\\\\b'' -AllMatches\")",
+      "Bash(powershell:*)"
     ],
     "deny": [],
     "ask": []

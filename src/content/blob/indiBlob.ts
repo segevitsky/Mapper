@@ -1,5 +1,7 @@
 // src/content/blob/IndiBlob.ts
 
+import { ReplayModal } from '../components/ReplayModal';
+
 export type EmotionType = 'happy' | 'calm' | 'satisfied' | 'excited';
 
 interface Position {
@@ -328,6 +330,28 @@ export class IndiBlob {
         return; // Stop further event handling
       }
 
+      // Handle replay button clicks
+      if (target.classList.contains('replay-btn') || target.closest('.replay-btn')) {
+        e.stopPropagation(); // Prevent expanding/collapsing the network call
+
+        const button = target.classList.contains('replay-btn') ? target : target.closest('.replay-btn') as HTMLElement;
+        const callData = button?.getAttribute('data-call-data');
+
+        if (callData) {
+          try {
+            // Parse the JSON directly (single quotes are already escaped as &#39;)
+            const call = JSON.parse(callData);
+
+            // Show ReplayModal
+            const replayModal = new ReplayModal();
+            replayModal.show(call);
+          } catch (error) {
+            console.error('Failed to open replay modal:', error);
+          }
+        }
+        return; // Stop further event handling
+      }
+
       // Handle tab clicks
       if (target.classList.contains('indi-tab') || target.closest('.indi-tab')) {
         const tabButton = target.classList.contains('indi-tab') ? target : target.closest('.indi-tab') as HTMLElement;
@@ -417,6 +441,19 @@ export class IndiBlob {
             tabContentArea.innerHTML = contentHTML;
           }
         }
+        return;
+      }
+
+      // Handle Blobiman button clicks (API Tester)
+      if (target.id === 'indi-summary-blobiman' || target.closest('#indi-summary-blobiman')) {
+        e.stopPropagation();
+        e.preventDefault();
+
+        // Show ReplayModal with recent calls dropdown (async)
+        const replayModal = new ReplayModal();
+        replayModal.showWithRecentCalls(this.currentNetworkCalls).catch((err) => {
+          console.error('Failed to open Blobiman:', err);
+        });
         return;
       }
     });

@@ -56,7 +56,254 @@ const pendingRequests = new Map();
 let envsArray: string[] = [];
 
 //JIRA START + MESSAGES LISTENER
-chrome.runtime.onMessage.addListener(async  (message, _sender, sendResponse) => {
+// Replay Request Types
+interface ReplayRequestPayload {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body?: string;
+}
+
+interface ReplayResponseData {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: any;
+  duration: number;
+  timestamp: number;
+  error?: string;
+}
+
+/**
+ * Execute a replay request using fetch() in the background script
+ * This bypasses CORS restrictions since it runs in the extension context
+ */
+async function executeReplayRequest(data: ReplayRequestPayload): Promise<ReplayResponseData> {
+  const startTime = Date.now();
+
+  // Debug logging - check what we're sending
+  console.log('🔄 REPLAY REQUEST:', {
+    url: data.url,
+    method: data.method,
+    headers: data.headers,
+    body: data.body,
+    bodyLength: data.body?.length || 0,
+  });
+
+  try {
+    // Prepare headers - ensure we have proper headers for API requests
+    const requestHeaders: Record<string, string> = { ...data.headers };
+
+    // Normalize header keys to check for existing headers (case-insensitive)
+    const headerKeysLower = Object.keys(requestHeaders).map(k => k.toLowerCase());
+
+    // Ensure Accept header is set for API requests
+    if (!headerKeysLower.includes('accept')) {
+      requestHeaders['Accept'] = 'application/json, text/plain, */*';
+    }
+
+    // Ensure Content-Type is set for requests with body
+    if (data.body && ['POST', 'PUT', 'PATCH'].includes(data.method)) {
+      if (!headerKeysLower.includes('content-type')) {
+        requestHeaders['Content-Type'] = 'application/json';
+      }
+    }
+
+    // Add X-Requested-With header if not present (many servers check this for AJAX requests)
+    if (!headerKeysLower.includes('x-requested-with')) {
+      requestHeaders['X-Requested-With'] = 'XMLHttpRequest';
+    }
+
+    const fetchOptions: RequestInit = {
+      method: data.method,
+      headers: requestHeaders,
+      credentials: 'include', // Include cookies for authentication
+    };
+
+    // Add body for appropriate methods
+    if (data.body && ['POST', 'PUT', 'PATCH'].includes(data.method)) {
+      fetchOptions.body = data.body;
+    }
+
+    // Debug: log final fetch options
+    console.log('🚀 FETCH OPTIONS:', {
+      method: fetchOptions.method,
+      headers: fetchOptions.headers,
+      body: fetchOptions.body,
+      credentials: fetchOptions.credentials,
+    });
+
+    const response = await fetch(data.url, fetchOptions);
+    const duration = Date.now() - startTime;
+
+    console.log('📥 RESPONSE:', {
+      status: response.status,
+      statusText: response.statusText,
+      contentType: response.headers.get('content-type'),
+    });
+
+    // Parse response headers
+    const headers: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+
+    // Parse response body - get text first, then try to parse as JSON
+    const contentType = response.headers.get('content-type') || '';
+    let body: any;
+
+    // Always get text first (can only consume body once)
+    const textBody = await response.text();
+
+    // Try to parse as JSON if content-type suggests it
+    if (contentType.includes('application/json') || contentType.includes('text/json')) {
+      try {
+        body = JSON.parse(textBody);
+      } catch {
+        // If JSON parsing fails, use the text as-is
+        body = textBody;
+      }
+    } else {
+      body = textBody;
+    }
+
+    return {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+      body,
+      duration,
+      timestamp: Date.now(),
+    };
+  } catch (error: any) {
+    return {
+      status: 0,
+      statusText: 'Network Error',
+      headers: {},
+      body: null,
+      duration: Date.now() - startTime,
+      timestamp: Date.now(),
+      error: error.message || 'Request failed',
+    };
+  }
+}
+
+// Separate listener for REPLAY_REQUEST (must NOT be async to properly return true)
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'REPLAY_REQUEST') {
+    // Execute fetch in the page context to get correct Origin header
+    const tabId = sender.tab?.id;
+    if (tabId) {
+      executeReplayInPageContext(tabId, message.data)
+        .then((response) => sendResponse({ success: true, data: response }))
+        .catch((error) => sendResponse({ success: false, error: error.toString() }));
+    } else {
+      // Fallback to background fetch if no tab
+      executeReplayRequest(message.data)
+        .then((response) => sendResponse({ success: true, data: response }))
+        .catch((error) => sendResponse({ success: false, error: error.toString() }));
+    }
+    return true; // Keeps message channel open for async response
+  }
+  return false; // Not handled by this listener
+});
+
+/**
+ * Execute replay request in the page context using chrome.scripting
+ * This ensures the Origin header matches the page's origin
+ */
+async function executeReplayInPageContext(tabId: number, data: ReplayRequestPayload): Promise<ReplayResponseData> {
+  const startTime = Date.now();
+
+  try {
+    // Inject and execute fetch in the page's MAIN world
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN', // Execute in page context, not extension context
+      func: async (url: string, method: string, headers: Record<string, string>, body: string | undefined) => {
+        const fetchOptions: RequestInit = {
+          method,
+          headers,
+          credentials: 'include',
+        };
+
+        if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
+          fetchOptions.body = body;
+        }
+
+        const startTime = Date.now();
+
+        try {
+          const response = await fetch(url, fetchOptions);
+          const duration = Date.now() - startTime;
+
+          // Get response headers
+          const responseHeaders: Record<string, string> = {};
+          response.headers.forEach((value, key) => {
+            responseHeaders[key] = value;
+          });
+
+          // Get response body
+          const textBody = await response.text();
+          let parsedBody: any = textBody;
+
+          const contentType = response.headers.get('content-type') || '';
+          if (contentType.includes('application/json')) {
+            try {
+              parsedBody = JSON.parse(textBody);
+            } catch {
+              parsedBody = textBody;
+            }
+          }
+
+          return {
+            success: true,
+            status: response.status,
+            statusText: response.statusText,
+            headers: responseHeaders,
+            body: parsedBody,
+            duration,
+            timestamp: Date.now(),
+          };
+        } catch (error: any) {
+          return {
+            success: false,
+            status: 0,
+            statusText: 'Network Error',
+            headers: {},
+            body: null,
+            duration: Date.now() - startTime,
+            timestamp: Date.now(),
+            error: error.message || 'Request failed',
+          };
+        }
+      },
+      args: [data.url, data.method, data.headers, data.body],
+    });
+
+    const result = results[0]?.result;
+
+    if (result) {
+      return {
+        status: result.status,
+        statusText: result.statusText,
+        headers: result.headers,
+        body: result.body,
+        duration: result.duration,
+        timestamp: result.timestamp,
+        error: result.error,
+      };
+    }
+
+    throw new Error('No result from page script');
+  } catch (error: any) {
+    console.error('Failed to execute in page context:', error);
+    // Fallback to background fetch
+    return executeReplayRequest(data);
+  }
+}
+
+chrome.runtime.onMessage.addListener(async (message, _sender, sendResponse) => {
   if (message.type === "CREATE_JIRA_TICKET") {
     createJiraTicket(message.data)
       .then((response) => sendResponse({ success: true, data: response }))

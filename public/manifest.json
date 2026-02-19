@@ -14,13 +14,14 @@
   "permissions": [
     "storage",
     "webRequest",
-    "unlimitedStorage", 
-    "debugger", 
+    "unlimitedStorage",
+    "debugger",
     "activeTab",
     "tabs",
     "identity",
     "desktopCapture",
-    "alarms"
+    "alarms",
+    "scripting"
     ],
   "host_permissions": [
     "<all_urls>",
@@ -32,7 +33,7 @@
     "https://api.anthropic.com/*"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.atlassian.net"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://* http://* wss://* ws://*"
   },
   "devtools_page": "devtools/index.html",
   "background": {
@@ -42,6 +43,12 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*"],
+      "matches": ["<all_urls>"]
     }
   ]
 }

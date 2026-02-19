@@ -57,7 +57,7 @@ export class OnboardingFlow {
         
         // Filter out third-party domains
         if (!this.isThirdParty(url.hostname)) {
-          const baseUrl = `${url.protocol}//${url.hostname}`;
+          const baseUrl = `${url.protocol}//${url.host}`;
           urls.add(baseUrl);
         }
       } catch (e) {

@@ -920,6 +920,19 @@ async function showSettingsModal() {
 
           // Open onboarding flow to reconfigure backend
           if (onboardingFlow) {
+            // Reset onboarding state so shouldStoreCall allows ALL calls through
+            const key = `indi_onboarding_${window.location.hostname}`;
+            await chrome.storage.local.set({
+              [key]: { completed: false, skipped: false, dismissed: false },
+            });
+
+            // Invalidate cached backend URL so filtering updates immediately
+            cachedBackendUrl = undefined;
+            backendUrlCacheTime = 0;
+
+            // Clear existing cache (it only has calls from old backend)
+            recentCallsCache.clear();
+
             const networkData = Array.from(recentCallsCache.values()).flat();
             await onboardingFlow.startWithNetworkData(networkData, true);
           }
@@ -3036,7 +3049,7 @@ function getUrlsFromCache(): string[] {
         
         if (fullUrl) {
           const urlObj = new URL(fullUrl);
-          const baseUrl = `${urlObj.protocol}//${urlObj.hostname}`;
+          const baseUrl = `${urlObj.protocol}//${urlObj.host}`;
           urls.add(baseUrl);
         }
       } catch (e) {
@@ -4061,6 +4074,12 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
         // Already initialized, just analyze
         // only analyze if indi blob is connected to this page - which means finished onboarding
         analyzeNetworkForIndi(message.requests);
+
+        // Feed new network data to onboarding flow if it's active (e.g. during reconfiguration)
+        if (onboardingFlow) {
+          const allCachedData = Array.from(recentCallsCache.values()).flat();
+          onboardingFlow.updateNetworkData(allCachedData);
+        }
       }
 
       // Performance: Skip indicator updates if tab is not visible

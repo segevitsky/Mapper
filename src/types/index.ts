@@ -133,5 +133,24 @@ export type NetworkRequest = {
   duration: number;
 };
 
+// Replay Request Types
+export interface ReplayRequestData {
+  url: string;
+  method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  headers: { key: string; value: string; enabled: boolean }[];
+  body: string;
+  queryParams: { key: string; value: string; enabled: boolean }[];
+}
+
+export interface ReplayResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: any;
+  duration: number;
+  timestamp: number;
+  error?: string;
+}
+
 // Export console error types
 export * from './console';

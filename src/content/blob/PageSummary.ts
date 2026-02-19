@@ -669,14 +669,18 @@ export class PageSummary {
         .network-call-details.expanded {
           max-height: 800px;
         }
-        .copy-curl-btn, .pop-out-btn {
+        .copy-curl-btn, .pop-out-btn, .replay-btn {
           transition: all 0.15s ease;
         }
         .copy-curl-btn:hover, .pop-out-btn:hover {
           transform: scale(1.05);
           background: #f3f4f6 !important;
         }
-        .copy-curl-btn:active, .pop-out-btn:active {
+        .replay-btn:hover {
+          transform: scale(1.05);
+          background: linear-gradient(135deg, #9d6eff, #8b5cf6) !important;
+        }
+        .copy-curl-btn:active, .pop-out-btn:active, .replay-btn:active {
           transform: scale(0.95);
         }
       </style>
@@ -726,6 +730,23 @@ export class PageSummary {
                 title="Open in Floating Window"
               >
                 📤 Pop Out
+              </button>
+              <button
+                class="replay-btn"
+                data-call-data='${callDataEncoded}'
+                style="
+                  padding: 4px 8px;
+                  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+                  border: none;
+                  border-radius: 4px;
+                  font-size: 10px;
+                  color: white;
+                  cursor: pointer;
+                  font-weight: 600;
+                "
+                title="Replay this request"
+              >
+                🔄 Replay
               </button>
             </div>
           </div>
@@ -1455,6 +1476,67 @@ export class PageSummary {
                   border-left: 6px solid transparent;
                   border-right: 6px solid transparent;
                   border-bottom: 6px solid #3b82f6;
+                "></div>
+              </div>
+            </div>
+
+            <!-- Blobiman Button (API Tester) -->
+            <div style="position: relative; display: inline-block;">
+              <button
+                id="indi-summary-blobiman"
+                style="
+                  width: 48px;
+                  height: 48px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  border-radius: 50%;
+                  background: linear-gradient(to right, #a78bfa, #8b5cf6);
+                  color: white;
+                  font-weight: 600;
+                  font-size: 20px;
+                  border: none;
+                  cursor: pointer;
+                  transition: all 0.2s ease-in-out;
+                  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+                  overflow: hidden;
+                  padding: 4px;
+                "
+                onmouseover="this.style.background='linear-gradient(to right, #c4b5fd, #a78bfa)'; this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(139, 92, 246, 0.4)'; this.nextElementSibling.style.opacity='1'; this.nextElementSibling.style.visibility='visible'"
+                onmouseout="this.style.background='linear-gradient(to right, #a78bfa, #8b5cf6)'; this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 8px rgba(139, 92, 246, 0.3)'; this.nextElementSibling.style.opacity='0'; this.nextElementSibling.style.visibility='hidden'"
+              >
+                <img src="${chrome.runtime.getURL('assets/blobiman-icon.svg')}" alt="Blobiman" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" onerror="this.style.display='none'; this.parentElement.innerHTML='📮';" />
+              </button>
+              <div style="
+                position: absolute;
+                bottom: -40px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+                color: white;
+                padding: 8px 16px;
+                border-radius: 12px;
+                font-size: 13px;
+                font-weight: 600;
+                white-space: nowrap;
+                box-shadow: 0 4px 12px rgba(139, 92, 246, 0.5);
+                opacity: 0;
+                visibility: hidden;
+                transition: all 0.2s ease-in-out;
+                z-index: 1000;
+                pointer-events: none;
+              ">
+                Blobiman
+                <div style="
+                  position: absolute;
+                  top: -6px;
+                  left: 50%;
+                  transform: translateX(-50%);
+                  width: 0;
+                  height: 0;
+                  border-left: 6px solid transparent;
+                  border-right: 6px solid transparent;
+                  border-bottom: 6px solid #8b5cf6;
                 "></div>
               </div>
             </div>
