@@ -35,17 +35,6 @@ export class IndicatorLoader {
       // Show login modal and wait for authentication
       authenticatedLoadIndicators(() => {
         if (!this.initialLoadDone) {
-          // chrome.storage.local.get(["userData"], (res) => {
-          //   const userData = res.userData;
-          //   if (userData) {
-          //     chrome.runtime.sendMessage({
-          //       type: "USER_AUTHENTICATED",
-          //       data: userData,
-          //     });
-          //   } else {
-          //     console.warn("No user data found, proceeding without it.");
-          //   }
-          // })
           loadIndicators();
           this.initialLoadDone = true;
         } else {

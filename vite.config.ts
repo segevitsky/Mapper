@@ -5,6 +5,7 @@ import path from "path";
 export default defineConfig({
   plugins: [react()],
   build: {
+    modulePreload: false, // Disable modulepreload polyfill for Chrome extension CSP compliance
     minify: 'terser', // Enable minification for production
     terserOptions: {
       sourceMap: true, // Disable source maps in terser
@@ -25,6 +26,7 @@ export default defineConfig({
         panel: path.resolve(__dirname, "src/panel/index.html"),
         floatingWindow: path.resolve(__dirname, "src/indicatorFloatingWindow/floating-window.html"),
         indicatorFloatingWindow: path.resolve(__dirname, "src/indicatorFloatingWindow/floating-window.tsx"),
+        popup: path.resolve(__dirname, "src/popup/index.html"),
       },
       output: {
         entryFileNames: "[name].js",

@@ -600,6 +600,19 @@ async function attachDebugger(tabId: number): Promise<void> {
     return;
   }
 
+  // Guard: check effective state (tab override wins, otherwise global)
+  const state = await chrome.storage.local.get([
+    "indi_global_enabled",
+    `indi_tab_override_${tabId}`,
+  ]);
+  const globalOn = state.indi_global_enabled !== false;
+  const tabOverride = state[`indi_tab_override_${tabId}`];
+  const effectivelyActive = tabOverride !== undefined ? tabOverride : globalOn;
+  if (!effectivelyActive) {
+    console.log("Indi not active for tab:", tabId, "skipping debugger attach");
+    return;
+  }
+
   try {
     await chrome.debugger.attach({ tabId }, "1.3");
     await chrome.debugger.sendCommand({ tabId }, "Network.enable");
@@ -1087,6 +1100,102 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     chrome.debugger.detach({ tabId });
     debuggerTabs.delete(tabId);
   }
+  // Clean up tab-specific state
+  chrome.storage.local.remove(`indi_tab_override_${tabId}`);
+});
+
+// Set default global enabled state on install
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.storage.local.get(["indi_global_enabled"], (result) => {
+    if (result.indi_global_enabled === undefined) {
+      chrome.storage.local.set({ indi_global_enabled: true });
+    }
+  });
+});
+
+// Helper: compute effective state for a tab
+// tabOverride: true = explicitly on, false = explicitly off, undefined = follows global
+function getEffectiveTabState(globalOn: boolean, tabOverride: boolean | undefined): boolean {
+  if (tabOverride !== undefined) return tabOverride;
+  return globalOn;
+}
+
+// Popup control message handlers
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.type === "SET_GLOBAL_ENABLED") {
+    const enabled = message.enabled;
+
+    // Update badge
+    if (enabled) {
+      chrome.action.setBadgeText({ text: "" });
+    } else {
+      chrome.action.setBadgeText({ text: "OFF" });
+      chrome.action.setBadgeBackgroundColor({ color: "#6b7280" });
+    }
+
+    // For each tab, compute effective state (tab override wins, otherwise global)
+    chrome.tabs.query({}, (tabs) => {
+      for (const tab of tabs) {
+        if (!tab.id) continue;
+        const tabId = tab.id;
+        chrome.storage.local.get([`indi_tab_override_${tabId}`], (result) => {
+          const tabOverride = result[`indi_tab_override_${tabId}`];
+          const active = getEffectiveTabState(enabled, tabOverride);
+
+          if (!active && debuggerTabs.get(tabId)) {
+            chrome.debugger.detach({ tabId }).catch(() => {});
+            debuggerTabs.delete(tabId);
+          } else if (active && !debuggerTabs.get(tabId)) {
+            attachDebugger(tabId).catch(() => {});
+          }
+
+          chrome.tabs.sendMessage(tabId, {
+            type: "INDI_EFFECTIVE_STATE",
+            active,
+          }).catch(() => {});
+        });
+      }
+    });
+
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (message.type === "SET_TAB_OVERRIDE") {
+    const { tabId, override } = message;
+
+    // override is the explicit tab state (true/false)
+    // Compute effective state
+    chrome.storage.local.get(["indi_global_enabled"], (result) => {
+      const globalOn = result.indi_global_enabled !== false;
+      const active = getEffectiveTabState(globalOn, override);
+
+      if (!active && debuggerTabs.get(tabId)) {
+        chrome.debugger.detach({ tabId }).catch(() => {});
+        debuggerTabs.delete(tabId);
+      } else if (active && !debuggerTabs.get(tabId)) {
+        attachDebugger(tabId).catch(() => {});
+      }
+
+      chrome.tabs.sendMessage(tabId, {
+        type: "INDI_EFFECTIVE_STATE",
+        active,
+      }).catch(() => {});
+    });
+
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (message.type === "GET_POPUP_STATS") {
+    sendResponse({
+      activeTabs: debuggerTabs.size,
+      pendingRequests: pendingRequests.size,
+    });
+    return true;
+  }
+
+  return false;
 });
 
 

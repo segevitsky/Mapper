@@ -109,6 +109,17 @@ async function initializeIndi(networkData: NetworkCall[]) {
   }
   if (isIndiInitialized) return;
 
+  // Skip initialization if Indi is globally disabled
+  try {
+    const state = await chrome.storage.local.get(["indi_global_enabled"]);
+    if (state.indi_global_enabled === false) {
+      console.log("Indi globally disabled, skipping initialization");
+      return;
+    }
+  } catch {
+    // Continue if storage check fails
+  }
+
   // Set flag immediately to prevent race conditions from multiple NETWORK_IDLE messages
   isIndiInitialized = true;
 
@@ -4058,6 +4069,29 @@ chrome.runtime.onMessage.addListener( async (message, sender, sendResponse) => {
       // We don't have them here, background should respond
       sendResponse({ networkCalls: [] });
       break;
+
+    case 'INDI_EFFECTIVE_STATE': {
+      const isActive = message.active;
+      const indiContainer = document.getElementById('indiContainer');
+      if (indiContainer) {
+        indiContainer.style.display = isActive ? '' : 'none';
+      }
+      // Show/hide all indicators
+      const allIndicators = document.querySelectorAll('.indicator');
+      allIndicators.forEach((el) => {
+        (el as HTMLElement).style.display = isActive ? '' : 'none';
+      });
+      break;
+    }
+
+    case 'CLEAR_TAB_INDICATORS': {
+      // Remove all indicators from the page
+      const indicatorsToRemove = document.querySelectorAll('.indicator');
+      indicatorsToRemove.forEach((el) => el.remove());
+      // Clear the pageIndicators array
+      pageIndicators.length = 0;
+      break;
+    }
 
     case "NETWORK_IDLE": {
       if (message.requests.length === 0) {
