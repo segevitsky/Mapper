@@ -26,6 +26,7 @@ export class IndiBlob {
   private colorStop1: SVGStopElement | null = null;
   private colorStop2: SVGStopElement | null = null;
   private colorStop3: SVGStopElement | null = null;
+  private confettiContainer: HTMLElement | null = null;
 
   private emotion: EmotionType = 'happy';
   private notificationCount: number = 0;
@@ -36,6 +37,9 @@ export class IndiBlob {
   private position: Position = { x: 0, y: 0 };
   private readonly DRAG_THRESHOLD = 5; // pixels - minimum movement to consider it a drag
   private blinkInterval: number | null = null;
+  private idleBehaviorInterval: number | null = null;
+  private isDoingIdleBehavior: boolean = false;
+  private lastMouseMove: number = Date.now();
   private summaryTooltip: HTMLElement | null = null;
   private currentSummary: string | null = null;
   private speechBubble: any = null;
@@ -57,6 +61,7 @@ export class IndiBlob {
     this.setInitialPosition();
     this.setEmotion('happy'); // Initialize iris background color
     this.initializeTooltip(); // Initialize tooltip async
+    this.playEntrance(); // Grand entrance!
   }
 
   public setSpeechBubble(speechBubble: any): void {
@@ -659,7 +664,7 @@ export class IndiBlob {
                 <stop offset="100%" stop-color="#7c3aed" id="colorStop3" style="transition: stop-color 0.6s ease;" />
               </linearGradient>
             </defs>
-            
+
             <ellipse
               cx="50"
               cy="50"
@@ -695,6 +700,7 @@ export class IndiBlob {
               <line x1="58" y1="66" x2="58" y2="70" stroke="rgba(0, 0, 0, 0.3)" stroke-width="1.5" />
               <line x1="62" y1="66" x2="62" y2="70" stroke="rgba(0, 0, 0, 0.3)" stroke-width="1.5" />
             </g>
+
           </svg>
 
           <div class="indi-eye-container" id="eyeContainer">
@@ -710,6 +716,9 @@ export class IndiBlob {
           <div class="indi-blush left"></div>
           <div class="indi-blush right"></div>
           <div class="indi-sweat"></div>
+
+          <!-- Confetti container for celebrations -->
+          <div class="indi-confetti-container" id="confettiContainer"></div>
         </div>
 
         <div class="indi-notification-badge" id="notificationBadge">0</div>
@@ -1227,15 +1236,220 @@ export class IndiBlob {
       }
 
       @keyframes indi-urgent-pulse {
-        0%, 100% { 
-          transform: scale(1); 
-          opacity: 0.7; 
+        0%, 100% {
+          transform: scale(1);
+          opacity: 0.7;
         }
-        50% { 
-          transform: scale(1.2); 
-          opacity: 0.9; 
+        50% {
+          transform: scale(1.2);
+          opacity: 0.9;
         }
       }
+
+      /* ==================== BLOBI PERSONALITY UPGRADES ==================== */
+
+      /* Smooth entrance - pops in with a satisfying bounce */
+      @keyframes indi-entrance {
+        0% {
+          transform: scale(0);
+          opacity: 0;
+        }
+        60% {
+          transform: scale(1.15);
+          opacity: 1;
+        }
+        80% {
+          transform: scale(0.95);
+        }
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+
+      .indi-blob-container.entrance {
+        animation: indi-entrance 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      }
+
+      /* Idle floating - subtle, alive, breathing feel */
+      @keyframes indi-idle-float {
+        0%, 100% {
+          transform: translateY(0px);
+        }
+        50% {
+          transform: translateY(-5px);
+        }
+      }
+
+      .indi-blob-container:not(.dragging):not(.minimized):not(.celebrating):not(.entrance) .indi-blob {
+        animation: indi-idle-float 3.5s ease-in-out infinite;
+      }
+
+      /* Organic blob shape morphing - makes the body feel alive */
+      @keyframes indi-blob-morph {
+        0%, 100% {
+          rx: 40;
+          ry: 42;
+        }
+        25% {
+          rx: 41;
+          ry: 41;
+        }
+        50% {
+          rx: 39;
+          ry: 43;
+        }
+        75% {
+          rx: 42;
+          ry: 41;
+        }
+      }
+
+      .indi-blob-container:not(.minimized) .indi-blob-svg ellipse {
+        animation: indi-blob-morph 4s ease-in-out infinite;
+      }
+
+      /* Squish on hover - tactile, satisfying */
+      .indi-blob-container:hover:not(.dragging):not(.minimized) .indi-blob {
+        animation: indi-idle-float 3.5s ease-in-out infinite;
+        transform: scale(1.1);
+      }
+
+      /* Squash & stretch when dragging starts */
+      .indi-blob-container.dragging .indi-blob-svg ellipse {
+        animation: none;
+        rx: 42;
+        ry: 38;
+        transition: all 0.15s ease;
+      }
+
+      /* Shadow synced with float */
+      .indi-blob-container:not(.dragging):not(.minimized):not(.celebrating) .indi-shadow {
+        animation: indi-shadow-breathe 3.5s ease-in-out infinite;
+      }
+
+      @keyframes indi-shadow-breathe {
+        0%, 100% {
+          transform: translateX(-50%) scaleX(1);
+          opacity: 0.4;
+        }
+        50% {
+          transform: translateX(-50%) scaleX(0.85);
+          opacity: 0.2;
+        }
+      }
+
+      /* Celebration - playful bounce with confetti */
+      @keyframes indi-celebrate {
+        0%, 100% {
+          transform: translateY(0) scale(1);
+        }
+        15% {
+          transform: translateY(-12px) scale(1.08);
+        }
+        30% {
+          transform: translateY(0) scale(0.95);
+        }
+        45% {
+          transform: translateY(-8px) scale(1.05);
+        }
+        60% {
+          transform: translateY(0) scale(0.98);
+        }
+        75% {
+          transform: translateY(-3px) scale(1.02);
+        }
+      }
+
+      .indi-blob-container.celebrating .indi-blob {
+        animation: indi-celebrate 1.2s ease-in-out;
+      }
+
+      .indi-blob-container.celebrating .indi-aura {
+        animation: indi-urgent-pulse 0.4s ease-in-out 3;
+      }
+
+      /* Confetti container */
+      .indi-confetti-container {
+        position: absolute;
+        inset: -30px;
+        pointer-events: none;
+        overflow: visible;
+      }
+
+      .indi-confetti {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        border-radius: 50%;
+        animation: indi-confetti-pop 1s ease-out forwards;
+        opacity: 0;
+      }
+
+      @keyframes indi-confetti-pop {
+        0% {
+          transform: translate(0, 0) scale(0);
+          opacity: 0.9;
+        }
+        30% {
+          opacity: 0.9;
+          transform: translate(var(--cx), var(--cy)) scale(1);
+        }
+        100% {
+          transform: translate(var(--cx), calc(var(--cy) + 40px)) scale(0);
+          opacity: 0;
+        }
+      }
+
+      /* Emotion transition - brief aura flash */
+      .indi-blob-container.emotion-shift .indi-aura {
+        animation: indi-emotion-flash 0.5s ease-out;
+      }
+
+      @keyframes indi-emotion-flash {
+        0% {
+          transform: scale(1);
+          opacity: 0.5;
+        }
+        40% {
+          transform: scale(1.4);
+          opacity: 0.8;
+        }
+        100% {
+          transform: scale(1);
+          opacity: 0.5;
+        }
+      }
+
+      /* Idle squish - settling/stretch */
+      @keyframes indi-idle-squish {
+        0%, 100% {
+          transform: translateY(0) scaleX(1) scaleY(1);
+        }
+        40% {
+          transform: translateY(2px) scaleX(1.06) scaleY(0.94);
+        }
+        70% {
+          transform: translateY(-1px) scaleX(0.97) scaleY(1.03);
+        }
+      }
+
+      .indi-blob-container.idle-squish .indi-blob {
+        animation: indi-idle-squish 0.6s ease-in-out !important;
+      }
+
+      /* Idle peek - subtle body lean */
+      .indi-blob-container.idle-peek-right .indi-blob {
+        transform: translateX(3px) rotate(3deg) !important;
+        transition: transform 0.3s ease-in-out;
+      }
+
+      .indi-blob-container.idle-peek-left .indi-blob {
+        transform: translateX(-3px) rotate(-3deg) !important;
+        transition: transform 0.3s ease-in-out;
+      }
+
+      /* ==================== END BLOBI PERSONALITY UPGRADES ==================== */
     `;
 
     document.head.appendChild(styleElement);
@@ -1254,34 +1468,25 @@ export class IndiBlob {
     this.colorStop3 = document.getElementById('colorStop3') as unknown as SVGStopElement;
     this.muteButton = document.getElementById('muteButton');
     this.minimizeButton = document.getElementById('minimizeButton');
+    this.confettiContainer = document.getElementById('confettiContainer');
   }
 
   private init(): void {
     if (!this.container) return;
 
-    // Eye follow cursor on hover
-    this.container.addEventListener('mouseenter', () => {
-      document.addEventListener('mousemove', this.followCursor);
-    });
-
-    this.container.addEventListener('mouseleave', () => {
-      document.removeEventListener('mousemove', this.followCursor);
-      if (this.iris) {
-        this.iris.style.transform = 'translate(0, 0)';
-      }
-    });
+    // Eye follows cursor globally - Blobi is always watching
+    document.addEventListener('mousemove', this.globalEyeTrack);
 
     // Dragging
     this.container.addEventListener('mousedown', this.startDrag);
     document.addEventListener('mousemove', this.drag);
     document.addEventListener('mouseup', this.stopDrag);
 
-    // Blinking
-    this.blinkInterval = window.setInterval(() => {
-      if (!this.isDragging) {
-        this.blink();
-      }
-    }, 4000 + Math.random() * 2000);
+    // Blinking - varied timing feels more natural
+    this.scheduleNextBlink();
+
+    // Idle behaviors - curious look-arounds, stretches, etc.
+    this.startIdleBehaviors();
 
     // Click handler - use capture phase to ensure we catch clicks before websites can intercept
     this.container.addEventListener('click', (e) => {
@@ -1375,8 +1580,14 @@ export class IndiBlob {
     this.container.style.top = `${y}px`;
   }
 
-  private followCursor = (e: MouseEvent): void => {
-    if (!this.container || !this.iris) return;
+  /**
+   * Global eye tracking - Blobi watches the cursor from anywhere on the page.
+   * Movement is stronger when cursor is nearby, subtle when far away.
+   */
+  private globalEyeTrack = (e: MouseEvent): void => {
+    if (!this.container || !this.iris || this.isDoingIdleBehavior || this.isMinimized) return;
+
+    this.lastMouseMove = Date.now();
 
     const rect = this.container.getBoundingClientRect();
     const centerX = rect.left + rect.width / 2;
@@ -1386,13 +1597,15 @@ export class IndiBlob {
     const deltaY = e.clientY - centerY;
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
-    const maxMove = 5;
-    const scale = Math.min(maxMove / (distance / 80), 1);
+    if (distance === 0) return;
 
-    const moveX = (deltaX / distance) * maxMove * scale;
-    const moveY = (deltaY / distance) * maxMove * scale;
+    // More eye movement when cursor is close, subtle when far
+    const maxMove = distance < 200 ? 5 : 3;
+    const moveX = (deltaX / distance) * maxMove;
+    const moveY = (deltaY / distance) * maxMove;
 
     this.iris.style.transform = `translate(${moveX}px, ${moveY}px)`;
+    this.iris.style.transition = 'transform 0.1s ease-out';
   };
 
   private startDrag = (e: MouseEvent): void => {
@@ -1491,6 +1704,8 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
   }
 }
 
+  // ========== BLINK & IDLE BEHAVIORS ==========
+
   private blink(): void {
     if (!this.eyeContainer) return;
 
@@ -1500,6 +1715,167 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
         this.eyeContainer.style.transform = 'translate(-50%, -50%)';
       }
     }, 150);
+  }
+
+  private doubleBlink(): void {
+    this.blink();
+    setTimeout(() => this.blink(), 300);
+  }
+
+  private scheduleNextBlink(): void {
+    const delay = 2500 + Math.random() * 4000;
+    this.blinkInterval = window.setTimeout(() => {
+      if (!this.isDragging && !this.isMinimized) {
+        // Occasionally do a double blink for personality
+        if (Math.random() < 0.25) {
+          this.doubleBlink();
+        } else {
+          this.blink();
+        }
+      }
+      this.scheduleNextBlink();
+    }, delay);
+  }
+
+  /**
+   * Idle behaviors - things Blobi does when the user isn't interacting
+   */
+  private startIdleBehaviors(): void {
+    this.idleBehaviorInterval = window.setInterval(() => {
+      if (this.isDragging || this.isMinimized || this.isDoingIdleBehavior) return;
+
+      const timeSinceMouseMove = Date.now() - this.lastMouseMove;
+
+      // Only do idle behaviors if mouse hasn't moved for a bit
+      if (timeSinceMouseMove < 3000) return;
+
+      const roll = Math.random();
+
+      if (roll < 0.35) {
+        this.idleLookAround();
+      } else if (roll < 0.55) {
+        this.idleSquish();
+      } else if (roll < 0.7) {
+        this.idlePeekSide();
+      }
+      // 30% chance of doing nothing - keeps it unpredictable
+    }, 5000 + Math.random() * 3000);
+  }
+
+  /**
+   * Set a temporary mouth shape, restores to emotion mouth after duration.
+   * Shapes are subtle tweaks on the existing smile path - nothing fancy.
+   */
+  private setIdleMouth(shape: string, duration: number): void {
+    if (!this.mouthPath || this.isMuted) return;
+    this.mouthPath.setAttribute('d', shape);
+    if (duration > 0) {
+      setTimeout(() => this.restoreEmotionMouth(), duration);
+    }
+  }
+
+  private restoreEmotionMouth(): void {
+    if (!this.mouthPath || this.isMuted) return;
+    this.updateMouth(this.emotion);
+  }
+
+  /**
+   * Blobi looks around curiously - eye + slight mouth shift
+   */
+  private idleLookAround(): void {
+    if (!this.iris) return;
+    this.isDoingIdleBehavior = true;
+
+    // Slightly smaller smile - focused/curious
+    this.setIdleMouth('M38,66 Q50,70 62,66', 0);
+
+    const directions = [
+      { x: -3, y: -2 },
+      { x: 3, y: -2 },
+      { x: -4, y: 1 },
+      { x: 4, y: 1 },
+      { x: 0, y: -3 },
+      { x: 2, y: 3 },
+    ];
+
+    const lookCount = 2 + Math.floor(Math.random() * 2);
+    let delay = 0;
+
+    for (let i = 0; i < lookCount; i++) {
+      const dir = directions[Math.floor(Math.random() * directions.length)];
+      const holdTime = 400 + Math.random() * 600;
+
+      setTimeout(() => {
+        if (this.iris) {
+          this.iris.style.transition = 'transform 0.3s ease-in-out';
+          this.iris.style.transform = `translate(${dir.x}px, ${dir.y}px)`;
+        }
+      }, delay);
+
+      delay += holdTime;
+    }
+
+    setTimeout(() => {
+      if (this.iris) {
+        this.iris.style.transition = 'transform 0.4s ease-in-out';
+        this.iris.style.transform = 'translate(0, 0)';
+      }
+      this.restoreEmotionMouth();
+      this.isDoingIdleBehavior = false;
+    }, delay + 200);
+  }
+
+  /**
+   * Blobi does a little body squish - wider smile during stretch
+   */
+  private idleSquish(): void {
+    if (!this.container) return;
+    this.isDoingIdleBehavior = true;
+
+    // Slightly bigger smile during squish
+    this.setIdleMouth('M33,64 Q50,74 67,64', 600);
+
+    this.container.classList.add('idle-squish');
+    setTimeout(() => {
+      this.container?.classList.remove('idle-squish');
+      this.isDoingIdleBehavior = false;
+    }, 600);
+  }
+
+  /**
+   * Blobi peeks to one side - lopsided smile
+   */
+  private idlePeekSide(): void {
+    if (!this.iris || !this.container) return;
+    this.isDoingIdleBehavior = true;
+
+    const goRight = Math.random() > 0.5;
+    const eyeX = goRight ? 5 : -5;
+
+    // Lopsided smile - one side higher than the other
+    const smirk = goRight
+      ? 'M36,66 Q50,72 64,64'
+      : 'M36,64 Q50,72 64,66';
+    this.setIdleMouth(smirk, 0);
+
+    this.iris.style.transition = 'transform 0.3s ease-in-out';
+    this.iris.style.transform = `translate(${eyeX}px, 0)`;
+
+    this.container.classList.add(goRight ? 'idle-peek-right' : 'idle-peek-left');
+
+    setTimeout(() => {
+      this.blink();
+    }, 500);
+
+    setTimeout(() => {
+      if (this.iris) {
+        this.iris.style.transition = 'transform 0.4s ease-in-out';
+        this.iris.style.transform = 'translate(0, 0)';
+      }
+      this.container?.classList.remove('idle-peek-right', 'idle-peek-left');
+      this.restoreEmotionMouth();
+      this.isDoingIdleBehavior = false;
+    }, 1200);
   }
 
   private handleClick(): void {
@@ -1529,8 +1905,17 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
   public setEmotion(emotion: EmotionType): void {
     if (!this.container) return;
 
+    // Trigger subtle glow on emotion change
+    const emotionChanged = this.emotion !== emotion;
     this.emotion = emotion;
     this.container.className = `indi-blob-container ${emotion}`;
+
+    if (emotionChanged) {
+      this.container.classList.add('emotion-shift');
+      setTimeout(() => {
+        this.container?.classList.remove('emotion-shift');
+      }, 400);
+    }
 
     const colors = this.getEmotionColors(emotion);
     
@@ -1559,6 +1944,7 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
     return colorMap[emotion];
   }
 
+
   private updateMouth(emotion: EmotionType): void {
     if (!this.mouthPath || !this.zipperMouth) return;
 
@@ -1584,15 +1970,64 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
   }
 
   /**
-   * Trigger celebration animation when everything's perfect!
+   * Grand entrance animation when Blobi first appears!
+   */
+  private playEntrance(): void {
+    if (!this.container) return;
+
+    this.container.classList.add('entrance');
+    setTimeout(() => {
+      this.container?.classList.remove('entrance');
+    }, 900);
+  }
+
+  /**
+   * Trigger celebration animation with confetti burst!
    */
   public celebrate(): void {
     if (!this.container) return;
 
     this.container.classList.add('celebrating');
+    this.spawnConfetti();
     setTimeout(() => {
       this.container?.classList.remove('celebrating');
-    }, 1500);
+    }, 1300);
+  }
+
+  /**
+   * Spawn small confetti dots that match Blobi's current emotion palette
+   */
+  private spawnConfetti(): void {
+    if (!this.confettiContainer) return;
+
+    const emotionColors = this.getEmotionColors(this.emotion);
+    const colors = [emotionColors.primary, emotionColors.secondary, emotionColors.tertiary, '#ffffff'];
+    const confettiCount = 12;
+
+    for (let i = 0; i < confettiCount; i++) {
+      const confetti = document.createElement('div');
+      confetti.className = 'indi-confetti';
+
+      const angle = (i / confettiCount) * 360;
+      const distance = 30 + Math.random() * 40;
+      const cx = Math.cos((angle * Math.PI) / 180) * distance;
+      const cy = Math.sin((angle * Math.PI) / 180) * distance * 0.5 - 15;
+
+      confetti.style.setProperty('--cx', `${cx}px`);
+      confetti.style.setProperty('--cy', `${cy}px`);
+      confetti.style.background = colors[Math.floor(Math.random() * colors.length)];
+      confetti.style.animationDelay = `${Math.random() * 0.15}s`;
+      confetti.style.width = `${3 + Math.random() * 4}px`;
+      confetti.style.height = confetti.style.width;
+
+      this.confettiContainer.appendChild(confetti);
+    }
+
+    setTimeout(() => {
+      if (this.confettiContainer) {
+        this.confettiContainer.innerHTML = '';
+      }
+    }, 1200);
   }
 
   public setNotifications(count: number): void {
@@ -1804,9 +2239,12 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
   }
 
     public destroy(): void {
-    // Clean up
+    // Clean up timers
     if (this.blinkInterval) {
-        clearInterval(this.blinkInterval);
+        clearTimeout(this.blinkInterval);
+    }
+    if (this.idleBehaviorInterval) {
+        clearInterval(this.idleBehaviorInterval);
     }
 
     // Remove tooltip
@@ -1815,7 +2253,7 @@ private updateSummaryTooltipPosition(blobRect: DOMRect): void {
         this.summaryTooltip = null;
     }
 
-    document.removeEventListener('mousemove', this.followCursor);
+    document.removeEventListener('mousemove', this.globalEyeTrack);
     document.removeEventListener('mousemove', this.drag);
     document.removeEventListener('mouseup', this.stopDrag);
 
